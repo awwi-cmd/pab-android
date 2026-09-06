@@ -156,7 +156,7 @@ Remaining: enemy sprite and the select-screen portrait.
 - [ ] **6.4** No memory growth over 5 consecutive rounds (watch the profiler)
 - [ ] **6.5** Test on a second AVD with a different aspect ratio; confirm letterboxing
 - [ ] **6.6** Update PRD with anything the build proved wrong
-- [ ] **6.7** Write `NEXT.md` — what the skills phase needs from this codebase
+- [x] **6.7** Write `NEXT.md` — done ahead of schedule (D-024), the "skeleton hardening" pass prompted it directly
 
 **Exit criterion:** the demo is done. Stop, play it, and only then plan the game.
 

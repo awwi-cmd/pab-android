@@ -18,7 +18,6 @@ import 'components/damage_text.dart';
 import 'components/enemy.dart';
 import 'components/hp_bar.dart';
 import 'components/player.dart';
-import 'components/projectile.dart';
 import 'components/spawner.dart';
 import 'input/movement_input.dart';
 
@@ -53,6 +52,11 @@ class ArenaGame extends FlameGame {
   late SpriteAnimation _sparkAnimation;
   final Random _random = Random();
 
+  /// Exposed for [AttackBehavior]s (`attack_behavior.dart`) to build
+  /// projectiles from — the animation itself isn't per-character yet, but
+  /// the behavior that fires it is (DECISIONS D-024).
+  SpriteAnimation get boltAnimation => _boltAnimation;
+
   /// Flutter-observable mirror of round-over state, so the movement-input
   /// overlay (a Flutter widget, not a Flame overlay) knows to stop
   /// capturing touches once the round has ended.
@@ -64,7 +68,6 @@ class ArenaGame extends FlameGame {
   double damageDealt = 0;
 
   double _fireCooldown = 0;
-  final Vector2 _fireDirection = Vector2.zero();
 
   /// Set on player death, ticks down to let the death animation play before
   /// the round actually ends (PRD §6.5).
@@ -86,7 +89,10 @@ class ArenaGame extends FlameGame {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    _animations = await CharacterAnimations.load(character.spriteFolder);
+    _animations = await CharacterAnimations.load(
+      character.spriteFolder,
+      character.spritePrefix,
+    );
     _enemyAnimations = await EnemyAnimations.load();
     _boltAnimation = await loadSheetAnimation(
       'vfx/projectiles/projectile-bolt.png',
@@ -161,43 +167,11 @@ class ArenaGame extends FlameGame {
 
     _fireCooldown -= dt;
     if (_fireCooldown <= 0) {
-      _tryFire();
+      // Cooldown always resets on schedule, whether or not perform()
+      // actually found a target -- matches the pre-D-024 behavior exactly.
+      _fireCooldown = character.attackBehavior.cooldownSeconds(character.stats);
+      character.attackBehavior.perform(this);
     }
-  }
-
-  void _tryFire() {
-    _fireCooldown = 1 / character.stats.attacksPerSec;
-
-    EnemyComponent? nearest;
-    var nearestDist = character.stats.attackRangePx;
-    for (var i = 0; i < enemies.length; i++) {
-      final enemy = enemies[i];
-      final dist = enemy.position.distanceTo(player.position);
-      if (dist <= nearestDist) {
-        nearest = enemy;
-        nearestDist = dist;
-      }
-    }
-    if (nearest == null) return;
-
-    _fireDirection
-      ..setFrom(nearest.position)
-      ..sub(player.position);
-    if (_fireDirection.isZero()) return;
-    _fireDirection.normalize();
-
-    add(
-      ProjectileComponent(
-        startPosition: player.position.clone(),
-        direction: _fireDirection.clone(),
-        damage: character.stats.damagePerHit,
-        knockback: character.stats.knockbackImpulse,
-        speedPxPerS: character.stats.projSpeedPxPerS,
-        maxRangePx: character.stats.attackRangePx * 1.5,
-        animation: _boltAnimation,
-      ),
-    );
-    player.playFire();
   }
 
   void spawnEnemy(Vector2 at) {

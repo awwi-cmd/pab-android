@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flame/components.dart';
 
+import '../../core/game_rules.dart';
 import '../arena_game.dart';
 
 /// Off-screen perimeter spawning (PRD §6.4): starts at 1.5s/enemy, interval
@@ -30,7 +31,11 @@ class Spawner extends Component with HasGameReference<ArenaGame> {
     _timeUntilNextDecay -= dt;
     if (_timeUntilNextDecay <= 0) {
       _timeUntilNextDecay += _decayEvery;
-      _interval = max(_minIntervalSec, _interval * _decayFactor);
+      _interval = nextSpawnInterval(
+        _interval,
+        factor: _decayFactor,
+        floor: _minIntervalSec,
+      );
     }
 
     _timeUntilNextSpawn -= dt;

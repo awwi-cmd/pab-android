@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flame/components.dart';
 
 import '../../core/constants.dart';
+import '../../core/game_rules.dart';
 import '../../core/stats.dart';
 import '../arena_game.dart';
 
@@ -91,7 +92,7 @@ class EnemyComponent extends SpriteAnimationGroupComponent<EnemyAnim>
     if (!_scratch.isZero()) {
       _scratch.normalize();
     }
-    _scratch.scale(impulsePxPerS * _knockbackDurationSec);
+    _scratch.scale(knockbackDistance(impulsePxPerS, _knockbackDurationSec));
     position.add(_scratch);
   }
 

@@ -507,6 +507,52 @@ outlier here for historical reasons — its animations are loaded by
 
 ---
 
+## D-024 — Skeleton hardening: per-character sprite prefix, AttackBehavior, pure game rules
+**Date:** 2026-09-07 · **Status:** Accepted
+**Context:** Developer asked what to do "skeleton wise" to make the demo
+easier to build the real game on top of. Review turned up three real
+latent gaps rather than speculative ones:
+1. `CharacterAnimations` hardcoded the `main-` filename prefix — invisible
+   because the one unlocked character's folder happens to be named
+   `main`, but would break or force an awkward naming convention the
+   moment a second character got real sprites.
+2. Auto-attack (nearest-target search, projectile spawn) lived directly in
+   `ArenaGame._tryFire`, reading `character.stats` inline. D-005 already
+   flagged that a melee character's stats "mean nothing" to this path —
+   there was no seam to add one without editing `ArenaGame` itself.
+3. Gameplay math (targeting, spawn-interval decay, knockback distance) was
+   inline inside component `update()` methods, which — per D-019 — means
+   it can never be unit-tested, since a `GameWidget` can't run under
+   `flutter test`.
+**Decision:**
+- `CharacterDef` gained `spritePrefix` (replaces the hardcoded `'main'` in
+  `CharacterAnimations.load` and the select-screen portrait).
+- `CharacterDef` gained `attackBehavior: AttackBehavior`
+  (`game/attack_behavior.dart`). `ArenaGame` now only owns the cooldown
+  timer and calls `character.attackBehavior.perform(this)`; the demo's one
+  implementation, `ProjectileAttack`, holds the old `_tryFire` logic
+  verbatim. Behaviors are stateless/`const` so they can't leak state
+  between rounds by being accidentally shared (CLAUDE.md §4.5).
+- `core/game_rules.dart`: pure functions with no Flame `Component`/`Game`
+  dependency — `nearestWithinRange`, `nextSpawnInterval`,
+  `knockbackDistance` — called from `ProjectileAttack`, `Spawner`, and
+  `EnemyComponent` respectively. Unit-tested in
+  `test/core/game_rules_test.dart` the same way `stats.dart` is.
+**Because:** All three were "pay a little now or pay a lot later"
+situations — the fixes are small today and expensive after a second
+character or a skill system exists and something built on the old
+assumption has to be unwound. Full reasoning and what each hook is *for*
+is written up in `NEXT.md` (TASKS 6.7, written ahead of schedule since the
+question came up directly).
+**Consequences:** `data/characters.dart` now imports `game/attack_behavior.
+dart` — a data-layer file reaching into the game layer. Accepted rather
+than adding an interface purely to avoid it; `NEXT.md` notes the narrowing
+fix (an `AttackContext` interface instead of the full `ArenaGame`) if this
+ever actually causes a problem. No behavior change for the Apprentice —
+`ProjectileAttack.perform` is the old `_tryFire` body moved, not rewritten.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

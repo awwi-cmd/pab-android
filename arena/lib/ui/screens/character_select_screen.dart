@@ -112,16 +112,17 @@ class _CharacterPortrait extends StatelessWidget {
   static const _cellHeight = 24.0;
   static const _scale = 4.0;
 
-  // `main-idle.png` is a known 4-frame delivery (DECISIONS D-015). Unlike
-  // the in-arena loader, this widget needs a frame count up front (before
-  // the sheet is decoded), so it isn't computed from image width — update
-  // this if idle's frame count ever changes.
+  // The Apprentice's `<prefix>-idle.png` is a known 4-frame delivery
+  // (DECISIONS D-015). Unlike the in-arena loader, this widget needs a
+  // frame count up front (before the sheet is decoded), so it isn't
+  // computed from image width — update this if a future unlocked
+  // character's idle sheet has a different frame count.
   static const _idleFrameCount = 4;
 
   @override
   Widget build(BuildContext context) {
-    final path =
-        '${character.spriteFolder.replaceFirst('assets/images/', '')}/main-idle.png';
+    final root = character.spriteFolder.replaceFirst('assets/images/', '');
+    final path = '$root/${character.spritePrefix}-idle.png';
     return SizedBox(
       width: _cellWidth * _scale,
       height: _cellHeight * _scale,

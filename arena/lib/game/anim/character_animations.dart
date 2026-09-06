@@ -4,11 +4,12 @@ import 'package:flame/flame.dart';
 import 'anim_state.dart';
 import 'sheet_loader.dart';
 
-/// Loads a character's `main-<state>.png` sheets into a
+/// Loads a character's `<prefix>-<state>.png` sheets into a
 /// `Map<AnimState, SpriteAnimation>` (DECISIONS D-015: one PNG per state,
-/// 16×24 cell). Only the six states required for the demo (PRD §8.1) are
-/// loaded — `dash`/`fly`/`warp` etc. stay unset until the skills phase
-/// actually plays them (D-012).
+/// 16×24 cell; D-024: prefix is per-character, not hardcoded to `'main'`).
+/// Only the six states required for the demo (PRD §8.1) are loaded —
+/// `dash`/`fly`/`warp` etc. stay unset until the skills phase actually
+/// plays them (D-012).
 class CharacterAnimations {
   CharacterAnimations._(this._animations);
 
@@ -35,13 +36,16 @@ class CharacterAnimations {
 
   Map<AnimState, SpriteAnimation> get all => _animations;
 
-  static Future<CharacterAnimations> load(String spriteFolder) async {
+  static Future<CharacterAnimations> load(
+    String spriteFolder,
+    String spritePrefix,
+  ) async {
     final root = spriteFolder.replaceFirst('assets/images/', '');
     final animations = <AnimState, SpriteAnimation>{};
 
     for (final entry in _fileNames.entries) {
       final state = entry.key;
-      final path = '$root/main-${entry.value}.png';
+      final path = '$root/$spritePrefix-${entry.value}.png';
       final frameCount = await _frameCountOf(path);
       final stepTime = state == AnimState.spawn
           ? _spawnDurationSec / frameCount
