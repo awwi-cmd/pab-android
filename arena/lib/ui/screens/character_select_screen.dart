@@ -54,8 +54,6 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
               ],
             ),
             const SizedBox(height: 24),
-            if (character.unlocked) _CharacterPortrait(character: character),
-            const SizedBox(height: 8),
             Text(
               character.name,
               style: const TextStyle(
@@ -101,9 +99,10 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
   }
 }
 
-/// The detail-panel portrait, playing `idle` on loop (PRD §4.4, TASKS 5.13).
-/// Uses Flame's `SpriteAnimationWidget` directly — no `GameWidget`/game loop
-/// needed for a single looping animation outside the arena.
+/// The grid-tile portrait, playing `idle` on loop (PRD §4.4, TASKS 5.13) —
+/// the same square you tap to select the character. Uses Flame's
+/// `SpriteAnimationWidget` directly — no `GameWidget`/game loop needed for
+/// a single looping animation outside the arena.
 class _CharacterPortrait extends StatelessWidget {
   const _CharacterPortrait({required this.character});
 
@@ -166,9 +165,12 @@ class _SlotTile extends StatelessWidget {
         child: Center(
           child: locked
               ? const Icon(Icons.lock, color: ArenaColors.textDim)
-              // Real idle-animation portrait lands in Phase 5 (TASKS 5.13);
-              // this is a placeholder so the grid isn't empty until then.
-              : const Icon(Icons.auto_awesome, color: ArenaColors.accent),
+              // FittedBox scales the portrait's fixed native size down to
+              // whatever the grid actually gives this tile.
+              : FittedBox(
+                  fit: BoxFit.contain,
+                  child: _CharacterPortrait(character: character),
+                ),
         ),
       ),
     );
