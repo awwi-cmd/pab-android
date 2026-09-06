@@ -2,7 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
 import '../../core/settings.dart';
+import '../../game/arena_game.dart';
+import '../widgets/pixel_button.dart';
 import '../widgets/screen_scaffold.dart';
+
+/// Route arguments for [SettingsScreen]. Passing a live [debugGame] (only
+/// done from the arena's Pause Menu, DECISIONS D-025) is what makes the
+/// debug section appear — Settings reached from the main menu passes no
+/// arguments, so `debugGame` is null and that section doesn't exist there.
+class SettingsScreenArgs {
+  const SettingsScreenArgs({this.debugGame});
+  final ArenaGame? debugGame;
+}
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -42,6 +53,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     final showJoystickSide =
         settings.controlScheme != ControlScheme.dragAnywhere;
+    final debugGame =
+        (ModalRoute.of(context)?.settings.arguments as SettingsScreenArgs?)
+            ?.debugGame;
 
     return ScreenScaffold(
       title: 'SETTINGS',
@@ -124,6 +138,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             onChanged: (value) => _update(settings.copyWith(showFps: value)),
           ),
+          if (debugGame != null) ...[
+            const SizedBox(height: 24),
+            _SectionLabel('DEBUG'),
+            SwitchListTile(
+              value: debugGame.debugGodMode,
+              activeThumbColor: ArenaColors.danger,
+              title: const Text(
+                'God mode',
+                style: TextStyle(color: ArenaColors.textPrimary),
+              ),
+              onChanged: (value) =>
+                  setState(() => debugGame.debugGodMode = value),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: PixelButton(
+                    label: 'GRANT LEVEL UP',
+                    onPressed: () => setState(debugGame.debugGrantLevelUp),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Queued: ${debugGame.pendingLevelUps} — plays out once you '
+              'close the pause menu.',
+              style: const TextStyle(
+                color: ArenaColors.textDim,
+                fontSize: 12,
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -553,6 +553,73 @@ ever actually causes a problem. No behavior change for the Apprentice —
 
 ---
 
+## D-025 — In-round leveling, direct stat bonuses, and a 3-way pause architecture
+**Date:** 2026-09-07 · **Status:** Accepted
+**Context:** First real post-demo feature, built at the developer's explicit
+request right after calling the demo done. Spec, verbatim intent: kills
+grant XP directly (no drops), levelling pauses the round and offers 1-of-3
+placeholder upgrades (VIT→HP, DEX→speed, STR→half of each, INT→projectile
+damage), a way to review picks without losing the choice screen, levelling
+shouldn't feel fast, plus a top-right pause button (Resume/Settings/Main
+Menu) whose Settings screen gets a debug section (god mode, grant a free
+level-up that plays out once the menu closes) that the main-menu Settings
+never shows.
+**Decisions, in order:**
+1. **In-round only, not persistent.** Resolves the open question left after
+   the last planning pass. `ArenaGame.level`/`xp`/`upgrades` reset in
+   `resetRound()` exactly like `kills`/`damageDealt` already did — no new
+   save-data layer needed. Revisit if a later ask wants progress to survive
+   between rounds.
+2. **Direct additive stat bonuses, not `StatBlock` re-derivation.** The spec
+   says "VIT increases HP," not "increases the VIT attribute" — so
+   `PlayerUpgrades` (`core/progression.dart`) is a flat bonus layer
+   (`bonusMaxHp`/`bonusMoveSpeed`/`bonusDamage`) added on top of
+   `CharacterDef.stats` at the point of use (`PlayerComponent.
+   effectiveMaxHp`/`effectiveMoveSpeed`, `ProjectileAttack.perform`'s damage
+   calc) rather than mutating or re-running the derived formulas. Simpler,
+   and matches the "for now just placeholder stats" framing — swapping in a
+   real formula later touches one file.
+3. **XP curve tuned deliberately slow.** `kBaseXpToNextLevel = 150`,
+   `kXpGrowthFactor = 1.3`, `kXpPerKill = 10` — first level costs 15 kills,
+   every level after costs more. Direct response to "make it not feel so
+   fast"; all three are named constants in `core/progression.dart`, one
+   edit to retune.
+4. **Three pause reasons, one coordinator.** Round Over, the level-up
+   popup, and the manual pause menu can all stop the engine, and they can
+   interact (a level-up can be earned/granted while the pause menu is
+   open). `ArenaGame` owns a single `_pendingLevelUps` counter and
+   `_maybeShowNextLevelUp()` gate: it won't show the popup while
+   `PauseMenu` is active, so anything queued during a pause (debug-granted
+   or otherwise) plays out immediately after `closePauseMenu()`, still
+   paused, rather than resuming first — matches the spec's "given once you
+   close pause menu" exactly. `menuOpen` (a `ValueNotifier<bool>`, same
+   pattern as the existing `roundOver`) mirrors "is *any* menu/popup
+   showing" for the Flutter side.
+5. **`DebugDie` and the new pause button stopped being Flame overlays.**
+   They're plain Flutter widgets in `ArenaScreen`'s `Stack` now, visibility
+   gated by `roundOver`/`menuOpen` the same way the movement-input overlay
+   already was — one fewer thing that has to be registered with
+   `GameWidget`'s `overlayBuilderMap` before it can be touched (the exact
+   class of bug D-024's predecessor hit). `RoundOver`/`LevelUp`/`PauseMenu`
+   stay real Flame overlays since they need to sit above everything,
+   `ArenaGame`-triggered.
+6. **Debug tools live in `SettingsScreen`, gated by route arguments, not a
+   separate screen.** `SettingsScreenArgs(debugGame: ...)` — non-null only
+   when Settings is reached from the Pause Menu. Reuses the existing
+   screen/persistence code entirely; the debug section is just conditional
+   widgets at the bottom.
+**Because:** each of these mirrors a pattern already established in this
+codebase (D-019/D-024's pure-logic extraction, `roundOver`'s
+Flutter/Flame bridging, `SettingsScreenArgs` following D-024's data→game
+layering precedent) rather than inventing a new one — consistent with the
+"skeleton hardening" pass from the same day.
+**Consequences:** `EnemyStats` doesn't scale with the new `level` yet — the
+player gets stronger, enemies don't, which is only half of the developer's
+original stated vision. That's the immediate next open question (see
+below), not an oversight.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer
@@ -568,14 +635,14 @@ before they can be settled.
   effects. The demo shows both; the select screen is where this gets judged.
 - **Targeting rule** — "nearest enemy" is the demo rule. Nearest-in-front, or
   lowest-HP, may feel better once enemy variety exists.
-- **Progression model (post-demo)** — in-round only (resets every round,
-  Vampire-Survivors style) or persistent across rounds/sessions (needs real
-  save data, not just `core/settings.dart`'s scalar `SharedPreferences`
-  values)? Blocks deciding how to store XP/level at all.
-- **Enemy scaling mechanism (post-demo)** — multiply the existing flat
+- ~~**Progression model**~~ — closed by D-025: in-round only, resets every
+  round. No save data needed yet.
+- ~~**Power-up delivery**~~ — closed by D-025: mid-round choice popup (1 of
+  3), not between-round unlocks.
+- **Enemy scaling mechanism (still open)** — the level-up system (D-025)
+  makes the *player* stronger; it doesn't yet make enemies stronger or more
+  frequent to match, which was the other half of the developer's original
+  vision (TASKS Backlog "Progression system driving enemy scaling"). Multiply
   `EnemyStats` by a level-derived factor, unlock distinct tougher enemy
-  types at higher levels (`EnemySkin` already exists as the hook, D-022),
-  or both together?
-- **Power-up delivery (post-demo)** — mid-round pickups/choices, permanent
-  between-round unlocks, or both? Very different builds; see TASKS Backlog
-  "Progression system" for the fuller writeup.
+  types (`EnemySkin` already exists as the hook, D-022), or both — still
+  undecided, and the natural next step now that the player side exists.

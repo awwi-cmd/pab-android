@@ -160,6 +160,57 @@ Remaining: enemy sprite and the select-screen portrait.
 
 **Exit criterion:** the demo is done. Stop, play it, and only then plan the game.
 
+**Called done 2026-09-07.** 6.2-6.5 are on-device checks (tune feel, memory,
+second-AVD letterboxing) that weren't formally run round-by-round, but the
+developer played it through this session's build across every phase and
+called the feel acceptable ("enemies feel ok"). Not blocking moving on to
+planning the next phase — revisit 6.4/6.5 (memory, aspect ratio) before any
+real release, they're cheap checks that just haven't been run yet.
+
+---
+
+## Phase 7 — Progression & pause system
+*Goal: the player gets stronger over a round through kills, not just by playing
+longer. First real post-demo feature (developer's vision, planned last session,
+built 2026-09-07 — see DECISIONS D-025 for the full design reasoning).*
+
+- [x] **7.1** `core/progression.dart` — `UpgradeKind` (vit/dex/str/intellect),
+      placeholder bonus amounts, XP curve (`xpThresholdForLevel`), upgrade-roll
+      helper, `PlayerUpgrades` bonus accumulator. Pure, unit-tested
+      (`test/core/progression_test.dart`), no Flame dependency (D-019/D-024
+      pattern)
+- [x] **7.2** Kills grant XP directly (`ArenaGame.grantXp`, called from
+      `onEnemyKilled`) — no drops, matches spec
+- [x] **7.3** Levelling pauses the round and shows "LEVEL UP! Choose 1 of 3"
+      (`LevelUp` Flame overlay) — 3 random `UpgradeKind`s out of the 4, picking
+      one applies it via `PlayerComponent.grantUpgrade`
+- [x] **7.4** "View your upgrades" / back-to-choices toggle inside the same
+      popup, showing pick counts per kind
+- [x] **7.5** XP curve tuned to feel deliberately slow to climb (developer's
+      explicit ask), not the first number that worked
+- [x] **7.6** Top-right pause button → Pause Menu overlay (Resume / Settings /
+      Main Menu)
+- [x] **7.7** Settings reached from the Pause Menu (only) shows a Debug
+      section: God Mode toggle, "Grant Level Up" (queues a free level-up that
+      plays out once the pause menu closes, not immediately)
+- [x] **7.8** Queued level-ups (debug-granted or otherwise earned while the
+      pause menu happened to be open) chain into the popup immediately after
+      closing the menu, still paused — not resumed first
+- [ ] **7.9** Enemy scaling to match player level — **not started**, the other
+      half of the original vision (DECISIONS Open Questions: multiply
+      `EnemyStats`, unlock tougher `EnemySkin`s, or both)
+- [ ] **7.10** On-device verification — **developer**: level-up popup timing/
+      feel, pause menu across all 3 control schemes, god mode actually
+      prevents damage, grant-level-up queuing behaves as described
+
+flutter analyze clean, flutter test passes (32 tests, 12 new), flutter build
+apk --debug succeeds. No automated coverage of the pause/overlay orchestration
+itself (D-019 still applies) — 7.10 is the real check.
+
+**Exit criterion:** a full round can level up multiple times, review picks,
+pause/resume through all menus, and reset cleanly on re-entry, without the
+demo's existing flow (Phases 0-6) regressing.
+
 ---
 
 ## Backlog (post-demo — do not start)
@@ -172,25 +223,10 @@ Kept here so ideas have somewhere to go that isn't the current sprint.
   3 skins were wired for visual variety only, one shared `EnemyStats` profile
   — still true "one enemy type" per PRD §9, so this backlog item stands)
 - Structured waves and a boss
-- **Progression system (XP/level/power-ups) driving enemy scaling** — developer's
-  vision (2026-09-07): kills grant XP, levelling up the player should make
-  enemies both stronger and more frequent, replacing or augmenting the demo's
-  flat time-based ramp (`Spawner`'s interval decay, single-tier `EnemyStats`)
-  with scaling driven by player progression instead of just elapsed time.
-  - Round already tracks `kills` (`ArenaGame.kills`) — the raw material for XP
-    is there, XP-per-kill and a level curve aren't.
-  - Enemy scaling could be: multiply existing `EnemyStats` by a level-derived
-    factor, or unlock distinct tougher enemy types at higher levels (ties into
-    the enemy-variety item above — `EnemySkin` already exists as the hook,
-    D-022), or both.
-  - Power-ups could be: mid-round pickups/choices (new ability, stat boost,
-    Vampire-Survivors-style level-up screen), permanent between-round unlocks,
-    or both — very different builds.
-  - Whether this is in-round only (resets every round) or persists across
-    rounds/sessions changes whether it needs real save data beyond the
-    existing Settings persistence (`core/settings.dart` is SharedPreferences
-    for a handful of scalar settings, not built for a save file).
-  - Genuinely open, not yet decided — see DECISIONS.md's Open Questions.
+- **Enemy scaling to match player progression** — the player-side half of
+  this shipped in Phase 7 below (D-025). Enemies still don't get stronger or
+  spawn faster as the player levels — that's the remaining half of the
+  original vision, still genuinely undecided (see DECISIONS Open Questions).
 - Real audio: SFX bank + music, wired to the existing volume sliders
 - Multiple arenas and backgrounds
 - Camera larger than the screen, with scroll

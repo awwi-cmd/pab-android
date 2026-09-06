@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flame/components.dart';
 
 import '../../core/constants.dart';
+import '../../core/progression.dart';
 import '../../data/characters.dart';
 import '../anim/anim_state.dart';
 import '../anim/character_animations.dart';
@@ -49,6 +50,13 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
 
   bool get isAlive => current != AnimState.death;
 
+  /// Base stat plus whatever level-up picks have added this round
+  /// (`ArenaGame.upgrades`, DECISIONS D-025) — a flat additive layer on
+  /// top of `StatBlock`, not a re-derivation of it.
+  double get effectiveMaxHp => character.stats.maxHp + game.upgrades.bonusMaxHp;
+  double get effectiveMoveSpeed =>
+      character.stats.moveSpeedPxPerS + game.upgrades.bonusMoveSpeed;
+
   @override
   void update(double dt) {
     super.update(dt);
@@ -63,7 +71,7 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
       }
     }
 
-    hp = min(character.stats.maxHp, hp + character.stats.hpRegenPerSec * dt);
+    hp = min(effectiveMaxHp, hp + character.stats.hpRegenPerSec * dt);
 
     if (_invulnTimer > 0) {
       _invulnTimer -= dt;
@@ -76,7 +84,7 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
     if (moving && current != AnimState.hurt) {
       _velocity
         ..setFrom(input.direction)
-        ..scale(character.stats.moveSpeedPxPerS * dt);
+        ..scale(effectiveMoveSpeed * dt);
       position.add(_velocity);
 
       // Horizontal-flip-only facing (PRD §6.2) — no 8-way sprite set.
@@ -117,8 +125,9 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
   /// after death — the 1.0s per-enemy cooldown lives on `EnemyComponent`
   /// instead, so this only guards the player's own invulnerability window.
   void takeDamage(double amount) {
+    if (game.debugGodMode) return;
     if (_invulnTimer > 0 || current == AnimState.death) return;
-    hp = (hp - amount).clamp(0, character.stats.maxHp);
+    hp = (hp - amount).clamp(0, effectiveMaxHp);
     _invulnTimer = _invulnDurationSec;
     if (hp <= 0) {
       current = AnimState.death;
@@ -126,5 +135,13 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
     } else {
       current = AnimState.hurt;
     }
+  }
+
+  /// Applies a chosen level-up upgrade (DECISIONS D-025). Heals by however
+  /// much max HP the pick just added, so a level-up doesn't leave the
+  /// player relatively worse off by only raising the ceiling.
+  void grantUpgrade(UpgradeKind kind) {
+    final healed = game.upgrades.apply(kind);
+    hp = min(effectiveMaxHp, hp + healed);
   }
 }

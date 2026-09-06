@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter/widgets.dart' show EdgeInsets;
 
 import '../core/constants.dart';
+import '../core/progression.dart';
 import '../core/settings.dart';
 import '../core/stats.dart';
 import '../data/characters.dart';
@@ -62,10 +63,28 @@ class ArenaGame extends FlameGame {
   /// capturing touches once the round has ended.
   final ValueNotifier<bool> roundOver = ValueNotifier(false);
 
+  /// True whenever the Level Up or Pause Menu overlay is showing — mirrors
+  /// `roundOver` for the same reason (DECISIONS D-025): hides the
+  /// movement-input overlay and the top HUD buttons while a menu owns the
+  /// screen, without those Flutter widgets needing to know why.
+  final ValueNotifier<bool> menuOpen = ValueNotifier(false);
+
   // Round state (TASKS 4.12).
   double elapsed = 0;
   int kills = 0;
   double damageDealt = 0;
+
+  // In-round leveling (DECISIONS D-025) -- resets every round, same as
+  // everything else here (CLAUDE.md §4.5). core/progression.dart owns the
+  // actual formulas/bonus math; this is just the round-scoped state.
+  int level = 1;
+  double xp = 0;
+  double _xpToNextLevel = xpThresholdForLevel(1);
+  final PlayerUpgrades upgrades = PlayerUpgrades();
+  List<UpgradeKind> currentLevelUpChoices = const [];
+  int _pendingLevelUps = 0;
+  int get pendingLevelUps => _pendingLevelUps;
+  bool debugGodMode = false;
 
   double _fireCooldown = 0;
 
@@ -131,6 +150,15 @@ class ArenaGame extends FlameGame {
     _fireCooldown = 0;
     _roundEndDelay = null;
 
+    level = 1;
+    xp = 0;
+    _xpToNextLevel = xpThresholdForLevel(1);
+    upgrades.reset();
+    currentLevelUpChoices = const [];
+    _pendingLevelUps = 0;
+    debugGodMode = false;
+    menuOpen.value = false;
+
     add(ArenaFloor());
     player = PlayerComponent(
       character: character,
@@ -189,6 +217,75 @@ class ArenaGame extends FlameGame {
     enemies.remove(enemy);
     enemy.removeFromParent();
     kills++;
+    grantXp(kXpPerKill);
+  }
+
+  /// Kills grant XP directly — no drops (developer's spec). Loops in case
+  /// one grant crosses more than one threshold at once.
+  void grantXp(double amount) {
+    if (roundOver.value) return;
+    xp += amount;
+    while (xp >= _xpToNextLevel) {
+      xp -= _xpToNextLevel;
+      level++;
+      _xpToNextLevel = xpThresholdForLevel(level);
+      _pendingLevelUps++;
+    }
+    _maybeShowNextLevelUp();
+  }
+
+  /// Debug-only: grants a level (and its popup) for free, no XP required.
+  /// The popup itself is deferred by `_maybeShowNextLevelUp`'s Pause Menu
+  /// guard below until the menu actually closes (developer's spec).
+  void debugGrantLevelUp() {
+    level++;
+    _pendingLevelUps++;
+    _maybeShowNextLevelUp();
+  }
+
+  void _maybeShowNextLevelUp() {
+    if (roundOver.value || _pendingLevelUps <= 0) return;
+    if (overlays.isActive('PauseMenu') || overlays.isActive('LevelUp')) return;
+    currentLevelUpChoices = rollUpgradeChoices(_random);
+    overlays.add('LevelUp');
+    menuOpen.value = true;
+    pauseEngine();
+  }
+
+  /// Called by the Level Up overlay once the player taps one of the 3
+  /// choices. Chains straight into the next pending level-up (still
+  /// paused) if more than one queued up, rather than resuming in between.
+  void resolveLevelUpChoice(UpgradeKind kind) {
+    player.grantUpgrade(kind);
+    _pendingLevelUps--;
+    overlays.remove('LevelUp');
+    if (_pendingLevelUps > 0) {
+      _maybeShowNextLevelUp();
+    } else {
+      menuOpen.value = false;
+      resumeEngine();
+    }
+  }
+
+  void openPauseMenu() {
+    if (roundOver.value) return;
+    if (overlays.isActive('LevelUp') || overlays.isActive('PauseMenu')) return;
+    overlays.add('PauseMenu');
+    menuOpen.value = true;
+    pauseEngine();
+  }
+
+  /// Any level-ups granted (debug or otherwise) while the menu was open
+  /// play out immediately after it closes, still paused, rather than
+  /// resuming gameplay first (developer's spec).
+  void closePauseMenu() {
+    overlays.remove('PauseMenu');
+    if (_pendingLevelUps > 0) {
+      _maybeShowNextLevelUp();
+    } else {
+      menuOpen.value = false;
+      resumeEngine();
+    }
   }
 
   void onEnemyContact() {
@@ -226,7 +323,6 @@ class ArenaGame extends FlameGame {
 
   void _endRound() {
     roundOver.value = true;
-    overlays.remove('DebugDie');
     overlays.add('RoundOver');
     pauseEngine();
   }

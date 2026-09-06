@@ -56,7 +56,7 @@ class ProjectileAttack extends AttackBehavior {
       ProjectileComponent(
         startPosition: player.position.clone(),
         direction: direction,
-        damage: stats.damagePerHit,
+        damage: stats.damagePerHit + game.upgrades.bonusDamage,
         knockback: stats.knockbackImpulse,
         speedPxPerS: stats.projSpeedPxPerS,
         maxRangePx: stats.attackRangePx * 1.5,

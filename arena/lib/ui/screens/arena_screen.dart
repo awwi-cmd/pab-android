@@ -2,15 +2,17 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
+import '../../core/progression.dart';
 import '../../core/settings.dart';
 import '../../data/characters.dart';
 import '../../game/arena_game.dart';
 import '../../game/input/joystick_overlay.dart';
+import 'settings_screen.dart';
 
 /// Hosts the single `GameWidget` for the arena (CLAUDE.md §4.1 — Flame owns
-/// the arena, Flutter owns everything else). The movement-input overlay is
-/// the one deliberate exception: it's Flutter-side touch capture drawn on
-/// top of the canvas, not gameplay.
+/// the arena, Flutter owns everything else). The movement-input overlay,
+/// debug-die button and pause button are the deliberate exceptions: plain
+/// Flutter widgets drawn on top of the canvas, not gameplay.
 class ArenaScreen extends StatefulWidget {
   const ArenaScreen({super.key});
 
@@ -61,22 +63,34 @@ class _ArenaScreenState extends State<ArenaScreen> {
           GameWidget<ArenaGame>(
             game: game,
             overlayBuilderMap: {
-              'DebugDie': (context, game) => _DebugDieButton(game: game),
               'RoundOver': (context, game) => _RoundOverOverlay(game: game),
+              'LevelUp': (context, game) => _LevelUpOverlay(game: game),
+              'PauseMenu': (context, game) => _PauseMenuOverlay(game: game),
             },
-            initialActiveOverlays: const ['DebugDie'],
           ),
-          // Stop capturing touches once the round ends, so Round Over's
-          // Main Menu button (drawn beneath this in the stack, via the
-          // GameWidget's own overlay) is still tappable.
+          // Hidden once the round ends OR a menu/popup owns the screen
+          // (DECISIONS D-025) -- neither the joystick nor these buttons
+          // should be reachable underneath an overlay.
           ValueListenableBuilder<bool>(
             valueListenable: game.roundOver,
             builder: (context, isOver, _) {
               if (isOver) return const SizedBox.shrink();
-              return MovementInputOverlay(
-                input: game.input,
-                scheme: game.settings.controlScheme,
-                joystickSide: game.settings.joystickSide,
+              return ValueListenableBuilder<bool>(
+                valueListenable: game.menuOpen,
+                builder: (context, isMenuOpen, _) {
+                  if (isMenuOpen) return const SizedBox.shrink();
+                  return Stack(
+                    children: [
+                      MovementInputOverlay(
+                        input: game.input,
+                        scheme: game.settings.controlScheme,
+                        joystickSide: game.settings.joystickSide,
+                      ),
+                      _DebugDieButton(game: game),
+                      _PauseButton(game: game),
+                    ],
+                  );
+                },
               );
             },
           ),
@@ -87,7 +101,7 @@ class _ArenaScreenState extends State<ArenaScreen> {
 }
 
 /// PRD §3: the arena has no other exit besides death; this is the debug
-/// stand-in until Phase 4 wires HP <= 0 into `ArenaGame.debugDie()`.
+/// stand-in until real combat reliably kills the player.
 class _DebugDieButton extends StatelessWidget {
   const _DebugDieButton({required this.game});
 
@@ -104,6 +118,28 @@ class _DebugDieButton extends StatelessWidget {
             'DIE (debug)',
             style: TextStyle(color: ArenaColors.danger, fontSize: 16),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Top-right pause button (developer's spec). Opens the Pause Menu overlay.
+class _PauseButton extends StatelessWidget {
+  const _PauseButton({required this.game});
+
+  final ArenaGame game;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.topRight,
+      child: SafeArea(
+        child: IconButton(
+          onPressed: game.openPauseMenu,
+          icon: const Icon(Icons.pause_circle_outline),
+          color: ArenaColors.textPrimary,
+          iconSize: 28,
         ),
       ),
     );
@@ -156,6 +192,7 @@ class _RoundOverOverlay extends StatelessWidget {
                 label: 'Damage dealt',
                 value: '${game.damageDealt.round()}',
               ),
+              _StatRow(label: 'Level reached', value: '${game.level}'),
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
@@ -195,6 +232,221 @@ class _StatRow extends StatelessWidget {
           Text(label, style: const TextStyle(color: ArenaColors.textDim)),
           Text(value, style: const TextStyle(color: ArenaColors.textPrimary)),
         ],
+      ),
+    );
+  }
+}
+
+/// Level-up popup (DECISIONS D-025): game is paused, pick 1 of 3, with a
+/// way to check what's been picked so far and go back to the choice.
+class _LevelUpOverlay extends StatefulWidget {
+  const _LevelUpOverlay({required this.game});
+
+  final ArenaGame game;
+
+  @override
+  State<_LevelUpOverlay> createState() => _LevelUpOverlayState();
+}
+
+class _LevelUpOverlayState extends State<_LevelUpOverlay> {
+  bool _showingUpgrades = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black.withValues(alpha: 0.8),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: _showingUpgrades ? _buildUpgradeList() : _buildChoices(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChoices() {
+    final game = widget.game;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'LEVEL UP!',
+          style: TextStyle(
+            color: ArenaColors.accent,
+            fontSize: 26,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Choose 1 of 3',
+          style: TextStyle(color: ArenaColors.textDim),
+        ),
+        const SizedBox(height: 24),
+        for (final kind in game.currentLevelUpChoices) ...[
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: ArenaColors.accent),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              onPressed: () => game.resolveLevelUpChoice(kind),
+              child: Column(
+                children: [
+                  Text(
+                    kind.label,
+                    style: const TextStyle(
+                      color: ArenaColors.textPrimary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    kind.description,
+                    style: const TextStyle(
+                      color: ArenaColors.textDim,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        TextButton(
+          onPressed: () => setState(() => _showingUpgrades = true),
+          child: const Text(
+            'VIEW YOUR UPGRADES',
+            style: TextStyle(color: ArenaColors.textDim),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUpgradeList() {
+    final counts = widget.game.upgrades.pickCounts;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'YOUR UPGRADES',
+          style: TextStyle(
+            color: ArenaColors.accent,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(height: 16),
+        for (final kind in UpgradeKind.values)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  kind.label,
+                  style: const TextStyle(color: ArenaColors.textPrimary),
+                ),
+                Text(
+                  'x${counts[kind] ?? 0}',
+                  style: const TextStyle(color: ArenaColors.textDim),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: ArenaColors.accent),
+            ),
+            onPressed: () => setState(() => _showingUpgrades = false),
+            child: const Text(
+              'BACK',
+              style: TextStyle(color: ArenaColors.accent),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Pause menu (developer's spec): Resume, Settings, Main Menu. Settings
+/// opened from here carries the live `ArenaGame` so it can show debug
+/// tools that don't exist when Settings is opened from the main menu.
+class _PauseMenuOverlay extends StatelessWidget {
+  const _PauseMenuOverlay({required this.game});
+
+  final ArenaGame game;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black.withValues(alpha: 0.8),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'PAUSED',
+                style: TextStyle(
+                  color: ArenaColors.textPrimary,
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 3,
+                ),
+              ),
+              const SizedBox(height: 24),
+              _menuButton(
+                context,
+                label: 'RESUME',
+                onPressed: game.closePauseMenu,
+              ),
+              const SizedBox(height: 12),
+              _menuButton(
+                context,
+                label: 'SETTINGS',
+                onPressed: () => Navigator.of(context).pushNamed(
+                  SettingsScreen.route,
+                  arguments: SettingsScreenArgs(debugGame: game),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _menuButton(
+                context,
+                label: 'MAIN MENU',
+                onPressed: () =>
+                    Navigator.of(context).popUntil((route) => route.isFirst),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _menuButton(
+    BuildContext context, {
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: ArenaColors.accent),
+        ),
+        onPressed: onPressed,
+        child: Text(label, style: const TextStyle(color: ArenaColors.accent)),
       ),
     );
   }

@@ -29,7 +29,7 @@ class HpBarComponent extends PositionComponent
   void render(Canvas canvas) {
     canvas.drawRect(size.toRect(), _background);
     final fraction =
-        (game.player.hp / game.character.stats.maxHp).clamp(0.0, 1.0);
+        (game.player.hp / game.player.effectiveMaxHp).clamp(0.0, 1.0);
     canvas.drawRect(Rect.fromLTWH(0, 0, size.x * fraction, size.y), _fill);
     canvas.drawRect(size.toRect(), _border);
   }

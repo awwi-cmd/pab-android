@@ -34,6 +34,13 @@ tanky — see Backlog) gets built, `EnemySkin` is already the hook to key a
 per-type stats table off of — you're not introducing a new concept, just
 making the existing one do more.
 
+**`UpgradeKind` (`core/progression.dart`, DECISIONS D-025).** The level-up
+pool is 4 members and a `switch` in `PlayerUpgrades.apply`. A new power-up
+(the "other power-ups later" the developer mentioned when specifying this)
+is: add an enum member, a case in `apply`, a label/description — the popup,
+the roll-3-of-N, the "view your upgrades" screen and the pause-menu plumbing
+all already generalize to N upgrades, none of it is hardcoded to 4.
+
 **`CharacterDef` (`data/characters.dart`).** Every field a character needs
 to be playable — stats, sprite location (`spriteFolder` +
 `spritePrefix`, D-024), attack behavior — is already on this one data
@@ -63,17 +70,17 @@ follow.
 - **Per-enemy-type stats** — see `EnemySkin` above. Visual variety shipped,
   distinct stats didn't (D-022, developer's explicit call when asked,
   since it's real PRD §9 scope).
-- **Everything in PRD §9** — progression/XP, upgrades, more enemy types,
-  waves, a boss, loot, real audio, multiple arenas. All Backlogged, not
-  started. If any of these start looking necessary to make the *demo*
+- **Everything else in PRD §9** — more playable characters, more enemy
+  types, waves, a boss, loot, real audio, multiple arenas. All Backlogged,
+  not started. If any of these start looking necessary to make things
   better, stop and ask before building past that line — CLAUDE.md says so
-  for a reason, and it's already come up twice in practice this project.
-  - Progression specifically has a real design vision on record now (TASKS
-    Backlog "Progression system", DECISIONS Open Questions) — XP from kills
-    driving both a stronger and more frequent enemy ramp, replacing the
-    demo's flat time-based one. Not started; the open questions there (
-    in-round vs. persistent, how enemies scale, how power-ups get
-    delivered) need answering before it's buildable, not just wanted.
+  for a reason, and it's already come up more than once in practice.
+  - **Progression is the exception — it's started.** Phase 7 (TASKS.md,
+    DECISIONS D-025) shipped the player-side half: in-round XP from kills,
+    levelling, a 1-of-3 upgrade popup, pause menu, debug tools. What's
+    still missing is the other half of the original vision — enemies
+    getting stronger or more frequent to match the player's level. See
+    TASKS 7.9 / DECISIONS Open Questions ("Enemy scaling mechanism").
 
 ## Testing — read this before adding gameplay logic
 
