@@ -101,15 +101,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
 ## Phase 5 — Art pass
 *Goal: it looks like the reference sheet, not like boxes.*
 
-- [ ] **5.1** Decide the sprite sheet layout (one row per state, uniform 32×32 cells) and document it in DECISIONS
+- [x] **5.1** Sprite sheet layout decided (D-015): one PNG per state under `assets/images/characters/main/`, `main-<state>.png`, 16×24 cell, frames left-to-right, count = width/16
 - [ ] **5.2** `anim_state.dart` — `AnimState` enum covering **all** PRD §8 states, including the unbuilt ones
-- [ ] **5.3** Sheet loader: `SpriteSheet` → `Map<AnimState, SpriteAnimation>`
-- [ ] **5.4** Apprentice sheet — `idle` (4f) and `run` (6f)
+- [ ] **5.3** Sheet loader: per-file `Image` → `SpriteAnimation`, keyed by filename not row index (D-015)
+- [ ] **5.4** `idle` (4f, delivered) and `run` (4f, delivered — PRD's "6" was a placeholder)
 - [ ] **5.5** Swap the player rectangle for the animated sprite; horizontal flip on facing
-- [ ] **5.6** `fire` (3f) — plays on auto-attack, returns to idle/run
-- [ ] **5.7** `spawn` (6f) — 1.0s round-start sequence with controls locked
-- [ ] **5.8** `hurt` — white tint pass (the sheet's flash cells are empty)
-- [ ] **5.9** **[art gap]** Death animation — not on the reference sheet. Ship the fade+shrink fallback, raise the art need
+- [ ] **5.6** `fire` (5f, delivered — PRD's "3" was a placeholder) — plays on auto-attack, returns to idle/run
+- [ ] **5.7** `spawn` (6f, delivered) — 1.0s round-start sequence with controls locked
+- [ ] **5.8** `hurt`/`flash` — delivered as real frames (`main-hurt.png` 4f, `main-flash.png` 3f); still fine to use a white-tint pass instead per D-013 if the frames don't read well at speed
+- [ ] **5.9** Death anim (D-016) — wire `main-die.png` (4f, delivered). Fade+shrink fallback kept in reserve only
 - [ ] **5.10** Enemy sprite + death puff
 - [ ] **5.11** Projectile sprite + hit spark
 - [ ] **5.12** Floating damage numbers

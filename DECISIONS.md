@@ -183,7 +183,7 @@ in the memory check (TASKS 6.4).
 ---
 
 ## D-011 — Pixel art at 32×32, drawn at 2×, never smoothed
-**Date:** 2026-09-06 · **Status:** Accepted
+**Date:** 2026-09-06 · **Status:** Superseded by D-015
 **Context:** Art direction and render settings, informed by the wizard reference
 sheet.
 **Decision:** Sprites authored at 32×32, rendered at 64 px on a 360×800 logical
@@ -213,7 +213,7 @@ Acceptable and deliberate — note it in the file.
 ---
 
 ## D-013 — Death animation gap accepted with a fallback
-**Date:** 2026-09-06 · **Status:** Revisit after demo
+**Date:** 2026-09-06 · **Status:** Superseded by D-016
 **Context:** The reference sheet has no death animation, and the `flash 1` /
 `flash 2` cells are empty.
 **Decision:** Ship a fade-and-shrink over 0.4 s for death, and a full-white tint
@@ -240,6 +240,45 @@ a brand. Consistent org prefix keeps the emulator's app list tidy.
 **Consequences:** If the game is renamed later, the package id should change too,
 which means a fresh install rather than an upgrade. Do that before anything ships
 publicly, and never after.
+
+---
+
+## D-015 — Real character asset layout: one PNG per state, 16×24 cells
+**Date:** 2026-09-06 · **Status:** Accepted · Supersedes D-011
+**Context:** D-011 assumed one sheet per character with one row per animation
+state, uniform 32×32 cells, based on the labelled reference mockup
+(`docs/reference/character_states.png`). The developer then delivered the actual
+production sheets under `assets/images/characters/main/`.
+**Decision:** The real layout is **one PNG file per animation state**, named
+`main-<state>.png`, frames laid out left-to-right with no padding, uniform
+**16×24 px** cell (not 32×32). Frame count is read from each sheet's width
+(`width / 16`), never hardcoded — PRD §8.1's frame-count column was a planning
+placeholder, not a spec to match exactly (e.g. `main-run.png` ships 4 frames, not
+the 6 the PRD guessed).
+**Delivered:** `idle`(4) `run`(4) `dash`(4) `fly`(4) `hurt`(4) `die`(4)
+`flash`(3) `spawn`(6) `warp`(11) `fire`(5). All PRD §8.1 demo-required states now
+have real frames — no art gaps left for the demo's animation list.
+**Because:** Build to the assets that actually exist rather than the assumed
+layout. One-file-per-state is also simpler to load (`Image` → `SpriteAnimation`
+per file) than slicing rows out of a mega-sheet.
+**Consequences:** The Phase 5 sheet loader (TASKS 5.1/5.3) keys off filenames,
+not row index. On-screen scale for a 16×24 source cell still needs a decision
+(D-011's 32×32→2×→64px math no longer applies) — revisit at TASKS 5.1.
+
+---
+
+## D-016 — Death animation gap closed
+**Date:** 2026-09-06 · **Status:** Accepted · Supersedes D-013
+**Context:** D-013 accepted a fade+shrink fallback because the reference mockup
+had no death frames. The developer has since delivered `main-die.png`, a real
+4-frame death animation, alongside the other `main-*` state sheets (D-015).
+**Decision:** Wire `AnimState.death` to `main-die.png` when Phase 5 (art pass)
+lands. The fade+shrink fallback from D-013 is kept in reserve only — used if the
+death anim needs replacing later, not as the primary path.
+**Because:** A real animation is strictly better than the programmer-art fallback
+it was standing in for; no reason to ship the fallback now that the asset exists.
+**Consequences:** TASKS 5.9 is no longer an "art gap" item — rename/repurpose it
+to "wire the real death anim" when Phase 5 is reached.
 
 ---
 
