@@ -1,0 +1,12 @@
+# Flutter/Dart build artifacts (arena/ has its own .gitignore too; this
+# covers the repo root in case anything runs from here).
+/arena/build/
+/arena/.dart_tool/
+/arena/.flutter-plugins-dependencies
+**/doc/api/
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
