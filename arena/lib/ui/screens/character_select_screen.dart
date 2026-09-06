@@ -1,3 +1,5 @@
+import 'package:flame/components.dart' show SpriteAnimationData, Vector2;
+import 'package:flame/widgets.dart' show SpriteAnimationWidget;
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
@@ -52,6 +54,8 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
               ],
             ),
             const SizedBox(height: 24),
+            if (character.unlocked) _CharacterPortrait(character: character),
+            const SizedBox(height: 8),
             Text(
               character.name,
               style: const TextStyle(
@@ -92,6 +96,44 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The detail-panel portrait, playing `idle` on loop (PRD §4.4, TASKS 5.13).
+/// Uses Flame's `SpriteAnimationWidget` directly — no `GameWidget`/game loop
+/// needed for a single looping animation outside the arena.
+class _CharacterPortrait extends StatelessWidget {
+  const _CharacterPortrait({required this.character});
+
+  final CharacterDef character;
+
+  static const _cellWidth = 16.0;
+  static const _cellHeight = 24.0;
+  static const _scale = 4.0;
+
+  // `main-idle.png` is a known 4-frame delivery (DECISIONS D-015). Unlike
+  // the in-arena loader, this widget needs a frame count up front (before
+  // the sheet is decoded), so it isn't computed from image width — update
+  // this if idle's frame count ever changes.
+  static const _idleFrameCount = 4;
+
+  @override
+  Widget build(BuildContext context) {
+    final path =
+        '${character.spriteFolder.replaceFirst('assets/images/', '')}/main-idle.png';
+    return SizedBox(
+      width: _cellWidth * _scale,
+      height: _cellHeight * _scale,
+      child: SpriteAnimationWidget.asset(
+        path: path,
+        data: SpriteAnimationData.sequenced(
+          amount: _idleFrameCount,
+          stepTime: 0.1,
+          textureSize: Vector2(_cellWidth, _cellHeight),
+        ),
+        paint: Paint()..filterQuality = FilterQuality.none, // D-011
       ),
     );
   }

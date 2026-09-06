@@ -141,7 +141,7 @@ Remaining: enemy sprite and the select-screen portrait.
 - [ ] **5.10** Enemy sprite + death puff — still a placeholder square (developer's call for Phase 4)
 - [x] **5.11** Projectile sprite + hit spark — real `projectile-bolt.png`/`projectile-spark.png`, done in Phase 4
 - [x] **5.12** Floating damage numbers — done in Phase 4 (PRD §10.5 needs them, not deferrable)
-- [ ] **5.13** Portrait on the character select screen playing `idle` — still the placeholder icon
+- [x] **5.13** Portrait on the character select screen playing `idle` — `SpriteAnimationWidget` (Flame), no `GameWidget` needed for a single looping animation outside the arena
 
 **Exit criterion:** no placeholder shapes remain in the arena.
 
