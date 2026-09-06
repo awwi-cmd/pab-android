@@ -32,3 +32,16 @@ class StatBlock {
   double get projSpeedPxPerS => 260 + intellect * 8;
   double get attackRangePx => 180 + intellect * 6;
 }
+
+/// The "grunt" — the one enemy type in the demo (PRD §6.4). Flat constants,
+/// not derived from a `StatBlock` (that's for playable characters only),
+/// but still the single place these numbers live (CLAUDE.md §4.3).
+class EnemyStats {
+  EnemyStats._();
+
+  static const double maxHp = 20;
+  static const double moveSpeedPxPerS = 70;
+  static const double contactDamage = 8;
+  static const double contactCooldownSec = 1.0;
+  static const double radiusPx = 12;
+}

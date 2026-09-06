@@ -92,21 +92,32 @@ new scope — needed so swapping the placeholder screen for the real
 ## Phase 4 — Combat
 *Goal: the loop actually plays.*
 
-- [ ] **4.1** `EnemyComponent` — placeholder shape, HP 20, walks straight at the player
-- [ ] **4.2** `spawner.dart` — off-screen perimeter spawning, 1.5s interval, −4 % per 10s, floor 0.25s, cap 60
-- [ ] **4.3** Nearest-enemy targeting on the player (respecting `attackRangePx`)
-- [ ] **4.4** Auto-fire timer at `attacksPerSec`; `ProjectileComponent` travelling straight at `projSpeedPxPerS`
-- [ ] **4.5** Projectile → enemy collision, damage, despawn; despawn on range and on leaving bounds
-- [ ] **4.6** Knockback impulse on hit
-- [ ] **4.7** Enemy death — remove, count the kill
-- [ ] **4.8** Enemy → player contact damage with 1.0s per-enemy cooldown
-- [ ] **4.9** Player i-frames (0.6s) + hurt flash
-- [ ] **4.10** HP bar component (above the player, or a fixed top bar — pick one and note it in DECISIONS)
-- [ ] **4.11** Passive HP regen
-- [ ] **4.12** Round state on `ArenaGame`: elapsed time, kills, damage dealt
-- [ ] **4.13** Death → freeze → Round Over overlay showing the real numbers
-- [ ] **4.14** Main Menu from Round Over fully resets; re-entering the arena starts clean
-- [ ] **4.15** Perf check: 40 live enemies at 60 fps with Show FPS on
+- [x] **4.1** `EnemyComponent` — placeholder square (per developer's call), HP 20, walks straight at the player
+- [x] **4.2** `spawner.dart` — off-screen perimeter spawning, 1.5s interval, −4 % per 10s, floor 0.25s, cap 60
+- [x] **4.3** Nearest-enemy targeting on the player (respecting `attackRangePx`)
+- [x] **4.4** Auto-fire timer at `attacksPerSec`; `ProjectileComponent` travelling straight at `projSpeedPxPerS` — uses the real `projectile-bolt.png` sheet, not a placeholder (pulls forward 5.11)
+- [x] **4.5** Projectile → enemy collision, damage, despawn; despawn on range and on leaving bounds
+- [x] **4.6** Knockback impulse on hit — instant shove (impulse × fixed 0.15s), not a decaying velocity
+- [x] **4.7** Enemy death — remove, count the kill
+- [x] **4.8** Enemy → player contact damage with 1.0s per-enemy cooldown
+- [x] **4.9** Player i-frames (0.6s) + hurt flash — opacity flicker, not a colour tint (D-021)
+- [x] **4.10** HP bar component — fixed top bar (D-020, closes the open question)
+- [x] **4.11** Passive HP regen
+- [x] **4.12** Round state on `ArenaGame`: elapsed time, kills, damage dealt
+- [x] **4.13** Death → freeze → Round Over overlay showing the real numbers
+- [x] **4.14** Main Menu from Round Over fully resets — re-entering the arena creates a fresh `ArenaGame` instance via Navigator, so this falls out of D-007's "never carry state across rounds" for free
+- [ ] **4.15** Perf check: 40 live enemies at 60 fps with Show FPS on — **developer to verify on-device**, not checkable from here
+
+Also pulled forward from Phase 5 (developer's call, assets were ready):
+real player animations — `idle`/`run`/`fire`/`spawn`/`hurt`/`death` all wired
+to the `main-*.png` sheets (5.2-5.9), and the real hit-spark VFX (5.11, other
+half). Damage numbers (5.12) also landed — PRD §10.5's own done-criteria
+needs them, not just a later art pass. See DECISIONS D-021 for the hurt-state
+asset choice and D-020 for HP bar placement.
+
+**No automated test coverage of any of this** (DECISIONS D-019) — `flutter
+test` can't get a `GameWidget` past real asset loading. Verify with
+`rebuildinstall.bat` on the emulator.
 
 **Exit criterion:** every numbered item in PRD §10 passes.
 
@@ -115,19 +126,22 @@ new scope — needed so swapping the placeholder screen for the real
 ## Phase 5 — Art pass
 *Goal: it looks like the reference sheet, not like boxes.*
 
+Most of this landed early (Phase 4, developer's call — assets were ready).
+Remaining: enemy sprite and the select-screen portrait.
+
 - [x] **5.1** Sprite sheet layout decided (D-015): one PNG per state under `assets/images/characters/main/`, `main-<state>.png`, 16×24 cell, frames left-to-right, count = width/16
-- [ ] **5.2** `anim_state.dart` — `AnimState` enum covering **all** PRD §8 states, including the unbuilt ones
-- [ ] **5.3** Sheet loader: per-file `Image` → `SpriteAnimation`, keyed by filename not row index (D-015)
-- [ ] **5.4** `idle` (4f, delivered) and `run` (4f, delivered — PRD's "6" was a placeholder)
-- [ ] **5.5** Swap the player rectangle for the animated sprite; horizontal flip on facing
-- [ ] **5.6** `fire` (5f, delivered — PRD's "3" was a placeholder) — plays on auto-attack, returns to idle/run
-- [ ] **5.7** `spawn` (6f, delivered) — 1.0s round-start sequence with controls locked
-- [ ] **5.8** `hurt`/`flash` — delivered as real frames (`main-hurt.png` 4f, `main-flash.png` 3f); still fine to use a white-tint pass instead per D-013 if the frames don't read well at speed
-- [ ] **5.9** Death anim (D-016) — wire `main-die.png` (4f, delivered). Fade+shrink fallback kept in reserve only
-- [ ] **5.10** Enemy sprite + death puff
-- [ ] **5.11** Projectile sprite + hit spark
-- [ ] **5.12** Floating damage numbers
-- [ ] **5.13** Portrait on the character select screen playing `idle`
+- [x] **5.2** `anim_state.dart` — `AnimState` enum covering **all** PRD §8 states, including the unbuilt ones
+- [x] **5.3** Sheet loader: per-file `Image` → `SpriteAnimation`, keyed by filename not row index (D-015) — `game/anim/sheet_loader.dart` + `character_animations.dart`
+- [x] **5.4** `idle` (4f, delivered) and `run` (4f, delivered — PRD's "6" was a placeholder)
+- [x] **5.5** Swap the player rectangle for the animated sprite; horizontal flip on facing
+- [x] **5.6** `fire` (5f, delivered — PRD's "3" was a placeholder) — plays on auto-attack, returns to idle/run
+- [x] **5.7** `spawn` (6f, delivered) — 1.0s round-start sequence with controls locked
+- [x] **5.8** `hurt` — `main-hurt.png` (4f) recoil pose (D-021: developer's call, no tint). `main-flash.png` loaded by nothing, reserved for later. Separately, i-frames get an opacity flicker (PRD §6.2), not tied to either sheet.
+- [x] **5.9** Death anim (D-016) — `main-die.png` (4f) wired. Fade+shrink fallback kept in reserve only, unused.
+- [ ] **5.10** Enemy sprite + death puff — still a placeholder square (developer's call for Phase 4)
+- [x] **5.11** Projectile sprite + hit spark — real `projectile-bolt.png`/`projectile-spark.png`, done in Phase 4
+- [x] **5.12** Floating damage numbers — done in Phase 4 (PRD §10.5 needs them, not deferrable)
+- [ ] **5.13** Portrait on the character select screen playing `idle` — still the placeholder icon
 
 **Exit criterion:** no placeholder shapes remain in the arena.
 

@@ -1,36 +1,79 @@
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flame/components.dart';
 
 import '../../core/constants.dart';
 import '../../data/characters.dart';
+import '../anim/anim_state.dart';
+import '../anim/character_animations.dart';
 import '../arena_game.dart';
 import '../input/movement_input.dart';
 
-/// Placeholder box until the real sprite lands (Phase 5, TASKS 5.5). Stats
-/// come from the selected [CharacterDef] (CLAUDE.md §3.3) — no combat
-/// number is computed here; everything reads off `StatBlock`
-/// (DECISIONS D-008).
-class PlayerComponent extends RectangleComponent
+/// The real animated sprite (Phase 5.4-5.9, pulled forward): idle, run,
+/// fire, spawn, hurt and death all wired from the `main-*.png` sheets
+/// (DECISIONS D-015). Stats come from the selected [CharacterDef]
+/// (CLAUDE.md §3.3) — no combat number is computed here, everything reads
+/// off `StatBlock` (DECISIONS D-008).
+class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
     with HasGameReference<ArenaGame> {
-  PlayerComponent({required this.character, required this.input})
-      : super(
-          size: Vector2(28, 40),
-          anchor: Anchor.center,
-          paint: Paint()..color = ArenaColors.accent,
-          priority: ArenaPriority.player,
-        );
+  PlayerComponent({
+    required this.character,
+    required this.input,
+    required CharacterAnimations animations,
+  }) : hp = character.stats.maxHp,
+       super(
+         animations: animations.all,
+         current: AnimState.spawn,
+         size: Vector2(
+           CharacterAnimations.cellWidth * kCharacterRenderScale,
+           CharacterAnimations.cellHeight * kCharacterRenderScale,
+         ),
+         anchor: Anchor.center,
+         paint: Paint()..filterQuality = FilterQuality.none, // D-011: never smoothed
+         priority: ArenaPriority.player,
+       );
 
   final CharacterDef character;
   final MovementInput input;
 
+  double hp;
+
+  /// Remaining invulnerability after taking damage (PRD §6.2: 0.6s i-frames,
+  /// sprite flashes). The flash here is an opacity flicker, not the `hurt`
+  /// AnimState — that's the recoil pose (main-hurt.png), a separate thing.
+  double _invulnTimer = 0;
+  static const _invulnDurationSec = 0.6;
+
   final Vector2 _velocity = Vector2.zero(); // scratch, reused every frame
+
+  bool get isAlive => current != AnimState.death;
 
   @override
   void update(double dt) {
     super.update(dt);
 
-    if (!input.direction.isZero()) {
+    if (current == AnimState.death) return; // frozen on the death frame
+
+    if (current == AnimState.spawn) {
+      if (animationTicker?.done() ?? true) {
+        current = AnimState.idle;
+      } else {
+        return; // controls locked during the spawn sequence (PRD §6.5)
+      }
+    }
+
+    hp = min(character.stats.maxHp, hp + character.stats.hpRegenPerSec * dt);
+
+    if (_invulnTimer > 0) {
+      _invulnTimer -= dt;
+      opacity = sin(_invulnTimer * 40) > 0 ? 1.0 : 0.35;
+    } else {
+      opacity = 1.0;
+    }
+
+    final moving = !input.direction.isZero();
+    if (moving && current != AnimState.hurt) {
       _velocity
         ..setFrom(input.direction)
         ..scale(character.stats.moveSpeedPxPerS * dt);
@@ -41,8 +84,16 @@ class PlayerComponent extends RectangleComponent
         scale.x = input.direction.x < 0 ? -1 : 1;
       }
     }
-
     _clampToSafeArea();
+
+    if (current == AnimState.hurt || current == AnimState.fire) {
+      if (animationTicker?.done() ?? true) {
+        current = moving ? AnimState.run : AnimState.idle;
+      }
+      return;
+    }
+
+    current = moving ? AnimState.run : AnimState.idle;
   }
 
   /// Screen inset by 24px + system safe-area insets (PRD §6.1). Clamping
@@ -55,5 +106,25 @@ class PlayerComponent extends RectangleComponent
     final halfH = size.y / 2;
     position.x = position.x.clamp(bounds.left + halfW, bounds.right - halfW);
     position.y = position.y.clamp(bounds.top + halfH, bounds.bottom - halfH);
+  }
+
+  void playFire() {
+    if (current == AnimState.hurt || current == AnimState.death) return;
+    current = AnimState.fire;
+  }
+
+  /// Contact damage from an enemy (PRD §6.2). No-ops during i-frames or
+  /// after death — the 1.0s per-enemy cooldown lives on `EnemyComponent`
+  /// instead, so this only guards the player's own invulnerability window.
+  void takeDamage(double amount) {
+    if (_invulnTimer > 0 || current == AnimState.death) return;
+    hp = (hp - amount).clamp(0, character.stats.maxHp);
+    _invulnTimer = _invulnDurationSec;
+    if (hp <= 0) {
+      current = AnimState.death;
+      game.onPlayerDied();
+    } else {
+      current = AnimState.hurt;
+    }
   }
 }

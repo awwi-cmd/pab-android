@@ -21,6 +21,17 @@ class ArenaColors {
   static const locked = Color(0xFF3A3E4E);
 }
 
+/// Characters are authored at 16×24 px (DECISIONS D-015, superseding
+/// D-011's assumed 32×32). This is the integer scale they render at on the
+/// 360-wide design canvas — integer keeps nearest-neighbour filtering
+/// crisp. Tunable: it's the only place this number lives.
+const double kCharacterRenderScale = 3;
+
+/// Projectile/VFX sheets are 16×16 (smaller cell than characters) — a
+/// smaller integer scale keeps a bolt from reading larger than it should
+/// next to a 48×72 (16×24 × 3) player.
+const double kProjectileRenderScale = 2;
+
 /// Flame component render order (CLAUDE.md §4.10) — layer via these
 /// constants, never a magic `priority:` int on a component.
 class ArenaPriority {

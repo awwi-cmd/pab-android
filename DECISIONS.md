@@ -343,26 +343,110 @@ may need to move into Flame's event system; the abstraction boundary
 
 ---
 
-## D-019 — Testing a mounted `GameWidget`: bounded `pump()`, never `pumpAndSettle`
-**Date:** 2026-09-06 · **Status:** Accepted
+## D-019 — Widget-test coverage stops before the `GameWidget` mounts
+**Date:** 2026-09-06 · **Status:** Superseded 2026-09-07 (Phase 4) — see
+below; original finding kept for the record.
 **Context:** The Phase 3 full-flow widget test (`test/widget_test.dart`)
 started timing out on `pumpAndSettle()` as soon as it navigated into
 `ArenaScreen`. Root cause: `GameWidget` drives its own render ticker that
 reschedules a new frame on every pump, independent of `ArenaGame.paused` —
 so `pumpAndSettle`'s "pump until no more frames are scheduled" condition
 never becomes true once a `GameWidget` is in the tree, paused or not.
-**Decision:** Any widget test step that happens after a `GameWidget` has
-mounted uses a bounded frame-pump helper (`_pumpFrames`: a fixed number of
-`tester.pump(Duration(milliseconds: 16))` calls) instead of
-`pumpAndSettle()`. Steps before the `GameWidget` mounts (menu, character
-select) keep using `pumpAndSettle()` as normal.
-**Because:** This is a known Flame/flutter_test interaction, not a bug in
-this codebase — `pumpAndSettle` fundamentally assumes a settling animation
-count, which a continuously-rendering game loop violates by design.
-**Consequences:** Any new widget test that navigates into the arena must
-remember this — grep `test/widget_test.dart` for `_pumpFrames` for the
-pattern. Don't "fix" a future `pumpAndSettle` timeout in an arena test by
-increasing its timeout; switch it to bounded pumps instead.
+**Original decision (Phase 3):** switch to a bounded frame-pump helper
+(`_pumpFrames`) instead of `pumpAndSettle()` for any step after the
+`GameWidget` mounts. This worked while `ArenaGame` had no real image assets
+to load (Phase 3 was a colored placeholder box).
+
+**Update 2026-09-07 (Phase 4):** Once `ArenaGame.onLoad()` started doing
+real PNG decoding (`CharacterAnimations.load` + the two VFX sheets, all via
+`Flame.images`/`instantiateImageCodec`), the widget test hung indefinitely
+past `ENTER ARENA` — not a timeout, no exception, just `find.text('DIE
+(debug)')` never appearing no matter how many frames were pumped or how
+`tester.runAsync` was positioned around the pumps.
+
+Root-caused by reproducing the exact `GameWidget` load sequence
+(`onGameResize` → `game.load()` → `game.mount()` → `game.update(0)`) in an
+isolated test wrapped in `tester.runAsync` — that version completed
+instantly, with no error. So `ArenaGame`'s own logic is sound (this also
+caught and fixed a real bug along the way: `resetRound()` was calling
+`overlays.add('DebugDie')` during `onLoad()`, before `GameWidget` finishes
+mounting and registers its overlay builders with the `OverlayManager` —
+that assertion failure was being silently swallowed because no
+`errorBuilder` was passed to `GameWidget`, which is why it looked like a
+hang rather than a crash. Fixed: `resetRound()` no longer touches
+`overlays` — the first `DebugDie` overlay comes from `GameWidget`'s
+`initialActiveOverlays` instead, and `debugDie()`/`_endRound()` are the
+only other call sites, both of which only ever run once the game is
+already interactive).
+
+Even after that real fix, the actual widget-test run (traced with print
+statements) still stalled forever inside `CharacterAnimations.load` itself
+— specifically when `ArenaGame.onLoad()` is invoked *by `GameWidget`'s own
+internal `FutureBuilder`* during a normal `tester.pump()`, rather than
+called directly. `GameWidget` kicks off loading from within the fake-async
+test zone; the resulting image-decode `Future`s are then bound to that
+zone too, and fake-async's clock doesn't drive the real engine callback
+that completes `instantiateImageCodec`. Wrapping *later* test code in
+`tester.runAsync` doesn't retroactively move an already-in-flight `Future`
+into the real zone — only work that is *itself* invoked from inside
+`runAsync` benefits from it.
+**Decision:** Automated widget-test coverage stops at Character Select
+(`test/widget_test.dart` no longer taps `ENTER ARENA`). Anything past that
+— the arena, combat, animations — is a `flutter test` harness limitation to
+decode real image assets through a `GameWidget`, not something worth
+fighting further. This matches CLAUDE.md §5's existing line: don't write
+tests for visual/gameplay feel; verify those on-device.
+**Because:** Hours were already sunk chasing this exact interaction twice
+(Phase 3's ticker issue, Phase 4's asset-decode issue) for a harness
+limitation, not an app defect — both isolated reproductions proved the real
+`ArenaGame` code path is correct. A third fight over the same boundary
+isn't worth it.
+**Consequences:** The arena's actual behavior (movement, combat, HP,
+death/round-over) has **no automated regression coverage** — verify it by
+running `rebuildinstall.bat` after any change that touches `game/`. If a
+genuine `GameWidget`-hosting integration test is ever wanted, look at
+Flutter's `integration_test` package (runs on a real device/emulator, real
+engine, no fake-async) rather than retrying this under plain `flutter test`.
+
+---
+
+## D-020 — HP bar: fixed top bar, not floating above the player
+**Date:** 2026-09-07 · **Status:** Accepted · Closes the "HP bar placement"
+open question below
+**Context:** Open question since D-011: floating above the player reads
+better in a crowd, a fixed top bar is easier to see at a glance.
+**Decision:** Fixed bar, top-left, 24px inset (`HpBarComponent`).
+**Because:** PRD §6.4 explicitly accepts enemies stacking on the player with
+no separation steering. A bar floating above the player's head would be
+exactly what that stack of enemy sprites covers first — the "crowd"
+scenario the open question worried about is the one case where floating
+loses. World size equals screen size with no camera scroll (D-007), so a
+fixed world position is already a fixed screen position — no HUD/viewport
+component needed, it's just a `PositionComponent` at a constant `position`.
+**Consequences:** None of the enemy-crowding readability risk; the bar
+never has to reason about where the player currently is.
+
+---
+
+## D-021 — Player hurt reaction: main-hurt pose only, no tint
+**Date:** 2026-09-07 · **Status:** Accepted
+**Context:** Two candidate sheets both plausibly match PRD §8.1's `hurt
+(flash)` state: `main-hurt.png` (4-frame recoil pose) and `main-flash.png`
+(3-frame flash effect, D-015's update). D-013's fallback (assumed the flash
+cells were empty) also offered a white-tint-pass option.
+**Decision:** `AnimState.hurt` plays `main-hurt.png` only. `main-flash.png`
+is loaded by nothing — reserved for a future effect (e.g. a cast/impact
+flash) rather than the player's damage reaction, since
+`projectile-spark.png` already covers the enemy-hit spark PRD §6.3 asks for.
+**Because:** Developer's call when asked directly (asset-to-state mapping
+was explicitly flagged as a question, not a default to silently pick).
+**Consequences:** Separately, PRD §6.2's "sprite flashes white" during the
+0.6s i-frame window is implemented as a plain opacity flicker on
+`PlayerComponent` (`opacity` toggling via `HasPaint`) — not a colour tint,
+not `main-flash.png`. This is a different mechanism answering a different
+line in the PRD (the invulnerability indicator, not the hit-reaction pose)
+and wasn't itself part of the question asked; flagged here in case the
+developer wants it removed or reworked once it's seen on-device.
 
 ---
 
@@ -371,9 +455,7 @@ increasing its timeout; switch it to bounded pumps instead.
 Not decisions yet — things that need play-testing or a call from the developer
 before they can be settled.
 
-- **HP bar placement** — floating above the player, or a fixed bar at the top of
-  the screen? Floating reads better in a crowd; fixed is easier to see at a glance.
-  Decide during TASKS 4.10 and log it.
+- ~~**HP bar placement**~~ — closed by D-020 (fixed top bar).
 - **Enemy stacking** — with no separation steering, enemies will pile into a single
   column. Tolerable, or does it look broken enough to need steering in the demo?
   Answer after Phase 4 is playable.

@@ -7,15 +7,22 @@ import 'package:flutter/widgets.dart' show EdgeInsets;
 
 import '../core/constants.dart';
 import '../core/settings.dart';
+import '../core/stats.dart';
 import '../data/characters.dart';
+import 'anim/character_animations.dart';
+import 'anim/sheet_loader.dart';
 import 'components/arena_floor.dart';
+import 'components/damage_text.dart';
+import 'components/enemy.dart';
+import 'components/hp_bar.dart';
 import 'components/player.dart';
+import 'components/projectile.dart';
+import 'components/spawner.dart';
 import 'input/movement_input.dart';
 
-/// Owns round state end to end (CLAUDE.md §4.5) and resets it in
-/// `onLoad`/`resetRound` — a fresh arena entry must look exactly like the
-/// first one. Elapsed time / kills / damage land here in Phase 4; for now
-/// this is just the movement sandbox (Phase 3).
+/// Owns round state end to end (CLAUDE.md §4.5): elapsed time, kills,
+/// damage dealt, spawn interval. Resets it in `onLoad`/`resetRound` — a
+/// fresh arena entry must look exactly like the first one.
 class ArenaGame extends FlameGame {
   ArenaGame({
     required this.character,
@@ -36,11 +43,29 @@ class ArenaGame extends FlameGame {
   final MovementInput input = MovementInput();
 
   late PlayerComponent player;
+  final List<EnemyComponent> enemies = [];
+
+  late CharacterAnimations _animations;
+  late SpriteAnimation _boltAnimation;
+  late SpriteAnimation _sparkAnimation;
 
   /// Flutter-observable mirror of round-over state, so the movement-input
   /// overlay (a Flutter widget, not a Flame overlay) knows to stop
   /// capturing touches once the round has ended.
   final ValueNotifier<bool> roundOver = ValueNotifier(false);
+
+  // Round state (TASKS 4.12).
+  double elapsed = 0;
+  int kills = 0;
+  double damageDealt = 0;
+
+  double _fireCooldown = 0;
+  final Vector2 _fireDirection = Vector2.zero();
+
+  /// Set on player death, ticks down to let the death animation play before
+  /// the round actually ends (PRD §6.5).
+  double? _roundEndDelay;
+  static const _roundEndDelaySec = 0.6;
 
   @override
   Color backgroundColor() => ArenaColors.background;
@@ -57,6 +82,20 @@ class ArenaGame extends FlameGame {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
+    _animations = await CharacterAnimations.load(character.spriteFolder);
+    _boltAnimation = await loadSheetAnimation(
+      'vfx/projectiles/projectile-bolt.png',
+      cellWidth: 16,
+      cellHeight: 16,
+      stepTime: 0.08,
+    );
+    _sparkAnimation = await loadSheetAnimation(
+      'vfx/projectiles/projectile-spark.png',
+      cellWidth: 16,
+      cellHeight: 16,
+      stepTime: 0.05,
+      loop: false,
+    );
     resetRound();
   }
 
@@ -66,25 +105,142 @@ class ArenaGame extends FlameGame {
     roundOver.value = false;
     input.clear();
     removeAll(children.toList());
-    overlays.remove('RoundOver');
-    overlays.add('DebugDie');
+    enemies.clear();
+    // Not touching `overlays` here: this only ever runs from onLoad(),
+    // before GameWidget has finished mounting and registered its overlay
+    // builders -- calling overlays.add/remove this early throws (asserts
+    // the overlay name is known). The initial "DebugDie" overlay comes from
+    // GameWidget's `initialActiveOverlays` instead; debugDie()/_endRound()
+    // are the only other places that touch overlays, and those only ever
+    // run once the game is already interactive.
+
+    elapsed = 0;
+    kills = 0;
+    damageDealt = 0;
+    _fireCooldown = 0;
+    _roundEndDelay = null;
 
     add(ArenaFloor());
-    player = PlayerComponent(character: character, input: input)
-      ..position = size / 2;
+    player = PlayerComponent(
+      character: character,
+      input: input,
+      animations: _animations,
+    )..position = size / 2;
     add(player);
+    add(HpBarComponent());
+    add(Spawner());
 
     if (settings.showFps) {
-      add(FpsTextComponent(position: Vector2(8, 8)));
+      // Below the HP bar (top-left, 24,24 + 14 tall) so they don't overlap.
+      add(FpsTextComponent(position: Vector2(24, 46)));
     }
 
     resumeEngine();
   }
 
-  /// Debug-only stand-in for HP <= 0 (PRD §3: the arena's only real exit is
-  /// death) until Phase 4 wires actual combat into this.
-  void debugDie() {
+  @override
+  void update(double dt) {
+    super.update(dt);
     if (roundOver.value) return;
+
+    if (_roundEndDelay != null) {
+      _roundEndDelay = _roundEndDelay! - dt;
+      if (_roundEndDelay! <= 0) {
+        _roundEndDelay = null;
+        _endRound();
+      }
+      return;
+    }
+
+    elapsed += dt;
+
+    _fireCooldown -= dt;
+    if (_fireCooldown <= 0) {
+      _tryFire();
+    }
+  }
+
+  void _tryFire() {
+    _fireCooldown = 1 / character.stats.attacksPerSec;
+
+    EnemyComponent? nearest;
+    var nearestDist = character.stats.attackRangePx;
+    for (var i = 0; i < enemies.length; i++) {
+      final enemy = enemies[i];
+      final dist = enemy.position.distanceTo(player.position);
+      if (dist <= nearestDist) {
+        nearest = enemy;
+        nearestDist = dist;
+      }
+    }
+    if (nearest == null) return;
+
+    _fireDirection
+      ..setFrom(nearest.position)
+      ..sub(player.position);
+    if (_fireDirection.isZero()) return;
+    _fireDirection.normalize();
+
+    add(
+      ProjectileComponent(
+        startPosition: player.position.clone(),
+        direction: _fireDirection.clone(),
+        damage: character.stats.damagePerHit,
+        knockback: character.stats.knockbackImpulse,
+        speedPxPerS: character.stats.projSpeedPxPerS,
+        maxRangePx: character.stats.attackRangePx * 1.5,
+        animation: _boltAnimation,
+      ),
+    );
+    player.playFire();
+  }
+
+  void spawnEnemy(Vector2 at) {
+    final enemy = EnemyComponent(startPosition: at);
+    enemies.add(enemy);
+    add(enemy);
+  }
+
+  void onEnemyKilled(EnemyComponent enemy) {
+    enemies.remove(enemy);
+    enemy.removeFromParent();
+    kills++;
+  }
+
+  void onEnemyContact() {
+    player.takeDamage(EnemyStats.contactDamage);
+  }
+
+  void onProjectileHit(Vector2 at, double damage) {
+    damageDealt += damage;
+    add(
+      SpriteAnimationComponent(
+        animation: _sparkAnimation,
+        position: at,
+        size: Vector2.all(16 * kProjectileRenderScale),
+        anchor: Anchor.center,
+        removeOnFinish: true,
+        priority: ArenaPriority.hitEffects,
+      ),
+    );
+    add(DamageTextComponent(position: at.clone(), amount: damage));
+  }
+
+  /// PRD §6.5: freeze after the death frame, then show Round Over. Debug
+  /// stand-in `debugDie()` shares this same path.
+  void onPlayerDied() {
+    _roundEndDelay ??= _roundEndDelaySec;
+  }
+
+  /// Debug-only stand-in for HP <= 0 (PRD §3: the arena's only real exit is
+  /// death) — jumps straight to round end without waiting on a death anim,
+  /// since the player box hasn't necessarily taken lethal damage.
+  void debugDie() {
+    if (roundOver.value || _roundEndDelay != null) return;
+    _roundEndDelay = 0;
+  }
+
+  void _endRound() {
     roundOver.value = true;
     overlays.remove('DebugDie');
     overlays.add('RoundOver');

@@ -111,12 +111,21 @@ class _DebugDieButton extends StatelessWidget {
 }
 
 /// A Flame overlay, not a Flutter route (DECISIONS D-010) — the death frame
-/// stays visible, dimmed, behind it. Numbers are still dummy zeros; real
-/// round state lands with `ArenaGame`'s round tracking in Phase 4.12.
+/// stays visible, dimmed, behind it. Real round state (TASKS 4.12).
 class _RoundOverOverlay extends StatelessWidget {
   const _RoundOverOverlay({required this.game});
 
   final ArenaGame game;
+
+  static String _formatElapsed(double seconds) {
+    final whole = seconds.floor();
+    final minutes = whole ~/ 60;
+    final secs = whole % 60;
+    final millis = ((seconds - whole) * 1000).round();
+    return '${minutes.toString().padLeft(2, '0')}:'
+        '${secs.toString().padLeft(2, '0')}.'
+        '${millis.toString().padLeft(3, '0')}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -138,9 +147,15 @@ class _RoundOverOverlay extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              const _StatRow(label: 'Time survived', value: '00:00.000'),
-              const _StatRow(label: 'Enemies killed', value: '0'),
-              const _StatRow(label: 'Damage dealt', value: '0'),
+              _StatRow(
+                label: 'Time survived',
+                value: _formatElapsed(game.elapsed),
+              ),
+              _StatRow(label: 'Enemies killed', value: '${game.kills}'),
+              _StatRow(
+                label: 'Damage dealt',
+                value: '${game.damageDealt.round()}',
+              ),
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
