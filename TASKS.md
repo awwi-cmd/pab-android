@@ -150,12 +150,12 @@ Remaining: enemy sprite and the select-screen portrait.
 ## Phase 6 — Polish & handoff
 *Goal: the demo is stable enough to build the real game on top of.*
 
-- [ ] **6.1** `flutter analyze` clean, no warnings
-- [ ] **6.2** Tune pass — play 10 rounds, adjust the PRD §5.1 constants for feel, record what changed and why
-- [ ] **6.3** Round Over numbers sanity-checked against a manual count
-- [ ] **6.4** No memory growth over 5 consecutive rounds (watch the profiler)
-- [ ] **6.5** Test on a second AVD with a different aspect ratio; confirm letterboxing
-- [ ] **6.6** Update PRD with anything the build proved wrong
+- [x] **6.1** `flutter analyze` clean, no warnings
+- [ ] **6.2** Tune pass — play 10 rounds, adjust the PRD §5.1 constants for feel, record what changed and why (**developer, on-device**)
+- [ ] **6.3** Round Over numbers sanity-checked against a manual count (**developer, on-device**)
+- [ ] **6.4** No memory growth over 5 consecutive rounds (watch the profiler) (**developer, on-device**)
+- [ ] **6.5** Test on a second AVD with a different aspect ratio; confirm letterboxing (**developer, on-device**)
+- [x] **6.6** Update PRD with anything the build proved wrong — §4.4 (portrait location), §6.4 (enemy skins), §8 (frame counts, real death anim, per-asset scale) all corrected against DECISIONS
 - [x] **6.7** Write `NEXT.md` — done ahead of schedule (D-024), the "skeleton hardening" pass prompted it directly
 
 **Exit criterion:** the demo is done. Stop, play it, and only then plan the game.

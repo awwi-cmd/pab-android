@@ -5,6 +5,12 @@
 **Stack:** Flutter + Flame
 **Owner:** avion
 
+**Reconciled against the build 2026-09-07** (TASKS 6.6) — §4.4, §6.4 and §8
+updated where the build proved an original assumption wrong (mostly art layout
+and frame counts guessed before any sprites existed). Nothing here changed
+because a *decision* was reconsidered — those live in `DECISIONS.md`, which
+this section points to throughout.
+
 ---
 
 ## 1. What this is
@@ -100,8 +106,12 @@ Static scrollable text. Placeholder content plus asset attribution block.
 ### 4.4 Character Select
 - Four slots in a 2×2 grid. Slot 1 is playable; slots 2–4 render as locked
   silhouettes with a padlock and are not tappable.
-- Selecting slot 1 shows: name, portrait (idle animation playing), a one-line
-  descriptor, and the four stats as **labelled bars plus the raw number**.
+- The portrait (idle animation playing) lives **in the grid tile itself** — the
+  square you tap to select doubles as the portrait, rather than a separate block
+  below (built this way at the developer's request; simpler than the original
+  two-places-at-once layout implied here).
+- Selecting slot 1 shows: name, a one-line descriptor, and the four stats as
+  **labelled bars plus the raw number**.
 - A "derived" readout under the bars showing what the stats actually produce:
   `HP 90 · DMG 13 · 1.4 shots/s · 140 speed`. This is how the player learns the
   mapping.
@@ -200,7 +210,10 @@ to render behind the padlock, but have no sprites and cannot be entered:
 
 ### 6.4 Enemies
 One enemy type for the demo. A "grunt": walks straight at the player, damages on
-contact.
+contact. Ships with **3 visual skins**, picked at random per spawn, purely for
+variety — every skin reads the same stats below (DECISIONS D-022). Still one
+enemy type as far as this document and §9 are concerned; distinct stats per
+skin is the real "enemy variety" feature and stays out of scope for the demo.
 
 | Property | Value |
 |---|---|
@@ -246,39 +259,62 @@ knows which is active.
 
 ## 8. Art & animation
 
-The reference sheet (the wizard, `docs/reference/character_states.png`) defines the
-target animation vocabulary. Not all of it is needed for the demo.
+> **Revised post-build.** This section originally described the target vocabulary
+> against `docs/reference/character_states.png`, a labelled mockup — before any
+> production sheets existed. The real assets that got delivered differ from that
+> mockup in layout, frame counts, and which states got real frames vs. a
+> fallback. What follows describes what's actually in the build; see
+> DECISIONS D-015/D-016/D-021/D-024 for the full reasoning trail.
 
-### 8.1 Required for the demo
+### 8.1 Built for the demo
+
+One PNG per state, `<prefix>-<state>.png`, frames left-to-right, uniform
+16×24 cell (not the 32×32 the mockup implied — see §8.4).
 
 | State | Frames | Loops | Trigger |
 |---|---|---|---|
 | `idle` | 4 | yes | no movement input |
-| `run` | 6 | yes | movement input non-zero |
-| `fire` | 3 | no | auto-attack fires; returns to idle/run |
-| `spawn` | 6 | no | round start |
-| `hurt` (flash) | 2 | no | takes damage — can be a shader/tint instead of frames |
-| `death` | 4 | no | HP ≤ 0. **Not on the reference sheet** — see §8.3 |
+| `run` | 4 | yes | movement input non-zero (mockup guessed 6; delivered 4) |
+| `fire` | 5 | no | auto-attack fires; returns to idle/run (mockup guessed 3) |
+| `spawn` | 6 | no | round start, 1.0s, controls locked |
+| `hurt` | 4 | no | takes damage — a real recoil-pose animation, not a tint (D-021) |
+| `death` | 4 | no | HP ≤ 0. A real animation exists (`*-die.png`) — **not** a fallback, see §8.3 |
+
+Separately, PRD §6.2's "sprite flashes white" during the 0.6s invulnerability
+window is a plain opacity flicker on the player sprite — unrelated to the
+`hurt` animation above, and not using the sheet's flash cells either (D-021).
 
 ### 8.2 Defined now, built later (skills phase)
 
-`teleport`, `warp`, `fly`, `dash 1/2`, `pose 1/2`, `charge`, `channel staff`,
-`channel wand`, `casting`. These are named in `AnimState` from day one so that
-adding them later is a data change, not a refactor.
+`teleport`, `warp`, `fly`, `dash`, `pose`, `charge`, `channelStaff`,
+`channelWand`, `casting`. Named in `AnimState` from day one so that adding
+them later is a data change, not a refactor (D-012). Delivered sheets exist
+for `fly`, `dash`, and `warp` too, but nothing plays them yet — they're
+loaded by nothing until a skill actually calls for them.
 
-### 8.3 Open art gaps
-- **No death animation on the reference sheet.** Demo fallback: fade + shrink over
-  0.4 s with the `hurt`/flash frame held. Flagged in TASKS as an art task.
-- `flash 1` / `flash 2` cells in the sheet are empty — treat as a full-white tint
-  pass rather than sprite frames.
+### 8.3 Art gap: closed
+The reference mockup had no death animation and empty flash cells, and the
+demo was originally going to fall back to a fade+shrink effect. The real
+delivered sheets included a proper 4-frame death animation
+(`*-die.png`), so that fallback was never needed — it's still in the code as
+a reserve, unused (D-016). A `*-flash.png` sheet was also delivered but isn't
+wired to anything (D-021) — reserved for a future effect, not the `hurt`
+state.
 
 ### 8.4 Technical
-- Source sprites are pixel art. Render with **nearest-neighbour filtering**
-  (`FilterQuality.none`) — no smoothing, ever.
-- One sprite sheet per character, one row per state, uniform cell size. Loaded via
-  `SpriteSheet` + `SpriteAnimationComponent`.
-- Design resolution: **360 × 800 logical px**, letterboxed on other aspect ratios.
-  Sprites authored at 32 × 32, drawn at 2× (64 px on screen).
+- Source sprites are pixel art. Rendered with **nearest-neighbour filtering**
+  (`FilterQuality.none`) everywhere there's a texture — no smoothing, ever.
+- **One PNG file per animation state** (not one sheet with a row per state as
+  originally planned) — `game/anim/character_animations.dart` loads each file
+  and reads its frame count off the image width, rather than a hardcoded
+  per-state count.
+- Design resolution: **360 × 800 logical px**, letterboxed on other aspect
+  ratios (untested past the emulator as of this writing — TASKS 6.5).
+  Characters/enemies are authored at 16×24 and drawn at 3× (48×72 on screen);
+  projectile/VFX sheets are 16×16 drawn at 2×; floor/border tiles are 32×32
+  drawn at 2× — three separate scale constants
+  (`kCharacterRenderScale`/`kProjectileRenderScale`/`kFloorTileRenderScale` in
+  `core/constants.dart`), not the single 32→2×→64px figure originally assumed.
 
 ---
 
