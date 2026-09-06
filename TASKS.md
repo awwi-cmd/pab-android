@@ -70,15 +70,20 @@ Portrait is a placeholder icon, not the real idle animation — that's Phase 5.1
 ## Phase 3 — Arena core
 *Goal: a controllable character in a bounded space.*
 
-- [ ] **3.1** `ArenaGame` (FlameGame) mounted in a `GameWidget` on the arena route
-- [ ] **3.2** `arena_floor.dart` — flat tiled floor + arena border, nearest-neighbour filtering
-- [ ] **3.3** `PlayerComponent` — placeholder rectangle first, stats injected from the `CharacterDef`
-- [ ] **3.4** `movement_input.dart` — floating joystick scheme
-- [ ] **3.5** Fixed joystick scheme + side preference
-- [ ] **3.6** Drag-anywhere scheme
-- [ ] **3.7** Settings selects the active scheme at arena entry; verify all three
-- [ ] **3.8** Safe-area clamp — screen inset by 24px + system insets; slide along the boundary, don't stick
-- [ ] **3.9** Show-FPS toggle wires up `FpsTextComponent`
+- [x] **3.1** `ArenaGame` (FlameGame) mounted in a `GameWidget` on the arena route
+- [x] **3.2** `arena_floor.dart` — flat fill + border (no tile art yet — flagged, see D-015-style note in the file header)
+- [x] **3.3** `PlayerComponent` — placeholder rectangle, stats read from the `CharacterDef` passed through Character Select
+- [x] **3.4** `movement_input.dart` — floating joystick scheme (D-018: capture lives in Flutter, `game/input/joystick_overlay.dart`, not Flame's gesture mixins)
+- [x] **3.5** Fixed joystick scheme + side preference
+- [x] **3.6** Drag-anywhere scheme
+- [x] **3.7** Settings selects the active scheme at arena entry (code done, all 3 schemes wired) — **developer to verify feel of each on-device**, touch feel isn't something a widget test can judge
+- [x] **3.8** Safe-area clamp — screen inset by 24px + system insets (`MediaQuery.padding` captured once at arena entry); clamped per-axis so it slides along the boundary rather than sticking
+- [x] **3.9** Show-FPS toggle wires up `FpsTextComponent` (added when `settings.showFps` is true in `resetRound`)
+
+Debug "die" button + Round Over are now real Flame overlays on `ArenaGame`
+(fulfilling D-010, which Phase 1 only stubbed as a Flutter widget) rather than
+new scope — needed so swapping the placeholder screen for the real
+`GameWidget` didn't regress the working flow from Phases 1-2.
 
 **Exit criterion:** a box you can drive with any of the three schemes, that cannot leave the safe area, at a solid 60 fps.
 

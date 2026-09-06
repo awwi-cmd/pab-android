@@ -265,6 +265,13 @@ per file) than slicing rows out of a mega-sheet.
 not row index. On-screen scale for a 16×24 source cell still needs a decision
 (D-011's 32×32→2×→64px math no longer applies) — revisit at TASKS 5.1.
 
+**Update 2026-09-06:** Projectile art delivered too, under
+`assets/images/vfx/projectiles/`: `projectile-bolt.png` and
+`projectile-spark.png`, both 64×16 (4 frames of 16×16 — smaller cell than the
+character sheets, as expected for a projectile). Same naming/layout pattern,
+registered in `pubspec.yaml`. Not wired to a component yet — that's
+`ProjectileComponent` (TASKS 5.11), Phase 4/5.
+
 ---
 
 ## D-016 — Death animation gap closed
@@ -303,6 +310,59 @@ entirely; the plugin sources here are small (`shared_preferences_android`,
 **Consequences:** Every build recompiles the Kotlin plugin glue from scratch —
 slightly slower `rebuildinstall.bat` runs, not felt on Dart-only hot reload. If
 the project or toolchain ever moves fully onto one drive, this can be reverted.
+
+---
+
+## D-018 — Movement input captured in Flutter, not Flame's gesture mixins
+**Date:** 2026-09-06 · **Status:** Accepted
+**Context:** Flame 1.38 offers a component-level gesture system
+(`DragCallbacks`/`TapCallbacks` mixins on components or the `FlameGame`
+itself) as its native way to read touch input. The alternative is a plain
+Flutter `GestureDetector` layered on top of the `GameWidget`, feeding a
+shared value the Flame side reads.
+**Decision:** `MovementInput` (`game/input/movement_input.dart`) is a plain
+Dart class holding a mutable `Vector2 direction`. All three control schemes
+(`game/input/joystick_overlay.dart`) are ordinary `StatefulWidget`s using
+`GestureDetector`/`LayoutBuilder`, stacked over the `GameWidget` in
+`ArenaScreen`. `PlayerComponent` just reads `input.direction` every frame —
+it has no idea a gesture even happened, let alone which scheme produced it.
+**Because:** Joystick visuals (a base circle + a knob that follows the
+thumb, appearing/disappearing, positioned per scheme) are exactly what
+Flutter widgets are for, and CLAUDE.md §4.6 only requires that game
+components stay scheme-agnostic behind a normalised `Vector2` — it doesn't
+require the *capture* to happen inside Flame. Doing it in Flutter also
+sidesteps Flame's gesture-mixin API entirely, which reduces surface area to
+get wrong against a library version documented here for the first time.
+**Consequences:** The movement overlay has to be hidden once the round ends
+(`ArenaGame.roundOver`, a `ValueNotifier<bool>`) so it doesn't swallow taps
+meant for the Round Over overlay underneath it — see
+`ArenaScreen`'s `ValueListenableBuilder`. If a future control scheme needs
+per-enemy or per-tile hit-testing against world objects, that scheme alone
+may need to move into Flame's event system; the abstraction boundary
+(`MovementInput.direction`) doesn't change either way.
+
+---
+
+## D-019 — Testing a mounted `GameWidget`: bounded `pump()`, never `pumpAndSettle`
+**Date:** 2026-09-06 · **Status:** Accepted
+**Context:** The Phase 3 full-flow widget test (`test/widget_test.dart`)
+started timing out on `pumpAndSettle()` as soon as it navigated into
+`ArenaScreen`. Root cause: `GameWidget` drives its own render ticker that
+reschedules a new frame on every pump, independent of `ArenaGame.paused` —
+so `pumpAndSettle`'s "pump until no more frames are scheduled" condition
+never becomes true once a `GameWidget` is in the tree, paused or not.
+**Decision:** Any widget test step that happens after a `GameWidget` has
+mounted uses a bounded frame-pump helper (`_pumpFrames`: a fixed number of
+`tester.pump(Duration(milliseconds: 16))` calls) instead of
+`pumpAndSettle()`. Steps before the `GameWidget` mounts (menu, character
+select) keep using `pumpAndSettle()` as normal.
+**Because:** This is a known Flame/flutter_test interaction, not a bug in
+this codebase — `pumpAndSettle` fundamentally assumes a settling animation
+count, which a continuously-rendering game loop violates by design.
+**Consequences:** Any new widget test that navigates into the arena must
+remember this — grep `test/widget_test.dart` for `_pumpFrames` for the
+pattern. Don't "fix" a future `pumpAndSettle` timeout in an arena test by
+increasing its timeout; switch it to bounded pumps instead.
 
 ---
 
