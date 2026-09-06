@@ -25,12 +25,20 @@ engine. The player picks a character and moves it around a walled arena; the
 character auto-attacks the nearest enemy while enemies stream in from off-screen.
 Round ends on death.
 
-**Current phase: the demo.** The demo's whole job is to make the flow real and
-installable so that animation and skill work has somewhere to live. `PRD.md` is
-the contract for what the demo contains; `§9 Explicitly out of scope` in the PRD
-is binding. Do not build ahead of it.
+**The demo (TASKS Phases 0-6) was called done 2026-09-07.** `PRD.md` describes
+that demo and is frozen as a record of it — `§9 Explicitly out of scope` there
+was binding *for the demo* and mostly still is, but the project has moved past
+it: **Phase 7 (in-round leveling, upgrade choices, pause menu) is built** —
+see DECISIONS D-025. This is real, ongoing post-demo work now, not speculative
+scope; new post-demo phases get their own section in `TASKS.md` the same way,
+not dumped in the Backlog. The Backlog is still binding for what hasn't been
+explicitly asked for — keep asking before building ahead of what's actually
+been requested (CLAUDE.md §6 "Ask before scope" — this has come up for real
+more than once and the answer each time was to stop and ask, not guess).
 
-Read in this order when picking up work: `PRD.md` → `TASKS.md` → `DECISIONS.md`.
+Read in this order when picking up work: `PRD.md` → `TASKS.md` → `DECISIONS.md`
+→ `NEXT.md` (extension points and rough edges for whoever picks up the next
+feature — written for exactly that, keep it current the same way as TASKS.md).
 
 ---
 
@@ -52,53 +60,72 @@ extensionless POSIX shim and `flutter.bat`, which breaks quoted `%VAR%` calls in
 batch files. Always `set FLUTTER=C:\src\flutter\bin\flutter.bat`.
 
 ### Running things
-- You are typically running in a Linux container, **not** on the Windows machine.
-  You can read, write, and reason about the code, but you generally cannot run
-  `flutter build` yourself. **The developer runs the scripts.** When you finish a
-  change that needs verifying, say: "run `rebuildinstall.bat`", and wait.
-- If you *do* have a shell on the Windows machine, use the two `.bat` scripts
-  rather than raw flutter commands, so behaviour matches what the developer sees.
-- Never run `flutter clean` casually — it costs the developer minutes of rebuild.
+- **Verified 2026-09-07: on this machine you have a real shell (MINGW64/git
+  bash) with direct access to the Windows filesystem and the Flutter SDK** —
+  not a sandboxed Linux container. You *can* and *should* run
+  `C:/src/flutter/bin/flutter.bat analyze`, `test`, and `build apk --debug`
+  yourself after every change, the same way `stats_test.dart`/
+  `game_rules_test.dart`/`progression_test.dart` etc. have been run and kept
+  green throughout this project. Don't just claim something builds — verify it.
+  (If a future session finds itself genuinely sandboxed with no filesystem/SDK
+  access, the old guidance still applies: say what to run and wait.)
+- Prefer running `flutter analyze`/`test`/`build apk --debug` directly for fast
+  iteration; use `rebuildinstall.bat` itself (which also (re)launches the
+  emulator) when you want the on-device install loop, or tell the developer to
+  run it when the change needs eyes/hands on the actual emulator (feel, touch
+  input, animation timing) rather than just a clean build.
+- Never run `flutter clean` casually — it costs minutes of rebuild.
 
 ---
 
 ## 3. Repository layout
 
+Kept current as of Phase 7 (2026-09-07) — update this tree when you add a file
+that will confuse the next person if it's missing here, same discipline as
+`TASKS.md`.
+
 ```
 ArenaDemo/                    <- repo root, open this in your editor
 ├── CLAUDE.md                 <- you are here
-├── PRD.md                    <- what the demo is
+├── PRD.md                    <- what the demo was (frozen; see §1 above)
 ├── TASKS.md                  <- the checklist, keep it current
 ├── DECISIONS.md              <- why things are the way they are
+├── NEXT.md                   <- extension points + rough edges for the next feature
 ├── startemulator.bat         <- created on first run (§0)
 ├── rebuildinstall.bat        <- created on first run (§0)
 ├── docs/
-│   └── reference/            <- art reference, sprite sheets in progress
+│   └── reference/            <- art reference (labelled mockup, not sliceable art)
 └── arena/                    <- the Flutter project
     ├── pubspec.yaml
     ├── assets/
     │   ├── images/
-    │   │   └── characters/apprentice/apprentice.png
-    │   └── audio/
+    │   │   ├── characters/main/       // Apprentice sheets, main-<state>.png (D-015)
+    │   │   ├── characters/enemies/    // 3 skins, enemy-<name>-{run,die}.png (D-022)
+    │   │   ├── vfx/projectiles/       // bolt + hit-spark
+    │   │   └── scenes/                // floor tile variants + border tile (D-023)
+    │   └── audio/                     // declared, unused (no audio bus yet)
     └── lib/
         ├── main.dart              // runApp only
         ├── app.dart               // MaterialApp, routes, theme
         ├── core/
-        │   ├── constants.dart     // design size, colors, layer priorities
-        │   ├── stats.dart         // StatBlock + ALL derived-stat formulas
-        │   └── settings.dart      // Settings model + SharedPreferences I/O
+        │   ├── constants.dart     // design size, colors, layer priorities, render scales
+        │   ├── stats.dart         // StatBlock + ALL derived-stat formulas, EnemyStats
+        │   ├── settings.dart      // Settings model + SharedPreferences I/O
+        │   ├── game_rules.dart    // pure gameplay math (targeting, spawn decay, knockback) — D-024
+        │   └── progression.dart   // XP curve, UpgradeKind, PlayerUpgrades — D-025
         ├── data/
         │   └── characters.dart    // CharacterDef list (4 slots, 1 unlocked)
         ├── ui/
         │   ├── screens/
         │   │   ├── main_menu_screen.dart
-        │   │   ├── settings_screen.dart
+        │   │   ├── settings_screen.dart        // + debug section when opened from pause (D-025)
         │   │   ├── credits_screen.dart
-        │   │   ├── character_select_screen.dart
-        │   │   └── arena_screen.dart      // hosts GameWidget + overlays
+        │   │   ├── character_select_screen.dart // grid tile IS the idle-animation portrait
+        │   │   └── arena_screen.dart      // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu)
         │   └── widgets/                   // buttons, stat bars, shared chrome
         └── game/
-            ├── arena_game.dart            // FlameGame subclass, round state
+            ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling
+            ├── attack_behavior.dart       // AttackBehavior + ProjectileAttack — D-024
             ├── components/
             │   ├── player.dart
             │   ├── enemy.dart
@@ -108,9 +135,13 @@ ArenaDemo/                    <- repo root, open this in your editor
             │   ├── damage_text.dart
             │   └── arena_floor.dart
             ├── input/
-            │   └── movement_input.dart    // the 3 control schemes
+            │   ├── movement_input.dart    // the 3 control schemes, scheme-agnostic Vector2
+            │   └── joystick_overlay.dart  // the 3 schemes' actual Flutter touch capture
             └── anim/
-                └── anim_state.dart        // AnimState enum + sheet mapping
+                ├── anim_state.dart            // AnimState enum, every state incl. unbuilt ones
+                ├── sheet_loader.dart          // generic "slice a uniform-cell sheet" loader
+                ├── character_animations.dart  // per-character sheet loading, D-024 prefix
+                └── enemy_animations.dart      // EnemySkin + per-skin run/death animations
 ```
 
 ---
@@ -125,22 +156,40 @@ negotiable without a new entry in `DECISIONS.md`.
    single `GameWidget` hosting `ArenaGame`. Do not build menus inside Flame; do
    not build gameplay in widgets.
 
-2. **The Round Over screen is a Flame overlay, not a route.** The death frame must
-   stay visible behind it.
+2. **Round Over, Level Up, and the Pause Menu are Flame overlays, not routes.**
+   The frame underneath must stay visible/paused behind them. A `GameWidget`
+   overlay must be registered in `overlayBuilderMap` before `ArenaGame` ever
+   calls `overlays.add`/`remove` on it — doing so from `onLoad()`/`resetRound()`
+   (before `GameWidget` finishes mounting) throws an assertion that gets
+   silently swallowed and looks like a hang, not a crash (hit for real once,
+   see D-025's writeup). `DebugDie` and the pause button are the deliberate
+   exception: plain Flutter widgets, not Flame overlays, gated by the same
+   `roundOver`/`menuOpen` `ValueNotifier`s the movement-input overlay uses —
+   simpler than fighting the registration-order rule for something that
+   doesn't need to render *inside* Flame's canvas.
 
-3. **All combat numbers come from `core/stats.dart`.** If you find yourself typing
-   a damage value, a speed, or an HP number anywhere else, stop and put it there
-   as a formula or a named constant. This is the single most important rule in the
-   file — the tuning phase depends on it.
+3. **All combat/gameplay numbers come from `core/`, never typed inline.**
+   `core/stats.dart` (`StatBlock`, `EnemyStats`) for anything derived from a
+   character's 4 stats or an enemy's flat stats. `core/progression.dart` for
+   XP/level/upgrade amounts. `core/game_rules.dart` for gameplay *math* that
+   isn't a stat exactly — targeting, spawn-interval decay, knockback distance
+   — kept here specifically because it has no Flame `Component`/`Game`
+   dependency, which means it can be unit-tested the way nothing inside an
+   `update()` method can (`GameWidget` can't run under `flutter test`, see
+   rule 11). If you find yourself typing a number or a formula anywhere else,
+   stop and put it in one of these three files. This is the single most
+   important rule in the file — the tuning phase depends on it.
 
 4. **Enemies and projectiles are pooled or at least cheap.** Target is 60 live
    enemies. Do not allocate per frame in `update()`; no `Vector2` construction in
    hot loops — mutate in place with `setFrom`/`setValues`.
 
-5. **`ArenaGame` owns round state** (elapsed time, kills, damage dealt, spawn
-   interval) and resets it in `onLoad`/`resetRound`. Never carry state across
-   rounds via globals or singletons. A fresh arena entry must look exactly like the
-   first one.
+5. **`ArenaGame` owns round state** — elapsed time, kills, damage dealt, spawn
+   interval, and (since Phase 7) level/XP/upgrade bonuses — and resets ALL of it
+   in `onLoad`/`resetRound`. Never carry state across rounds via globals or
+   singletons. A fresh arena entry must look exactly like the first one. This
+   includes debug state (`debugGodMode`, pending debug level-ups) — it's still
+   round state, just developer-triggered instead of gameplay-triggered.
 
 6. **Input goes through `MovementInput`.** Game components read a normalised
    `Vector2`. They never know which control scheme is active.
@@ -159,6 +208,27 @@ negotiable without a new entry in `DECISIONS.md`.
 
 10. **Layer order via `priority` constants** in `constants.dart`, not magic ints
     scattered through components.
+
+11. **`GameWidget` cannot be exercised under `flutter test`.** Confirmed twice
+    now (D-019, D-024/D-025) — real asset decoding through Flame's image cache
+    never resolves under the fake-async test clock, no `tester.runAsync`
+    positioning fixes it. Don't spend time re-litigating this; it's a harness
+    limitation, not a bug to fix. The actual fix is rule 3: pull gameplay
+    *logic* (not rendering) into plain functions/classes in `core/` that don't
+    touch `Component`/`Game`, and unit-test those directly — that's the only
+    way this codebase's gameplay rules get regression coverage at all.
+    Automated widget-test coverage stops at Character Select; verify anything
+    past that on-device.
+
+12. **Character-specific behavior is a strategy object on `CharacterDef`, not a
+    branch in `ArenaGame`.** `attackBehavior: AttackBehavior`
+    (`game/attack_behavior.dart`) is the existing example — `ArenaGame` only
+    owns the cooldown timer and calls `perform(this)`, it has no idea what
+    kind of attack that is. A melee character, a second independently-cooling
+    ability, a skill — each is a new class implementing the relevant
+    interface, not new `if`/`switch` branches in `ArenaGame` or
+    `PlayerComponent`. If you're about to add a per-character `if` to either
+    of those files, stop and make it a strategy object instead.
 
 ---
 
