@@ -71,7 +71,7 @@ Portrait is a placeholder icon, not the real idle animation — that's Phase 5.1
 *Goal: a controllable character in a bounded space.*
 
 - [x] **3.1** `ArenaGame` (FlameGame) mounted in a `GameWidget` on the arena route
-- [x] **3.2** `arena_floor.dart` — flat fill + border (no tile art yet — flagged, see D-015-style note in the file header)
+- [x] **3.2** `arena_floor.dart` — real tiled floor + border (D-023), was a flat fill placeholder through Phase 3/4
 - [x] **3.3** `PlayerComponent` — placeholder rectangle, stats read from the `CharacterDef` passed through Character Select
 - [x] **3.4** `movement_input.dart` — floating joystick scheme (D-018: capture lives in Flutter, `game/input/joystick_overlay.dart`, not Flame's gesture mixins)
 - [x] **3.5** Fixed joystick scheme + side preference

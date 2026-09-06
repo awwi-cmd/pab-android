@@ -1,32 +1,142 @@
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flame/components.dart';
+import 'package:flame/flame.dart';
 
 import '../../core/constants.dart';
 
-/// Flat floor + arena border (PRD §6.1 — world size equals screen size, no
-/// camera scroll, DECISIONS D-007). No tile art exists yet: flat fill +
-/// border stroke stand in for it. Swapping to a tiled `SpriteComponent`
-/// later (with nearest-neighbour filtering, D-011/D-015) is a one-file
-/// change — nothing else references this class's internals.
+/// Tiled floor + border (PRD §6.1 — world size equals screen size, no
+/// camera scroll, DECISIONS D-007). Real tile art:
+/// `assets/images/scenes/arena_floor_tiles.png` (3 variants, 32×32 each,
+/// laid out left-to-right — same "uniform cell" convention as the
+/// character sheets, D-015) and `arena_border_tile.png` (32×32, tiled
+/// along the perimeter, rotated 90° on the left/right edges).
 class ArenaFloor extends PositionComponent {
   ArenaFloor() : super(priority: ArenaPriority.floor);
 
-  final _fill = Paint()..color = ArenaColors.surface;
-  final _border = Paint()
-    ..color = ArenaColors.surfaceAlt
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = 4;
+  static const _tileSize = 32.0;
+  static const _scaledTile = _tileSize * kFloorTileRenderScale;
+
+  final _random = Random();
+  final _pixelPaint = Paint()..filterQuality = FilterQuality.none; // D-011
+
+  List<Sprite>? _floorVariants;
+  Sprite? _borderTile;
+  List<List<int>>? _floorPattern; // [row][col] -> variant index
+
+  @override
+  Future<void> onLoad() async {
+    final floorImage = await Flame.images.load(
+      'scenes/arena_floor_tiles.png',
+    );
+    final variantCount = (floorImage.width / _tileSize).round();
+    _floorVariants = List.generate(
+      variantCount,
+      (i) => Sprite(
+        floorImage,
+        srcPosition: Vector2(i * _tileSize, 0),
+        srcSize: Vector2.all(_tileSize),
+      ),
+    );
+    _borderTile = Sprite(
+      await Flame.images.load('scenes/arena_border_tile.png'),
+    );
+    if (size.x > 0 && size.y > 0) {
+      _generatePattern();
+    }
+  }
 
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
     this.size.setFrom(size);
+    if (_floorVariants != null) {
+      _generatePattern();
+    }
+  }
+
+  /// Randomised once per arena entry so the floor isn't a visibly repeating
+  /// grid, but stable for the rest of the round (not regenerated per frame).
+  void _generatePattern() {
+    final cols = (size.x / _scaledTile).ceil();
+    final rows = (size.y / _scaledTile).ceil();
+    _floorPattern = List.generate(
+      rows,
+      (_) => List.generate(cols, (_) => _random.nextInt(_floorVariants!.length)),
+    );
   }
 
   @override
   void render(Canvas canvas) {
-    canvas.drawRect(size.toRect(), _fill);
-    canvas.drawRect(size.toRect(), _border);
+    final variants = _floorVariants;
+    final pattern = _floorPattern;
+    final border = _borderTile;
+    if (variants == null || pattern == null || border == null) {
+      return; // still loading (first frame or two only)
+    }
+
+    for (var row = 0; row < pattern.length; row++) {
+      for (var col = 0; col < pattern[row].length; col++) {
+        variants[pattern[row][col]].render(
+          canvas,
+          position: Vector2(col * _scaledTile, row * _scaledTile),
+          size: Vector2.all(_scaledTile),
+          overridePaint: _pixelPaint,
+        );
+      }
+    }
+
+    final cols = (size.x / _scaledTile).ceil();
+    final rows = (size.y / _scaledTile).ceil();
+    for (var col = 0; col < cols; col++) {
+      border.render(
+        canvas,
+        position: Vector2(col * _scaledTile, 0),
+        size: Vector2.all(_scaledTile),
+        overridePaint: _pixelPaint,
+      );
+      border.render(
+        canvas,
+        position: Vector2(col * _scaledTile, size.y - _scaledTile),
+        size: Vector2.all(_scaledTile),
+        overridePaint: _pixelPaint,
+      );
+    }
+    for (var row = 0; row < rows; row++) {
+      _renderRotatedTile(
+        canvas,
+        border,
+        Vector2(0, row * _scaledTile),
+        pi / 2,
+      );
+      _renderRotatedTile(
+        canvas,
+        border,
+        Vector2(size.x - _scaledTile, row * _scaledTile),
+        pi / 2,
+      );
+    }
+  }
+
+  void _renderRotatedTile(
+    Canvas canvas,
+    Sprite sprite,
+    Vector2 topLeft,
+    double angle,
+  ) {
+    final centerX = topLeft.x + _scaledTile / 2;
+    final centerY = topLeft.y + _scaledTile / 2;
+    canvas.save();
+    canvas.translate(centerX, centerY);
+    canvas.rotate(angle);
+    canvas.translate(-centerX, -centerY);
+    sprite.render(
+      canvas,
+      position: topLeft,
+      size: Vector2.all(_scaledTile),
+      overridePaint: _pixelPaint,
+    );
+    canvas.restore();
   }
 }

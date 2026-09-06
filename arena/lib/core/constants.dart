@@ -32,6 +32,9 @@ const double kCharacterRenderScale = 3;
 /// next to a 48×72 (16×24 × 3) player.
 const double kProjectileRenderScale = 2;
 
+/// Floor/border tiles (`assets/images/scenes/`) are authored at 32×32.
+const double kFloorTileRenderScale = 2;
+
 /// Flame component render order (CLAUDE.md §4.10) — layer via these
 /// constants, never a magic `priority:` int on a component.
 class ArenaPriority {

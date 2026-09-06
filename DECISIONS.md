@@ -477,6 +477,36 @@ wanted, `EnemySkin` already exists as the hook to key a stats table off of.
 
 ---
 
+## D-023 — Real arena floor/border art
+**Date:** 2026-09-07 · **Status:** Accepted
+**Context:** `ArenaFloor` had been a flat colour fill + stroked border
+(`Canvas.drawRect`) since Phase 3 — no tile art existed yet. Developer added
+`assets/images/scenes/arena_floor_tiles.png` (3 32×32 variants, laid out
+left-to-right like the character sheets, D-015) and
+`arena_border_tile.png` (32×32, a single edge-line tile meant to be tiled
+along the perimeter).
+**Decision:** `ArenaFloor` now tiles the floor variants across the world at
+a random-per-cell pattern (seeded once per arena entry, not per frame, so
+it's stable for the round), and tiles the border sprite along all four
+edges — rotated 90° for the left/right edges since the source art is drawn
+as a horizontal line. Render scale is `kFloorTileRenderScale = 2` (32px
+native → 64px on screen), a separate constant from the character/projectile
+scales (D-015/this doc) since floor tiles, characters and VFX are all
+different native cell sizes.
+**Because:** Matches the delivered art directly — no reason to keep the
+placeholder now that real tiles exist. Randomising per-cell (rather than a
+single repeating variant) keeps a large flat floor from reading as an
+obviously tiled grid, cheap for 3 variants.
+**Consequences:** The floor's own `onLoad` does its own asset loading
+(images + slicing into `Sprite`s), independent of `ArenaGame`'s onLoad —
+components in this codebase are expected to self-load their own assets
+rather than have `ArenaGame` do it for them, which keeps `ArenaGame.onLoad`
+from growing every time a new component needs art (`PlayerComponent` is the
+outlier here for historical reasons — its animations are loaded by
+`ArenaGame` because they're also needed for the select-screen portrait).
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer
