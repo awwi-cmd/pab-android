@@ -96,7 +96,13 @@ class ArenaFloor extends PositionComponent {
 
     final cols = (size.x / _scaledTile).ceil();
     final rows = (size.y / _scaledTile).ceil();
-    for (var col = 0; col < cols; col++) {
+    // Corner cells (col 0/cols-1, row 0/rows-1) are left empty on purpose:
+    // the source art is a straight dash, there's no dedicated corner
+    // piece, and a horizontal dash sitting where a vertical run of dashes
+    // meets it reads as a broken seam rather than a turn. A small gap at
+    // each corner looks cleaner than either the mismatched tile or the
+    // doubled-up overlap this used to have.
+    for (var col = 1; col < cols - 1; col++) {
       border.render(
         canvas,
         position: Vector2(col * _scaledTile, 0),
@@ -110,9 +116,6 @@ class ArenaFloor extends PositionComponent {
         overridePaint: _borderPaint,
       );
     }
-    // Rows 0 and rows-1 are the corners, already drawn above by the
-    // top/bottom pass -- drawing them again here (rotated) is what made
-    // the corners overlap into a messy cross.
     for (var row = 1; row < rows - 1; row++) {
       _renderRotatedTile(
         canvas,
