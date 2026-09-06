@@ -21,6 +21,13 @@ class ArenaFloor extends PositionComponent {
   final _random = Random();
   final _pixelPaint = Paint()..filterQuality = FilterQuality.none; // D-011
 
+  // Border at 60% opacity (developer's call: full opacity read too heavy
+  // against the floor). Alpha on the paint's colour is what Skia uses to
+  // scale an image draw's opacity -- the RGB channels are unused here.
+  final _borderPaint = Paint()
+    ..filterQuality = FilterQuality.none
+    ..color = const Color(0xFFFFFFFF).withValues(alpha: 0.6);
+
   List<Sprite>? _floorVariants;
   Sprite? _borderTile;
   List<List<int>>? _floorPattern; // [row][col] -> variant index
@@ -94,16 +101,19 @@ class ArenaFloor extends PositionComponent {
         canvas,
         position: Vector2(col * _scaledTile, 0),
         size: Vector2.all(_scaledTile),
-        overridePaint: _pixelPaint,
+        overridePaint: _borderPaint,
       );
       border.render(
         canvas,
         position: Vector2(col * _scaledTile, size.y - _scaledTile),
         size: Vector2.all(_scaledTile),
-        overridePaint: _pixelPaint,
+        overridePaint: _borderPaint,
       );
     }
-    for (var row = 0; row < rows; row++) {
+    // Rows 0 and rows-1 are the corners, already drawn above by the
+    // top/bottom pass -- drawing them again here (rotated) is what made
+    // the corners overlap into a messy cross.
+    for (var row = 1; row < rows - 1; row++) {
       _renderRotatedTile(
         canvas,
         border,
@@ -135,7 +145,7 @@ class ArenaFloor extends PositionComponent {
       canvas,
       position: topLeft,
       size: Vector2.all(_scaledTile),
-      overridePaint: _pixelPaint,
+      overridePaint: _borderPaint,
     );
     canvas.restore();
   }
