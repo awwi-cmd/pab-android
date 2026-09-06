@@ -68,6 +68,12 @@ follow.
   started. If any of these start looking necessary to make the *demo*
   better, stop and ask before building past that line — CLAUDE.md says so
   for a reason, and it's already come up twice in practice this project.
+  - Progression specifically has a real design vision on record now (TASKS
+    Backlog "Progression system", DECISIONS Open Questions) — XP from kills
+    driving both a stronger and more frequent enemy ramp, replacing the
+    demo's flat time-based one. Not started; the open questions there (
+    in-round vs. persistent, how enemies scale, how power-ups get
+    delivered) need answering before it's buildable, not just wanted.
 
 ## Testing — read this before adding gameplay logic
 

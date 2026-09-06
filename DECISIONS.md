@@ -568,3 +568,14 @@ before they can be settled.
   effects. The demo shows both; the select screen is where this gets judged.
 - **Targeting rule** — "nearest enemy" is the demo rule. Nearest-in-front, or
   lowest-HP, may feel better once enemy variety exists.
+- **Progression model (post-demo)** — in-round only (resets every round,
+  Vampire-Survivors style) or persistent across rounds/sessions (needs real
+  save data, not just `core/settings.dart`'s scalar `SharedPreferences`
+  values)? Blocks deciding how to store XP/level at all.
+- **Enemy scaling mechanism (post-demo)** — multiply the existing flat
+  `EnemyStats` by a level-derived factor, unlock distinct tougher enemy
+  types at higher levels (`EnemySkin` already exists as the hook, D-022),
+  or both together?
+- **Power-up delivery (post-demo)** — mid-round pickups/choices, permanent
+  between-round unlocks, or both? Very different builds; see TASKS Backlog
+  "Progression system" for the fuller writeup.

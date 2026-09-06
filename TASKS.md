@@ -172,7 +172,25 @@ Kept here so ideas have somewhere to go that isn't the current sprint.
   3 skins were wired for visual variety only, one shared `EnemyStats` profile
   — still true "one enemy type" per PRD §9, so this backlog item stands)
 - Structured waves and a boss
-- Between-round upgrades / levelling
+- **Progression system (XP/level/power-ups) driving enemy scaling** — developer's
+  vision (2026-09-07): kills grant XP, levelling up the player should make
+  enemies both stronger and more frequent, replacing or augmenting the demo's
+  flat time-based ramp (`Spawner`'s interval decay, single-tier `EnemyStats`)
+  with scaling driven by player progression instead of just elapsed time.
+  - Round already tracks `kills` (`ArenaGame.kills`) — the raw material for XP
+    is there, XP-per-kill and a level curve aren't.
+  - Enemy scaling could be: multiply existing `EnemyStats` by a level-derived
+    factor, or unlock distinct tougher enemy types at higher levels (ties into
+    the enemy-variety item above — `EnemySkin` already exists as the hook,
+    D-022), or both.
+  - Power-ups could be: mid-round pickups/choices (new ability, stat boost,
+    Vampire-Survivors-style level-up screen), permanent between-round unlocks,
+    or both — very different builds.
+  - Whether this is in-round only (resets every round) or persists across
+    rounds/sessions changes whether it needs real save data beyond the
+    existing Settings persistence (`core/settings.dart` is SharedPreferences
+    for a handful of scalar settings, not built for a save file).
+  - Genuinely open, not yet decided — see DECISIONS.md's Open Questions.
 - Real audio: SFX bank + music, wired to the existing volume sliders
 - Multiple arenas and backgrounds
 - Camera larger than the screen, with scroll
