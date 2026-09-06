@@ -2,10 +2,35 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:arena/app.dart';
+import 'package:arena/ui/screens/main_menu_screen.dart';
 
 void main() {
-  testWidgets('App boots to a black screen', (WidgetTester tester) async {
+  testWidgets('Main menu shows Start/Settings/Credits', (tester) async {
     await tester.pumpWidget(const ArenaApp());
-    expect(find.byType(Scaffold), findsOneWidget);
+    expect(find.text('ARENA'), findsOneWidget);
+    expect(find.text('START'), findsOneWidget);
+    expect(find.text('SETTINGS'), findsOneWidget);
+    expect(find.text('CREDITS'), findsOneWidget);
+  });
+
+  testWidgets('Full flow: menu -> select -> arena -> die -> menu',
+      (tester) async {
+    await tester.pumpWidget(const ArenaApp());
+
+    await tester.tap(find.text('START'));
+    await tester.pumpAndSettle();
+    expect(find.text('ENTER ARENA'), findsOneWidget);
+
+    await tester.tap(find.text('ENTER ARENA'));
+    await tester.pumpAndSettle();
+    expect(find.text('DIE (debug)'), findsOneWidget);
+
+    await tester.tap(find.text('DIE (debug)'));
+    await tester.pumpAndSettle();
+    expect(find.text('ROUND OVER'), findsOneWidget);
+
+    await tester.tap(find.text('MAIN MENU'));
+    await tester.pumpAndSettle();
+    expect(find.byType(MainMenuScreen), findsOneWidget);
   });
 }

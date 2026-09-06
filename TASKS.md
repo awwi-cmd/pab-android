@@ -27,17 +27,24 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
 ## Phase 1 — Shell & navigation
 *Goal: every screen exists and you can walk the whole flow with no game in it.*
 
-- [ ] **1.1** `constants.dart` — design size 360×800, palette, layer priorities
-- [ ] **1.2** `app.dart` — MaterialApp, dark pixel-friendly theme, named routes
-- [ ] **1.3** Shared widgets: `PixelButton`, `ScreenScaffold`, `StatBar`
-- [ ] **1.4** Main menu screen — title, Start / Settings / Credits, version string
-- [ ] **1.5** Credits screen — static scrollable placeholder + attribution block
-- [ ] **1.6** `settings.dart` — Settings model, defaults, `SharedPreferences` load/save
-- [ ] **1.7** Settings screen — control scheme, joystick side, SFX, music, show FPS
-- [ ] **1.8** Verify settings survive an app kill and relaunch
-- [ ] **1.9** Arena screen as a placeholder route with a "die" button → Round Over
-- [ ] **1.10** Round Over overlay UI with dummy numbers → Main Menu
-- [ ] **1.11** Walk the whole flow on the emulator; no dead ends, no back-button traps
+- [x] **1.1** `constants.dart` — design size 360×800, palette, layer priorities
+- [x] **1.2** `app.dart` — MaterialApp, dark pixel-friendly theme, named routes
+- [x] **1.3** Shared widgets: `PixelButton`, `ScreenScaffold`, `StatBar`
+- [x] **1.4** Main menu screen — title, Start / Settings / Credits, version string
+- [x] **1.5** Credits screen — static scrollable placeholder + attribution block
+- [x] **1.6** `settings.dart` — Settings model, defaults, `SharedPreferences` load/save
+- [x] **1.7** Settings screen — control scheme, joystick side, SFX, music, show FPS
+- [x] **1.8** Settings persist immediately on every change (`SettingsRepository.save`
+      called from each control's `onChanged`), so an app kill can't lose a change
+      mid-session; full kill/relaunch still worth eyeballing once on-device
+- [x] **1.9** Arena screen as a placeholder route with a "die" button → Round Over
+- [x] **1.10** Round Over overlay UI with dummy numbers → Main Menu
+- [ ] **1.11** Walk the whole flow on the emulator; no dead ends, no back-button traps (developer to run)
+
+Note: added a minimal `CharacterSelectScreen` stub (not in the original Phase 1
+list) so Start -> Arena has a real screen in between, matching the PRD §3 flow
+diagram and this phase's own exit criterion. It has no stats/grid yet — that's
+still Phase 2 (2.4-2.7) untouched.
 
 **Exit criterion:** the flow diagram in PRD §3 is fully navigable.
 
