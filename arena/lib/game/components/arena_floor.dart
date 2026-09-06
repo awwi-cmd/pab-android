@@ -94,42 +94,120 @@ class ArenaFloor extends PositionComponent {
       }
     }
 
-    final cols = (size.x / _scaledTile).ceil();
-    final rows = (size.y / _scaledTile).ceil();
-    // Corner cells (col 0/cols-1, row 0/rows-1) are left empty on purpose:
-    // the source art is a straight dash, there's no dedicated corner
-    // piece, and a horizontal dash sitting where a vertical run of dashes
-    // meets it reads as a broken seam rather than a turn. A small gap at
-    // each corner looks cleaner than either the mismatched tile or the
-    // doubled-up overlap this used to have.
-    for (var col = 1; col < cols - 1; col++) {
+    // Flush-aligned positions along each axis: every tile after the first
+    // is exactly one tile-width on from the last, EXCEPT the final one,
+    // which is forced to sit flush against the true far edge (size.x/y -
+    // scaledTile) even if that means a hair of overlap with its neighbour.
+    // Plain index math (col * scaledTile for every tile) left a gap of
+    // varying size before the far edge whenever size wasn't an exact
+    // multiple of scaledTile -- which it never is -- and that gap differed
+    // between the x and y axes, which is why only one of the four corners
+    // ever happened to line up.
+    final xPositions = _edgePositions(size.x);
+    final yPositions = _edgePositions(size.y);
+
+    // Straight runs only -- corners (first/last position on each axis) are
+    // handled separately below with an actual join instead of either the
+    // wrong-orientation tile or an empty gap.
+    for (var i = 1; i < xPositions.length - 1; i++) {
       border.render(
         canvas,
-        position: Vector2(col * _scaledTile, 0),
+        position: Vector2(xPositions[i], 0),
         size: Vector2.all(_scaledTile),
         overridePaint: _borderPaint,
       );
       border.render(
         canvas,
-        position: Vector2(col * _scaledTile, size.y - _scaledTile),
+        position: Vector2(xPositions[i], size.y - _scaledTile),
         size: Vector2.all(_scaledTile),
         overridePaint: _borderPaint,
       );
     }
-    for (var row = 1; row < rows - 1; row++) {
+    for (var i = 1; i < yPositions.length - 1; i++) {
+      _renderRotatedTile(canvas, border, Vector2(0, yPositions[i]), pi / 2);
       _renderRotatedTile(
         canvas,
         border,
-        Vector2(0, row * _scaledTile),
-        pi / 2,
-      );
-      _renderRotatedTile(
-        canvas,
-        border,
-        Vector2(size.x - _scaledTile, row * _scaledTile),
+        Vector2(size.x - _scaledTile, yPositions[i]),
         pi / 2,
       );
     }
+
+    _renderCorner(canvas, border, Vector2.zero(), fromRight: false, fromTop: false);
+    _renderCorner(
+      canvas,
+      border,
+      Vector2(size.x - _scaledTile, 0),
+      fromRight: true,
+      fromTop: false,
+    );
+    _renderCorner(
+      canvas,
+      border,
+      Vector2(0, size.y - _scaledTile),
+      fromRight: false,
+      fromTop: true,
+    );
+    _renderCorner(
+      canvas,
+      border,
+      Vector2(size.x - _scaledTile, size.y - _scaledTile),
+      fromRight: true,
+      fromTop: true,
+    );
+  }
+
+  /// Positions along one axis for a row of flush-tiled sprites: every
+  /// position after the first is one tile-width further along, except the
+  /// last, which is pinned to `total - scaledTile` so the run always ends
+  /// exactly flush with the far edge.
+  List<double> _edgePositions(double total) {
+    final positions = <double>[];
+    var pos = 0.0;
+    while (pos < total - _scaledTile) {
+      positions.add(pos);
+      pos += _scaledTile;
+    }
+    positions.add(total - _scaledTile);
+    return positions;
+  }
+
+  /// No dedicated corner asset exists — the source art is a straight dash.
+  /// Approximate a join by drawing the horizontal tile clipped to whichever
+  /// half faces the straight run it's continuing, and the vertical
+  /// (rotated) tile clipped the same way, so the two contribute three of
+  /// the corner cell's four quadrants between them. The one quadrant
+  /// nobody draws is the tile's very outer tip — a much smaller and less
+  /// noticeable gap than an empty corner or the two tiles overlapping.
+  void _renderCorner(
+    Canvas canvas,
+    Sprite sprite,
+    Vector2 topLeft, {
+    required bool fromRight,
+    required bool fromTop,
+  }) {
+    final half = _scaledTile / 2;
+    final horizontalClip = fromRight
+        ? Rect.fromLTWH(topLeft.x, topLeft.y, half, _scaledTile)
+        : Rect.fromLTWH(topLeft.x + half, topLeft.y, half, _scaledTile);
+    final verticalClip = fromTop
+        ? Rect.fromLTWH(topLeft.x, topLeft.y, _scaledTile, half)
+        : Rect.fromLTWH(topLeft.x, topLeft.y + half, _scaledTile, half);
+
+    canvas.save();
+    canvas.clipRect(horizontalClip);
+    sprite.render(
+      canvas,
+      position: topLeft,
+      size: Vector2.all(_scaledTile),
+      overridePaint: _borderPaint,
+    );
+    canvas.restore();
+
+    canvas.save();
+    canvas.clipRect(verticalClip);
+    _renderRotatedTile(canvas, sprite, topLeft, pi / 2);
+    canvas.restore();
   }
 
   void _renderRotatedTile(
