@@ -57,6 +57,7 @@ class ProjectileComponent extends SpriteAnimationComponent
     EnemyComponent? hit;
     for (var i = 0; i < enemies.length; i++) {
       final enemy = enemies[i];
+      if (enemy.isDying) continue; // already dead, let the shot pass through
       final touching = position.distanceTo(enemy.position) <
           (size.x / 2 + enemy.size.x / 2);
       if (touching) {

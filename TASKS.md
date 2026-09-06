@@ -138,7 +138,7 @@ Remaining: enemy sprite and the select-screen portrait.
 - [x] **5.7** `spawn` (6f, delivered) — 1.0s round-start sequence with controls locked
 - [x] **5.8** `hurt` — `main-hurt.png` (4f) recoil pose (D-021: developer's call, no tint). `main-flash.png` loaded by nothing, reserved for later. Separately, i-frames get an opacity flicker (PRD §6.2), not tied to either sheet.
 - [x] **5.9** Death anim (D-016) — `main-die.png` (4f) wired. Fade+shrink fallback kept in reserve only, unused.
-- [ ] **5.10** Enemy sprite + death puff — still a placeholder square (developer's call for Phase 4)
+- [x] **5.10** Enemy sprite — 3 real skins (`enemy-{one,two,three}-{run,die}.png`), random per spawn, same stats (D-022). "Death puff" is the real death animation now, not a separate puff effect.
 - [x] **5.11** Projectile sprite + hit spark — real `projectile-bolt.png`/`projectile-spark.png`, done in Phase 4
 - [x] **5.12** Floating damage numbers — done in Phase 4 (PRD §10.5 needs them, not deferrable)
 - [x] **5.13** Portrait on the character select screen playing `idle` — `SpriteAnimationWidget` (Flame), no `GameWidget` needed for a single looping animation outside the arena
@@ -168,7 +168,9 @@ Kept here so ideas have somewhere to go that isn't the current sprint.
 
 - Skill system using the reserved animation states (teleport, dash, charge, channel, cast)
 - Additional playable characters (slots 2–4) with distinct projectiles
-- Enemy variety: ranged, fast/swarm, tanky, elite
+- Enemy variety with distinct stats: ranged, fast/swarm, tanky, elite (D-022:
+  3 skins were wired for visual variety only, one shared `EnemyStats` profile
+  — still true "one enemy type" per PRD §9, so this backlog item stands)
 - Structured waves and a boss
 - Between-round upgrades / levelling
 - Real audio: SFX bank + music, wired to the existing volume sliders

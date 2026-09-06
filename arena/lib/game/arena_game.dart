@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flame/components.dart';
@@ -10,6 +11,7 @@ import '../core/settings.dart';
 import '../core/stats.dart';
 import '../data/characters.dart';
 import 'anim/character_animations.dart';
+import 'anim/enemy_animations.dart';
 import 'anim/sheet_loader.dart';
 import 'components/arena_floor.dart';
 import 'components/damage_text.dart';
@@ -46,8 +48,10 @@ class ArenaGame extends FlameGame {
   final List<EnemyComponent> enemies = [];
 
   late CharacterAnimations _animations;
+  late EnemyAnimations _enemyAnimations;
   late SpriteAnimation _boltAnimation;
   late SpriteAnimation _sparkAnimation;
+  final Random _random = Random();
 
   /// Flutter-observable mirror of round-over state, so the movement-input
   /// overlay (a Flutter widget, not a Flame overlay) knows to stop
@@ -83,6 +87,7 @@ class ArenaGame extends FlameGame {
   Future<void> onLoad() async {
     await super.onLoad();
     _animations = await CharacterAnimations.load(character.spriteFolder);
+    _enemyAnimations = await EnemyAnimations.load();
     _boltAnimation = await loadSheetAnimation(
       'vfx/projectiles/projectile-bolt.png',
       cellWidth: 16,
@@ -196,7 +201,12 @@ class ArenaGame extends FlameGame {
   }
 
   void spawnEnemy(Vector2 at) {
-    final enemy = EnemyComponent(startPosition: at);
+    final skin = EnemySkin.values[_random.nextInt(EnemySkin.values.length)];
+    final enemy = EnemyComponent(
+      startPosition: at,
+      runAnimation: _enemyAnimations.runFor(skin),
+      deathAnimation: _enemyAnimations.deathFor(skin),
+    );
     enemies.add(enemy);
     add(enemy);
   }

@@ -450,6 +450,33 @@ developer wants it removed or reworked once it's seen on-device.
 
 ---
 
+## D-022 — Three enemy skins, one stats profile
+**Date:** 2026-09-07 · **Status:** Accepted
+**Context:** Developer delivered 3 enemy sprite sets (`enemy-one`,
+`enemy-two`, `enemy-three`, each with `run`/`die`, same 16×24 cell
+convention as D-015) and asked for them to be "implemented... different
+stats for enemies." That's a real scope expansion — PRD §9 explicitly keeps
+"more than one enemy type" out of the demo, and TASKS' own Backlog says not
+to start enemy variety pre-demo. Flagged and asked rather than building
+past it silently (CLAUDE.md §6: "ask before scope").
+**Decision:** Visual variety only. `ArenaGame.spawnEnemy` picks one of the
+3 skins at random per spawn (`EnemyAnimations`, `game/anim/enemy_animations.
+dart`); every enemy still reads its HP/speed/damage/cooldown/radius from
+the single `EnemyStats` (PRD §6.4) regardless of skin. Still "one enemy
+type" as far as the PRD is concerned — just not visually monotonous.
+**Because:** Developer's explicit choice when asked. Keeps the demo inside
+its documented scope while using the art that was actually delivered;
+distinct per-type stats (the real "enemy variety" feature) stays in the
+Backlog for after the demo, alongside ranged/fast/tanky/elite variants.
+**Consequences:** `EnemyComponent` went from a placeholder `RectangleComponent`
+to a `SpriteAnimationGroupComponent<EnemyAnim>` (run/death) — a real death
+animation plays before the enemy is actually removed
+(`ProjectileComponent` skips enemies mid-death-animation so a second
+projectile can't "hit" an already-dead one). If per-skin stats are ever
+wanted, `EnemySkin` already exists as the hook to key a stats table off of.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer
