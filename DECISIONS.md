@@ -282,6 +282,30 @@ to "wire the real death anim" when Phase 5 is reached.
 
 ---
 
+## D-017 — Kotlin incremental compilation disabled (cross-drive build failure)
+**Date:** 2026-09-06 · **Status:** Accepted
+**Context:** `rebuildinstall.bat` / `flutter build apk --debug` failed with
+`compileDebugKotlin` errors — first "Daemon compilation failed", then (after
+stopping the daemon) `IllegalArgumentException: this and base files have
+different roots`. Root cause: the repo lives on `L:\`, while the pub cache and
+Gradle/Kotlin caches live on `C:\`. Kotlin's newer relocatable incremental-cache
+support (`RelocatableFileToPathConverter`) computes a relative path between a
+compiled source file and the project root to make its cache build-cache-portable;
+`java.nio`/Kotlin's `relativeTo` cannot express a relative path across two
+different Windows drive letters, so it throws mid-write and corrupts its own
+`.tab` cache files, then fails every retry until the `build/` dir is cleared.
+**Decision:** Set `kotlin.incremental=false` in `android/gradle.properties`.
+**Because:** The alternative is moving the project or every cache to the same
+drive, which is a machine-wide change outside this repo's control. Disabling
+Kotlin's incremental compilation sidesteps the relocatable-cache code path
+entirely; the plugin sources here are small (`shared_preferences_android`,
+`audioplayers_android`), so the extra full-recompile cost per build is minor.
+**Consequences:** Every build recompiles the Kotlin plugin glue from scratch —
+slightly slower `rebuildinstall.bat` runs, not felt on Dart-only hot reload. If
+the project or toolchain ever moves fully onto one drive, this can be reverted.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer
