@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
+import '../../data/characters.dart';
 
 /// Placeholder route for Phase 1 (TASKS 1.9/1.10): proves the arena ->
 /// death -> Round Over -> Main Menu leg of the flow with no game in it yet.
@@ -22,6 +23,17 @@ class ArenaScreen extends StatefulWidget {
 class _ArenaScreenState extends State<ArenaScreen> {
   bool _roundOver = false;
 
+  /// Passed from Character Select (TASKS 2.7). Unused until `ArenaGame` /
+  /// `PlayerComponent` exist (Phase 3, CLAUDE.md §3.3) — stats will inject
+  /// from here rather than being read again from `kCharacters`.
+  CharacterDef? _character;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _character ??= ModalRoute.of(context)?.settings.arguments as CharacterDef?;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -30,12 +42,25 @@ class _ArenaScreenState extends State<ArenaScreen> {
         children: [
           if (!_roundOver)
             Center(
-              child: TextButton(
-                onPressed: () => setState(() => _roundOver = true),
-                child: const Text(
-                  'DIE (debug)',
-                  style: TextStyle(color: ArenaColors.danger, fontSize: 18),
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Debug-only proof that CharacterDef arrived from Character
+                  // Select (TASKS 2.7); becomes real stat injection in Phase 3.
+                  if (_character != null)
+                    Text(
+                      _character!.name,
+                      style: const TextStyle(color: ArenaColors.textDim),
+                    ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: () => setState(() => _roundOver = true),
+                    child: const Text(
+                      'DIE (debug)',
+                      style: TextStyle(color: ArenaColors.danger, fontSize: 18),
+                    ),
+                  ),
+                ],
               ),
             ),
           if (_roundOver) const _RoundOverOverlay(),

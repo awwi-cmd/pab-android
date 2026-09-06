@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:arena/app.dart';
@@ -21,6 +20,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('ENTER ARENA'), findsOneWidget);
 
+    // Character Select scrolls on a short viewport (test harness is 800x600).
+    await tester.ensureVisible(find.text('ENTER ARENA'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('ENTER ARENA'));
     await tester.pumpAndSettle();
     expect(find.text('DIE (debug)'), findsOneWidget);

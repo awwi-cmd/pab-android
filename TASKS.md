@@ -53,13 +53,15 @@ still Phase 2 (2.4-2.7) untouched.
 ## Phase 2 — Stats & character select
 *Goal: the data layer is real and the select screen reads from it.*
 
-- [ ] **2.1** `stats.dart` — `StatBlock` (STR/VIT/DEX/INT) + all 8 derived formulas from PRD §5.1
-- [ ] **2.2** Unit tests for every derived formula against the PRD's worked example (The Apprentice → 90 HP, 13 dmg, 1.40/s, 140 px/s)
-- [ ] **2.3** `characters.dart` — `CharacterDef` (id, name, descriptor, stats, spriteSheet, unlocked) and the 4 slot definitions
-- [ ] **2.4** Character select screen — 2×2 grid, slots 2–4 locked silhouettes
-- [ ] **2.5** Stat bars + raw numbers for the selected character
-- [ ] **2.6** Derived readout line (`HP 90 · DMG 13 · 1.4/s · 140 spd`) computed live from the formulas, not typed in
-- [ ] **2.7** Enter Arena passes the chosen `CharacterDef` through to the arena route
+- [x] **2.1** `stats.dart` — `StatBlock` (STR/VIT/DEX/INT) + all 8 derived formulas from PRD §5.1
+- [x] **2.2** Unit tests for every derived formula against the PRD's worked example (The Apprentice → 90 HP, 13 dmg, 1.40/s, 140 px/s) — `test/core/stats_test.dart`, 9 cases
+- [x] **2.3** `characters.dart` — `CharacterDef` (id, name, descriptor, stats, spriteFolder, unlocked) and the 4 slot definitions
+- [x] **2.4** Character select screen — 2×2 grid, slots 2–4 locked silhouettes (padlock icon, not tappable)
+- [x] **2.5** Stat bars + raw numbers for the selected character
+- [x] **2.6** Derived readout line (`HP 90 · DMG 13 · 1.4 shots/s · 140 speed`) computed live from the formulas, not typed in
+- [x] **2.7** Enter Arena passes the chosen `CharacterDef` through to the arena route (route arguments; `ArenaScreen` stores it, unused until Phase 3's `PlayerComponent`)
+
+Portrait is a placeholder icon, not the real idle animation — that's Phase 5.13, needs the sheet loader (5.1-5.3) first.
 
 **Exit criterion:** changing a stat in `characters.dart` changes both the bars and the derived readout with no other edit.
 
