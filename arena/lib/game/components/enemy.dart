@@ -19,7 +19,9 @@ class EnemyComponent extends SpriteAnimationGroupComponent<EnemyAnim>
     required Vector2 startPosition,
     required SpriteAnimation runAnimation,
     required SpriteAnimation deathAnimation,
-  }) : hp = EnemyStats.maxHp,
+    double statMultiplier = 1,
+  }) : hp = EnemyStats.maxHp * statMultiplier,
+       contactDamage = EnemyStats.contactDamage * statMultiplier,
        super(
          animations: {
            EnemyAnim.run: runAnimation,
@@ -34,6 +36,11 @@ class EnemyComponent extends SpriteAnimationGroupComponent<EnemyAnim>
        );
 
   double hp;
+
+  /// Scaled at spawn time by `enemyStatMultiplier` (DECISIONS D-026) —
+  /// `EnemyStats.contactDamage` stays the level-1 baseline, this is what
+  /// `ArenaGame.onEnemyContact` actually applies.
+  final double contactDamage;
 
   /// This enemy's own cooldown before it can deal contact damage again
   /// (PRD §6.4/§4.8) — independent of the player's separate 0.6s i-frames.
@@ -79,7 +86,7 @@ class EnemyComponent extends SpriteAnimationGroupComponent<EnemyAnim>
         position.distanceTo(player.position) < (size.x / 2 + player.size.x / 2);
     if (touching && _contactCooldown <= 0) {
       _contactCooldown = EnemyStats.contactCooldownSec;
-      game.onEnemyContact();
+      game.onEnemyContact(this);
     }
   }
 

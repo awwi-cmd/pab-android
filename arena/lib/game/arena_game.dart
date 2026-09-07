@@ -7,14 +7,15 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter/widgets.dart' show EdgeInsets;
 
 import '../core/constants.dart';
+import '../core/game_rules.dart';
 import '../core/progression.dart';
 import '../core/settings.dart';
-import '../core/stats.dart';
 import '../data/characters.dart';
 import 'anim/character_animations.dart';
 import 'anim/enemy_animations.dart';
 import 'anim/sheet_loader.dart';
 import 'components/arena_floor.dart';
+import 'components/aura.dart';
 import 'components/damage_text.dart';
 import 'components/enemy.dart';
 import 'components/hp_bar.dart';
@@ -51,7 +52,13 @@ class ArenaGame extends FlameGame {
   late EnemyAnimations _enemyAnimations;
   late SpriteAnimation _boltAnimation;
   late SpriteAnimation _sparkAnimation;
+  late SpriteAnimation _auraSparkAnimation;
   final Random _random = Random();
+
+  /// The Aura skill's orbiting-ring component (DECISIONS D-027) — null
+  /// until the first Aura pick, created once and left in place afterwards;
+  /// later picks just raise the stack count it reads each tick.
+  AuraComponent? _aura;
 
   /// Exposed for [AttackBehavior]s (`attack_behavior.dart`) to build
   /// projectiles from — the animation itself isn't per-character yet, but
@@ -126,6 +133,15 @@ class ArenaGame extends FlameGame {
       stepTime: 0.05,
       loop: false,
     );
+    // Same sheet as the one-off hit spark above, but looping -- the Aura
+    // skill's ring sparks (DECISIONS D-027) play continuously rather than
+    // once per hit.
+    _auraSparkAnimation = await loadSheetAnimation(
+      'vfx/projectiles/projectile-spark.png',
+      cellWidth: 16,
+      cellHeight: 16,
+      stepTime: 0.05,
+    );
     resetRound();
   }
 
@@ -158,6 +174,7 @@ class ArenaGame extends FlameGame {
     _pendingLevelUps = 0;
     debugGodMode = false;
     menuOpen.value = false;
+    _aura = null; // the old instance was already removed via removeAll above
 
     add(ArenaFloor());
     player = PlayerComponent(
@@ -208,6 +225,10 @@ class ArenaGame extends FlameGame {
       startPosition: at,
       runAnimation: _enemyAnimations.runFor(skin),
       deathAnimation: _enemyAnimations.deathFor(skin),
+      // DECISIONS D-026: baked in at spawn, not re-applied later — an
+      // enemy that spawned at level 3 keeps level-3 stats even if the
+      // player is level 5 by the time it dies.
+      statMultiplier: enemyStatMultiplier(level),
     );
     enemies.add(enemy);
     add(enemy);
@@ -246,7 +267,10 @@ class ArenaGame extends FlameGame {
   void _maybeShowNextLevelUp() {
     if (roundOver.value || _pendingLevelUps <= 0) return;
     if (overlays.isActive('PauseMenu') || overlays.isActive('LevelUp')) return;
-    currentLevelUpChoices = rollUpgradeChoices(_random);
+    currentLevelUpChoices = rollUpgradeChoices(
+      _random,
+      pickCounts: upgrades.pickCounts,
+    );
     overlays.add('LevelUp');
     menuOpen.value = true;
     pauseEngine();
@@ -257,6 +281,7 @@ class ArenaGame extends FlameGame {
   /// paused) if more than one queued up, rather than resuming in between.
   void resolveLevelUpChoice(UpgradeKind kind) {
     player.grantUpgrade(kind);
+    _syncAura();
     _pendingLevelUps--;
     overlays.remove('LevelUp');
     if (_pendingLevelUps > 0) {
@@ -288,8 +313,19 @@ class ArenaGame extends FlameGame {
     }
   }
 
-  void onEnemyContact() {
-    player.takeDamage(EnemyStats.contactDamage);
+  /// Spawns the Aura's ring component on the first pick (DECISIONS D-027).
+  /// Later picks don't rebuild it -- `AuraComponent` reads the current
+  /// stack count off `upgrades.pickCounts` itself every tick, so bumping
+  /// the count is all a second/third pick needs to do.
+  void _syncAura() {
+    if (_aura != null) return;
+    if ((upgrades.pickCounts[UpgradeKind.aura] ?? 0) <= 0) return;
+    _aura = AuraComponent(sparkAnimation: _auraSparkAnimation);
+    add(_aura!);
+  }
+
+  void onEnemyContact(EnemyComponent enemy) {
+    player.takeDamage(enemy.contactDamage);
   }
 
   void onProjectileHit(Vector2 at, double damage) {

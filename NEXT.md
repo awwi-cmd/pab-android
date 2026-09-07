@@ -34,12 +34,21 @@ tanky — see Backlog) gets built, `EnemySkin` is already the hook to key a
 per-type stats table off of — you're not introducing a new concept, just
 making the existing one do more.
 
-**`UpgradeKind` (`core/progression.dart`, DECISIONS D-025).** The level-up
-pool is 4 members and a `switch` in `PlayerUpgrades.apply`. A new power-up
-(the "other power-ups later" the developer mentioned when specifying this)
-is: add an enum member, a case in `apply`, a label/description — the popup,
-the roll-3-of-N, the "view your upgrades" screen and the pause-menu plumbing
-all already generalize to N upgrades, none of it is hardcoded to 4.
+**`UpgradeKind` (`core/progression.dart`, DECISIONS D-025/D-027).** A new
+power-up is still: add an enum member, a case in `PlayerUpgrades.apply`, a
+label/description, an entry in `kUpgradeWeights` — the popup, the
+weighted roll, the "view your upgrades" screen and the pause-menu plumbing
+all generalize to N upgrades. D-027's Aura is the second real example and
+it's a genuine skill, not a stat bump — `kUpgradeMaxPicks` (`null` =
+unlimited, an int = cap) is there for exactly that, and a skill that needs
+a live Flame component (like Aura's orbiting ring) follows the same
+pattern: `ArenaGame` owns the component (`_aura`), creates it lazily off
+`upgrades.pickCounts` the first time it's picked (`_syncAura()`), and the
+component reads its own current strength from `pickCounts` every tick
+rather than being handed a value or rebuilt per pick. The roll itself is
+weighted now (`kUpgradeWeights`, Efraimidis-Spirakis sampling in
+`rollUpgradeChoices`) with placeholder equal weights — the actual balance
+pass is still to come, this just wires the knob.
 
 **`CharacterDef` (`data/characters.dart`).** Every field a character needs
 to be playable — stats, sprite location (`spriteFolder` +
@@ -76,11 +85,13 @@ follow.
   better, stop and ask before building past that line — CLAUDE.md says so
   for a reason, and it's already come up more than once in practice.
   - **Progression is the exception — it's started.** Phase 7 (TASKS.md,
-    DECISIONS D-025) shipped the player-side half: in-round XP from kills,
-    levelling, a 1-of-3 upgrade popup, pause menu, debug tools. What's
-    still missing is the other half of the original vision — enemies
-    getting stronger or more frequent to match the player's level. See
-    TASKS 7.9 / DECISIONS Open Questions ("Enemy scaling mechanism").
+    DECISIONS D-025/D-026) shipped both halves now: in-round XP from kills,
+    levelling, a 1-of-3 upgrade popup, pause menu, debug tools, and enemies
+    scaling HP/contact damage linearly with player level
+    (`enemyStatMultiplier`, `core/game_rules.dart`). Faster spawns tied to
+    level, or distinct tougher `EnemySkin` tiers, are still open if the
+    linear stat scale alone doesn't carry the curve far enough — see
+    TASKS Backlog.
 
 ## Testing — read this before adding gameplay logic
 

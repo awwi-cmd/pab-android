@@ -54,4 +54,31 @@ void main() {
       expect(knockbackDistance(0, 0.15), 0);
     });
   });
+
+  group('allWithinRange', () {
+    test('returns an empty list for an empty candidate list', () {
+      expect(allWithinRange(Vector2.zero(), [], 100), isEmpty);
+    });
+
+    test('returns every candidate within range, order preserved', () {
+      final candidates = [Vector2(10, 0), Vector2(200, 0), Vector2(0, 50)];
+      expect(allWithinRange(Vector2.zero(), candidates, 60), [0, 2]);
+    });
+
+    test('a candidate exactly at maxRange still counts', () {
+      final candidates = [Vector2(100, 0)];
+      expect(allWithinRange(Vector2.zero(), candidates, 100), [0]);
+    });
+  });
+
+  group('enemyStatMultiplier', () {
+    test('is 1 at level 1 (no scaling for the starting level)', () {
+      expect(enemyStatMultiplier(1), 1.0);
+    });
+
+    test('grows linearly with level', () {
+      expect(enemyStatMultiplier(2), closeTo(1.12, 1e-9));
+      expect(enemyStatMultiplier(6), closeTo(1.6, 1e-9));
+    });
+  });
 }

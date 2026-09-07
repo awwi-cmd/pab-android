@@ -620,6 +620,166 @@ below), not an oversight.
 
 ---
 
+## D-026 — Enemy scaling: linear HP/damage multiplier by player level, baked in at spawn
+**Date:** 2026-09-08 · **Status:** Accepted · Closes the "Enemy scaling
+mechanism" open question below
+**Context:** D-025 shipped the player-side half of progression; enemies
+stayed flat. Three real options on the table: scale `EnemyStats` by a
+level-derived factor, speed up spawns via `Spawner` instead/as well, or
+unlock distinct tougher `EnemySkin` tiers (real enemy-variety scope,
+Backlog territory). Asked the developer directly rather than guessing
+(CLAUDE.md §6).
+**Decision:** Scale `EnemyStats` only. `core/game_rules.dart` gained
+`enemyStatMultiplier(int playerLevel)` — linear, `1 + (level-1) * 0.12`
+(`kEnemyScalePerLevel`), pure and unit-tested
+(`test/core/game_rules_test.dart`) same as every other rule in that file.
+`ArenaGame.spawnEnemy` reads `game.level` at spawn time and passes the
+multiplier into `EnemyComponent`'s new `statMultiplier` constructor param,
+which scales `hp` (already a mutable field) and a new `contactDamage`
+field — `EnemyStats.maxHp`/`contactDamage` stay the level-1 baseline
+constants, unscaled. `moveSpeedPxPerS` is deliberately left unscaled.
+`ArenaGame.onEnemyContact` now takes the `EnemyComponent` that touched the
+player and reads its (possibly scaled) `contactDamage`, instead of the old
+flat `EnemyStats.contactDamage` call.
+**Because:** Stat scaling is the smallest, purely-numeric option — no new
+content, one pure function, fits the existing `game_rules.dart` pattern
+(spawn-interval decay is the same shape of problem: a number that changes
+over the round). Leaving move speed alone keeps positioning/kiting — the
+game's one skill expression (D-004) — viable at every level; only the
+cost of getting hit or facetanking goes up, not whether you can outrun a
+grunt at all. Baking the multiplier in at spawn (not re-applied live) means
+an enemy that spawned early in the round doesn't retroactively get
+tougher just because the player leveled up since — matches "never carry
+state across rounds" in spirit (CLAUDE.md §4.5): each enemy's stats are
+fixed at the moment it's created, not floating with current round state.
+**Consequences:** `0.12`/level is a first guess, not playtested — 7.10-style
+on-device verification should include a run past level 5-6 to see whether
+it actually reads as "getting harder" or needs retuning (one constant to
+change). Faster spawns and skin-tiered enemy types remain open for later if
+stat scaling alone doesn't carry the difficulty curve far enough — not
+ruled out, just not built now.
+
+---
+
+## D-027 — Aura: first skill-type upgrade, weighted roll, capped stacks
+**Date:** 2026-09-08 · **Status:** Accepted
+**Context:** Developer asked for a 5th level-up option that's a real skill
+rather than a flat stat bump — a damaging aura built from the existing
+`projectile-spark.png` sheet (a left-to-right flash, not natively circular),
+mixed into the same random level-up roll as the 4 placeholder stat
+upgrades, with placeholder weights (real tuning deferred to config later),
+and capped at 3 stacks unlike the uncapped stat upgrades.
+**Decisions:**
+1. **Ring built from copies of the linear sheet, not new art.** `AuraComponent`
+   (`game/components/aura.dart`) places `_sparkCount = 6` child
+   `SpriteAnimationComponent`s evenly around a circle of
+   `UpgradeAmounts.auraRadiusPx` (70px) and rotates the whole group via its
+   own `angle`, rather than needing a genuinely circular sprite. Same
+   sheet as the existing hit-spark VFX, loaded a second time with
+   `loop: true` (`ArenaGame._auraSparkAnimation`) since the hit-spark's
+   existing load is deliberately non-looping (one-off burst per projectile
+   hit).
+2. **Spawned once, read every tick, not rebuilt per pick.** `ArenaGame._aura`
+   is created on the first Aura pick (`_syncAura()`, called from
+   `resolveLevelUpChoice`) and left alone after that — `AuraComponent`
+   reads `upgrades.pickCounts[UpgradeKind.aura]` itself each damage tick
+   to look up the current tier's damage
+   (`UpgradeAmounts.auraDamagePerTick`), so a 2nd/3rd pick is just a
+   number going up, not a respawn. Ticks every
+   `auraTickIntervalSec` (0.5s), hitting every non-dying enemy within
+   radius via the new pure `allWithinRange` (`core/game_rules.dart`) —
+   `nearestWithinRange` only returns one target, which doesn't fit an
+   area-effect skill.
+3. **Damage-only scaling, capped at 3 stacks, radius/tick-rate fixed.**
+   `UpgradeAmounts.auraDamagePerTick(stacks)` is a 3-entry tier table
+   (`[4, 8, 14]`), clamped so an out-of-range stack count can't index past
+   the table. Matches "damage scaling... max 3 levels like the other
+   upgrades" — radius and tick interval deliberately don't scale, so the
+   skill's *reach* stays predictable even as its damage grows.
+4. **Weighted, capped roll — a real mechanism change to `rollUpgradeChoices`,
+   not a special case bolted onto it.** `core/progression.dart` gained
+   `kUpgradeWeights` (placeholder, all `1` — the developer's explicit "we'll
+   decide weights later in config", this just wires the knob) and
+   `kUpgradeMaxPicks` (`null` = unlimited for the original 4,
+   `UpgradeAmounts.auraMaxStacks` for Aura). `rollUpgradeChoices` now
+   filters out anything at its cap, then samples the rest without
+   replacement using the Efraimidis-Spirakis key trick
+   (`random()^(1/weight)`, keep the top N keys) instead of a plain shuffle
+   — the standard way to do weighted sampling without replacement, and
+   still a pure function of the `Random` passed in (deterministic for a
+   seed, same as before). `pickCounts` is an optional named param
+   (defaults to `{}`, i.e. unrestricted) so the existing uniform-roll
+   tests didn't need rewriting.
+**Because:** Each piece follows an existing pattern in this codebase rather
+than inventing a new one — `game_rules.dart`'s pure-function style
+(`allWithinRange` sits right next to `nearestWithinRange`), `ArenaGame`
+owning round state and components reading it live rather than being
+handed values (D-025's `PauseMenu`/level-up gating does the same thing),
+and `UpgradeAmounts` as the one place a level-up number lives (CLAUDE.md
+§4.3 extended to skills, not just stats).
+**Consequences:** `0.12`-style tuning question again: `_sparkCount`,
+`auraRadiusPx`, `auraTickIntervalSec`, and the `[4, 8, 14]` damage tiers
+are first guesses, not playtested — one file (`core/progression.dart`) to
+retune once it's been seen on-device. `kUpgradeWeights` being all-equal
+means the roll behaves like the old uniform shuffle for now; real weight
+values are an explicit follow-up, not forgotten. `UpgradeKind.aura` being
+capped while the other 4 aren't is the first upgrade with a real
+`kUpgradeMaxPicks` entry — worth remembering if a 6th upgrade needs its
+own cap later, the mechanism already generalizes.
+
+**Update 2026-09-08 (first on-device pass):** Developer reported damage
+reading as absent or negligible. Code review found no wiring bug — hit
+detection, damage application, and `damageDealt`/floating-number feedback
+all route through the same `enemy.takeDamage` + `game.onProjectileHit`
+path the projectile already uses (`ProjectileComponent`), and the checked
+radius and the rendered ring were always the same `_radiusPx` value, just
+with nothing on screen actually marking where that boundary was. Two
+changes:
+1. **A visible ring, not just the orbiting sparks.** `AuraComponent` now
+   also adds a stroked `CircleComponent` at exactly `_radiusPx` — directly
+   answers "check hitbox location" by making the real damage boundary
+   visible on-device instead of inferred from where the decorative sparks
+   happen to sit.
+2. **Numbers bumped ~25-50%** — `auraRadiusPx` 70→85, `auraTickIntervalSec`
+   0.5→0.4s, damage tiers `[4,8,14]`→`[6,12,20]`. The original numbers
+   were plausible on paper (tier-1 was already ~half the Apprentice's base
+   attack DPS) but evidently didn't read as "working" in practice — most
+   likely too tight a radius for how little time enemies spend near the
+   player while being knocked back/chased, not a logic bug. Still a
+   guess, now a better-informed one; the ring should make the next
+   on-device pass diagnostic rather than a guess either way.
+
+**Update 2026-09-08 (second on-device pass):** Developer reported the
+opposite-sounding but consistent symptom: damage lands on the outside of
+the ring, not inside it. Re-verified `allWithinRange`'s check
+(`distance <= maxRange`) line by line — it's an inclusive full disk from
+the center outward, not a boundary/ring-only test, and there's only one
+definition of it in the codebase (no shadowing). The likely real cause:
+the only *visible* feedback the aura had was the 6 sparks and the debug
+ring, both of which sit permanently at exactly `_radiusPx` and nowhere
+else — so nothing ever rendered to show the interior was live, and a hit
+on an enemy stacked close to the player (small, easy to lose against the
+player's own sprite) was far less noticeable than one further out on open
+floor. Fix: replaced the static debug ring with `_AuraPulseComponent` — a
+filled, fast-fading flash across the *entire* disk, spawned by
+`_dealDamage()` itself on every tick that actually connects (not a
+standalone decoration). This is the requested "disable the visible
+hitbox" (the static outline is gone) plus a positive answer to "deal
+damage inside the radius as well": the whole disk visibly lights up on
+every real hit, edge to center, every 0.4s, so there's no more room for
+the ring-only impression. No gameplay-math change — `_dealDamage` is
+otherwise identical.
+
+**Update 2026-09-08 (confirmed working, flash removed):** Developer
+confirmed the disk-wide coverage was correct all along — it was purely
+the missing interior feedback, not a damage bug. `_AuraPulseComponent`
+removed now that its diagnostic job is done; `AuraComponent` ships with
+just the orbiting sparks (no ring, no pulse). `_dealDamage`'s actual hit
+logic never changed across any of this — three rounds of on-device
+feedback, zero changes to the range check itself.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer
@@ -639,10 +799,7 @@ before they can be settled.
   round. No save data needed yet.
 - ~~**Power-up delivery**~~ — closed by D-025: mid-round choice popup (1 of
   3), not between-round unlocks.
-- **Enemy scaling mechanism (still open)** — the level-up system (D-025)
-  makes the *player* stronger; it doesn't yet make enemies stronger or more
-  frequent to match, which was the other half of the developer's original
-  vision (TASKS Backlog "Progression system driving enemy scaling"). Multiply
-  `EnemyStats` by a level-derived factor, unlock distinct tougher enemy
-  types (`EnemySkin` already exists as the hook, D-022), or both — still
-  undecided, and the natural next step now that the player side exists.
+- ~~**Enemy scaling mechanism**~~ — closed by D-026: linear HP/damage
+  multiplier by player level, baked in at spawn. Faster spawns / distinct
+  tougher `EnemySkin` tiers stay open as later options if this alone isn't
+  enough.
