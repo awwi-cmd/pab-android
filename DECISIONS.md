@@ -749,6 +749,27 @@ changes:
    guess, now a better-informed one; the ring should make the next
    on-device pass diagnostic rather than a guess either way.
 
+**Update 2026-09-08 (second on-device pass):** Developer reported the
+opposite-sounding but consistent symptom: damage lands on the outside of
+the ring, not inside it. Re-verified `allWithinRange`'s check
+(`distance <= maxRange`) line by line — it's an inclusive full disk from
+the center outward, not a boundary/ring-only test, and there's only one
+definition of it in the codebase (no shadowing). The likely real cause:
+the only *visible* feedback the aura had was the 6 sparks and the debug
+ring, both of which sit permanently at exactly `_radiusPx` and nowhere
+else — so nothing ever rendered to show the interior was live, and a hit
+on an enemy stacked close to the player (small, easy to lose against the
+player's own sprite) was far less noticeable than one further out on open
+floor. Fix: replaced the static debug ring with `_AuraPulseComponent` — a
+filled, fast-fading flash across the *entire* disk, spawned by
+`_dealDamage()` itself on every tick that actually connects (not a
+standalone decoration). This is the requested "disable the visible
+hitbox" (the static outline is gone) plus a positive answer to "deal
+damage inside the radius as well": the whole disk visibly lights up on
+every real hit, edge to center, every 0.4s, so there's no more room for
+the ring-only impression. No gameplay-math change — `_dealDamage` is
+otherwise identical.
+
 ---
 
 ## Open questions

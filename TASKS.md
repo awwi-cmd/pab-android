@@ -220,6 +220,11 @@ built 2026-09-07 — see DECISIONS D-025 for the full design reasoning).*
       — **2026-09-08 update:** first pass read as no/negligible damage; no
       logic bug found (DECISIONS D-027 update), added a visible ring at
       the exact hit radius and bumped the numbers ~25-50%. Re-verify.
+      — **2026-09-08 update 2:** second pass reported damage only on the
+      outside, not inside, the ring. Re-verified the range check is a full
+      disk (still no logic bug found). Replaced the static debug ring with
+      a full-disk pulse flash fired on every connecting tick, so the
+      interior visibly lights up too. Re-verify.
 
 flutter analyze clean, flutter test passes (32 tests, 12 new), flutter build
 apk --debug succeeds. No automated coverage of the pause/overlay orchestration
