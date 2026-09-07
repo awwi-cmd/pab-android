@@ -67,50 +67,11 @@ class AuraComponent extends PositionComponent with HasGameReference<ArenaGame> {
 
     final enemies = game.enemies;
     final positions = [for (final enemy in enemies) enemy.position];
-    final hits = allWithinRange(position, positions, _radiusPx);
-    if (hits.isEmpty) return;
-
-    for (final index in hits) {
+    for (final index in allWithinRange(position, positions, _radiusPx)) {
       final enemy = enemies[index];
       if (enemy.isDying) continue;
       enemy.takeDamage(damage);
       game.onProjectileHit(enemy.position.clone(), damage);
     }
-    // A brief full-disk flash on every tick that actually connects -- the
-    // orbiting sparks only ever sit at the boundary, so on their own they
-    // read as a ring-shaped effect. This proves (and looks like) the whole
-    // disk is live, not just its edge -- replaces the static debug outline
-    // from the first on-device pass, which is no longer needed once this
-    // fires every tick on its own.
-    game.add(_AuraPulseComponent(center: position.clone(), radius: _radiusPx));
-  }
-}
-
-/// One-shot fading flash across the whole aura disk, spawned per successful
-/// tick (see `AuraComponent._dealDamage`). Filled, not stroked -- the point
-/// is to visually prove the *entire* radius just hit, not trace its edge.
-class _AuraPulseComponent extends CircleComponent {
-  _AuraPulseComponent({required Vector2 center, required double radius})
-    : super(
-        radius: radius,
-        position: center,
-        anchor: Anchor.center,
-        priority: ArenaPriority.hitEffects,
-        paint: Paint()..color = const Color(0x556CE0B8), // ArenaColors.accent
-      );
-
-  double _age = 0;
-  static const _lifespanSec = 0.18;
-
-  @override
-  void update(double dt) {
-    super.update(dt);
-    _age += dt;
-    if (_age >= _lifespanSec) {
-      removeFromParent();
-      return;
-    }
-    final fade = 1 - (_age / _lifespanSec);
-    paint.color = paint.color.withAlpha((0x55 * fade).round());
   }
 }

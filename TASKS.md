@@ -213,7 +213,7 @@ built 2026-09-07 — see DECISIONS D-025 for the full design reasoning).*
       flutter test passes (42 tests, 10 new), flutter build apk --debug
       succeeds. On-device feel (ring readability, tick damage, radius) is
       part of 7.12 below
-- [ ] **7.12** On-device verification of the Aura skill — **developer**: ring
+- [x] **7.12** On-device verification of the Aura skill — **developer**: ring
       visually reads as an aura (not just spinning dots), tick damage/radius
       feel right, stacking to 3 actually feels like it's getting stronger,
       it still shows up in "view your upgrades"
@@ -224,7 +224,10 @@ built 2026-09-07 — see DECISIONS D-025 for the full design reasoning).*
       outside, not inside, the ring. Re-verified the range check is a full
       disk (still no logic bug found). Replaced the static debug ring with
       a full-disk pulse flash fired on every connecting tick, so the
-      interior visibly lights up too. Re-verify.
+      interior visibly lights up too.
+      — **2026-09-08 update 3: confirmed working.** Coverage was correct
+      the whole time; the diagnostic pulse is now removed, aura ships with
+      just the orbiting sparks. Merged to main.
 
 flutter analyze clean, flutter test passes (32 tests, 12 new), flutter build
 apk --debug succeeds. No automated coverage of the pause/overlay orchestration

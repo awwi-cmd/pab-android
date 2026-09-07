@@ -770,6 +770,14 @@ every real hit, edge to center, every 0.4s, so there's no more room for
 the ring-only impression. No gameplay-math change — `_dealDamage` is
 otherwise identical.
 
+**Update 2026-09-08 (confirmed working, flash removed):** Developer
+confirmed the disk-wide coverage was correct all along — it was purely
+the missing interior feedback, not a damage bug. `_AuraPulseComponent`
+removed now that its diagnostic job is done; `AuraComponent` ships with
+just the orbiting sparks (no ring, no pulse). `_dealDamage`'s actual hit
+logic never changed across any of this — three rounds of on-device
+feedback, zero changes to the range check itself.
+
 ---
 
 ## Open questions
