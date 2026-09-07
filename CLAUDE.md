@@ -28,13 +28,14 @@ Round ends on death.
 **The demo (TASKS Phases 0-6) was called done 2026-09-07.** `PRD.md` describes
 that demo and is frozen as a record of it — `§9 Explicitly out of scope` there
 was binding *for the demo* and mostly still is, but the project has moved past
-it: **Phase 7 (in-round leveling, upgrade choices, pause menu) is built** —
-see DECISIONS D-025. This is real, ongoing post-demo work now, not speculative
-scope; new post-demo phases get their own section in `TASKS.md` the same way,
-not dumped in the Backlog. The Backlog is still binding for what hasn't been
-explicitly asked for — keep asking before building ahead of what's actually
-been requested (CLAUDE.md §6 "Ask before scope" — this has come up for real
-more than once and the answer each time was to stop and ask, not guess).
+it: **Phase 7 (in-round leveling, upgrade choices, pause menu, enemy scaling,
+and the Aura skill) is built** — see DECISIONS D-025/D-026/D-027. This is
+real, ongoing post-demo work now, not speculative scope; new post-demo phases
+get their own section in `TASKS.md` the same way, not dumped in the Backlog.
+The Backlog is still binding for what hasn't been explicitly asked for — keep
+asking before building ahead of what's actually been requested (CLAUDE.md §6
+"Ask before scope" — this has come up for real more than once and the answer
+each time was to stop and ask, not guess).
 
 Read in this order when picking up work: `PRD.md` → `TASKS.md` → `DECISIONS.md`
 → `NEXT.md` (extension points and rough edges for whoever picks up the next
@@ -80,9 +81,9 @@ batch files. Always `set FLUTTER=C:\src\flutter\bin\flutter.bat`.
 
 ## 3. Repository layout
 
-Kept current as of Phase 7 (2026-09-07) — update this tree when you add a file
-that will confuse the next person if it's missing here, same discipline as
-`TASKS.md`.
+Kept current as of Phase 7.11 (2026-09-08) — update this tree when you add a
+file that will confuse the next person if it's missing here, same discipline
+as `TASKS.md`.
 
 ```
 ArenaDemo/                    <- repo root, open this in your editor
@@ -111,8 +112,9 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   ├── constants.dart     // design size, colors, layer priorities, render scales
         │   ├── stats.dart         // StatBlock + ALL derived-stat formulas, EnemyStats
         │   ├── settings.dart      // Settings model + SharedPreferences I/O
-        │   ├── game_rules.dart    // pure gameplay math (targeting, spawn decay, knockback) — D-024
-        │   └── progression.dart   // XP curve, UpgradeKind, PlayerUpgrades — D-025
+        │   ├── game_rules.dart    // pure gameplay math (targeting, spawn decay, knockback,
+        │   │                      //   enemy level-scaling D-026, area-effect range D-027)
+        │   └── progression.dart   // XP curve, UpgradeKind (incl. Aura), PlayerUpgrades — D-025/D-027
         ├── data/
         │   └── characters.dart    // CharacterDef list (4 slots, 1 unlocked)
         ├── ui/
@@ -128,12 +130,13 @@ ArenaDemo/                    <- repo root, open this in your editor
             ├── attack_behavior.dart       // AttackBehavior + ProjectileAttack — D-024
             ├── components/
             │   ├── player.dart
-            │   ├── enemy.dart
+            │   ├── enemy.dart              // hp/contactDamage scaled by level at spawn — D-026
             │   ├── projectile.dart
             │   ├── spawner.dart
             │   ├── hp_bar.dart
             │   ├── damage_text.dart
-            │   └── arena_floor.dart
+            │   ├── arena_floor.dart
+            │   └── aura.dart                // Aura skill: orbiting sparks, area-tick damage — D-027
             ├── input/
             │   ├── movement_input.dart    // the 3 control schemes, scheme-agnostic Vector2
             │   └── joystick_overlay.dart  // the 3 schemes' actual Flutter touch capture
