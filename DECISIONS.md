@@ -727,6 +727,28 @@ capped while the other 4 aren't is the first upgrade with a real
 `kUpgradeMaxPicks` entry — worth remembering if a 6th upgrade needs its
 own cap later, the mechanism already generalizes.
 
+**Update 2026-09-08 (first on-device pass):** Developer reported damage
+reading as absent or negligible. Code review found no wiring bug — hit
+detection, damage application, and `damageDealt`/floating-number feedback
+all route through the same `enemy.takeDamage` + `game.onProjectileHit`
+path the projectile already uses (`ProjectileComponent`), and the checked
+radius and the rendered ring were always the same `_radiusPx` value, just
+with nothing on screen actually marking where that boundary was. Two
+changes:
+1. **A visible ring, not just the orbiting sparks.** `AuraComponent` now
+   also adds a stroked `CircleComponent` at exactly `_radiusPx` — directly
+   answers "check hitbox location" by making the real damage boundary
+   visible on-device instead of inferred from where the decorative sparks
+   happen to sit.
+2. **Numbers bumped ~25-50%** — `auraRadiusPx` 70→85, `auraTickIntervalSec`
+   0.5→0.4s, damage tiers `[4,8,14]`→`[6,12,20]`. The original numbers
+   were plausible on paper (tier-1 was already ~half the Apprentice's base
+   attack DPS) but evidently didn't read as "working" in practice — most
+   likely too tight a radius for how little time enemies spend near the
+   player while being knocked back/chased, not a logic bug. Still a
+   guess, now a better-informed one; the ring should make the next
+   on-device pass diagnostic rather than a guess either way.
+
 ---
 
 ## Open questions

@@ -26,6 +26,20 @@ import '../arena_game.dart';
 class AuraComponent extends PositionComponent with HasGameReference<ArenaGame> {
   AuraComponent({required SpriteAnimation sparkAnimation})
     : super(anchor: Anchor.center, priority: ArenaPriority.hitEffects) {
+    // Traces the exact damage radius `_dealDamage` checks against, not just
+    // a decorative guess -- the orbiting sparks alone don't communicate
+    // where the boundary actually is (developer ask: "check hitbox
+    // location"). Outline only, so it doesn't obscure enemies underneath.
+    add(
+      CircleComponent(
+        radius: _radiusPx,
+        anchor: Anchor.center,
+        paint: Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = const Color(0x806CE0B8), // ArenaColors.accent @ ~50%
+      ),
+    );
     for (var i = 0; i < _sparkCount; i++) {
       final theta = (i / _sparkCount) * 2 * pi;
       add(

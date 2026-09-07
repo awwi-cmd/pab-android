@@ -85,9 +85,12 @@ class UpgradeAmounts {
   // capped at `auraMaxStacks` (unlike the flat stat upgrades above, which
   // stack unlimited times) — matches the developer's "max 3 levels" spec.
   static const int auraMaxStacks = 3;
-  static const double auraRadiusPx = 70;
-  static const double auraTickIntervalSec = 0.5;
-  static const List<double> _auraDamagePerTickByStack = [4, 8, 14];
+  // Retuned 2026-09-08 after the first on-device pass read as doing
+  // "barely any damage" (radius 70 / 0.5s / [4,8,14] originally) -- up
+  // ~25-50% across the board. Still a guess, not a final balance pass.
+  static const double auraRadiusPx = 85;
+  static const double auraTickIntervalSec = 0.4;
+  static const List<double> _auraDamagePerTickByStack = [6, 12, 20];
 
   /// Damage per tick for the given stack count (1-based, clamped into
   /// range so a caller can't index out of bounds on a future stack change).
