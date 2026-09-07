@@ -26,6 +26,20 @@ int nearestWithinRange(Vector2 from, List<Vector2> candidates, double maxRange) 
   return bestIndex;
 }
 
+/// All indices in [candidates] within [maxRange] of [from] — unlike
+/// [nearestWithinRange] (single target, for the auto-attack), this is for
+/// area-effect abilities that hit everything in a radius (e.g. the Aura
+/// skill, DECISIONS D-027).
+List<int> allWithinRange(Vector2 from, List<Vector2> candidates, double maxRange) {
+  final result = <int>[];
+  for (var i = 0; i < candidates.length; i++) {
+    if (candidates[i].distanceTo(from) <= maxRange) {
+      result.add(i);
+    }
+  }
+  return result;
+}
+
 /// PRD §6.4: the spawn interval shrinks by [factor] every decay tick,
 /// floored at [floor] so it never reaches (or goes below) zero.
 double nextSpawnInterval(
@@ -42,4 +56,17 @@ double nextSpawnInterval(
 /// velocity, and plenty for the demo's feel (see `EnemyComponent`).
 double knockbackDistance(double impulsePxPerS, double durationSec) {
   return impulsePxPerS * durationSec;
+}
+
+/// DECISIONS D-026: the other half of the progression vision — enemies get
+/// tougher as the player levels, not just the player getting stronger.
+/// Linear per level, applied to `EnemyStats.maxHp`/`contactDamage` at spawn
+/// time (`ArenaGame.spawnEnemy`) — deliberately not `moveSpeedPxPerS`, so a
+/// higher level never makes an enemy literally impossible to outrun, only
+/// costlier to fight or facetank.
+const double kEnemyScalePerLevel = 0.12;
+
+double enemyStatMultiplier(int playerLevel) {
+  assert(playerLevel >= 1);
+  return 1 + (playerLevel - 1) * kEnemyScalePerLevel;
 }

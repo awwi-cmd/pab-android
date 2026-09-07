@@ -50,6 +50,51 @@ void main() {
         rollUpgradeChoices(Random(7), count: 3),
       );
     });
+
+    test('stops offering a kind once its max-picks cap is reached', () {
+      final maxedOut = {UpgradeKind.aura: UpgradeAmounts.auraMaxStacks};
+      for (var seed = 0; seed < 50; seed++) {
+        final choices = rollUpgradeChoices(
+          Random(seed),
+          pickCounts: maxedOut,
+          count: 3,
+        );
+        expect(choices, isNot(contains(UpgradeKind.aura)));
+      }
+    });
+
+    test('a kind below its cap can still be offered', () {
+      final belowCap = {UpgradeKind.aura: UpgradeAmounts.auraMaxStacks - 1};
+      var sawAura = false;
+      for (var seed = 0; seed < 50; seed++) {
+        final choices = rollUpgradeChoices(
+          Random(seed),
+          pickCounts: belowCap,
+          count: 3,
+        );
+        if (choices.contains(UpgradeKind.aura)) sawAura = true;
+      }
+      expect(sawAura, isTrue);
+    });
+  });
+
+  group('UpgradeAmounts.auraDamagePerTick', () {
+    test('increases with stack count, capped at auraMaxStacks tiers', () {
+      final tiers = [
+        for (var s = 1; s <= UpgradeAmounts.auraMaxStacks; s++)
+          UpgradeAmounts.auraDamagePerTick(s),
+      ];
+      for (var i = 1; i < tiers.length; i++) {
+        expect(tiers[i], greaterThan(tiers[i - 1]));
+      }
+    });
+
+    test('clamps stack counts above the cap to the top tier', () {
+      expect(
+        UpgradeAmounts.auraDamagePerTick(UpgradeAmounts.auraMaxStacks + 5),
+        UpgradeAmounts.auraDamagePerTick(UpgradeAmounts.auraMaxStacks),
+      );
+    });
   });
 
   group('PlayerUpgrades', () {
@@ -80,6 +125,16 @@ void main() {
       expect(upgrades.bonusDamage, UpgradeAmounts.intellectBonusDamage);
       expect(upgrades.bonusMaxHp, 0);
       expect(upgrades.bonusMoveSpeed, 0);
+    });
+
+    test('aura adds no stat bonus, only tracks its pick count', () {
+      final upgrades = PlayerUpgrades();
+      final healed = upgrades.apply(UpgradeKind.aura);
+      expect(healed, 0);
+      expect(upgrades.bonusMaxHp, 0);
+      expect(upgrades.bonusMoveSpeed, 0);
+      expect(upgrades.bonusDamage, 0);
+      expect(upgrades.pickCounts[UpgradeKind.aura], 1);
     });
 
     test('picks accumulate across multiple applies', () {

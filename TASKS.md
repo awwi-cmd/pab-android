@@ -196,16 +196,34 @@ built 2026-09-07 — see DECISIONS D-025 for the full design reasoning).*
 - [x] **7.8** Queued level-ups (debug-granted or otherwise earned while the
       pause menu happened to be open) chain into the popup immediately after
       closing the menu, still paused — not resumed first
-- [ ] **7.9** Enemy scaling to match player level — **not started**, the other
-      half of the original vision (DECISIONS Open Questions: multiply
-      `EnemyStats`, unlock tougher `EnemySkin`s, or both)
+- [x] **7.9** Enemy scaling to match player level — done (DECISIONS D-026):
+      linear HP/contact-damage multiplier by player level
+      (`enemyStatMultiplier`, `core/game_rules.dart`), baked into each enemy
+      at spawn time. Move speed left unscaled deliberately. Unit-tested;
+      on-device feel (does 0.12/level actually read as harder) is part of
+      7.10
 - [ ] **7.10** On-device verification — **developer**: level-up popup timing/
       feel, pause menu across all 3 control schemes, god mode actually
       prevents damage, grant-level-up queuing behaves as described
+- [x] **7.11** Aura skill — a 5th level-up option, a damaging ring built from
+      `projectile-spark.png` orbiting the player (DECISIONS D-027), mixed
+      into the same weighted roll as the 4 stat upgrades (placeholder equal
+      weights, `kUpgradeWeights` in `core/progression.dart` — real tuning
+      later), capped at 3 stacks unlike the others. flutter analyze clean,
+      flutter test passes (42 tests, 10 new), flutter build apk --debug
+      succeeds. On-device feel (ring readability, tick damage, radius) is
+      part of 7.12 below
+- [ ] **7.12** On-device verification of the Aura skill — **developer**: ring
+      visually reads as an aura (not just spinning dots), tick damage/radius
+      feel right, stacking to 3 actually feels like it's getting stronger,
+      it still shows up in "view your upgrades"
 
 flutter analyze clean, flutter test passes (32 tests, 12 new), flutter build
 apk --debug succeeds. No automated coverage of the pause/overlay orchestration
 itself (D-019 still applies) — 7.10 is the real check.
+
+**2026-09-08 update (7.9):** flutter analyze clean, flutter test passes (34
+tests, 2 new for `enemyStatMultiplier`), flutter build apk --debug succeeds.
 
 **Exit criterion:** a full round can level up multiple times, review picks,
 pause/resume through all menus, and reset cleanly on re-entry, without the
@@ -223,10 +241,11 @@ Kept here so ideas have somewhere to go that isn't the current sprint.
   3 skins were wired for visual variety only, one shared `EnemyStats` profile
   — still true "one enemy type" per PRD §9, so this backlog item stands)
 - Structured waves and a boss
-- **Enemy scaling to match player progression** — the player-side half of
-  this shipped in Phase 7 below (D-025). Enemies still don't get stronger or
-  spawn faster as the player levels — that's the remaining half of the
-  original vision, still genuinely undecided (see DECISIONS Open Questions).
+- **Enemy scaling to match player progression** — done as of Phase 7.9
+  (D-026): HP/contact damage scale linearly with player level. Faster
+  spawns tied to level, or distinct tougher `EnemySkin` tiers, remain
+  Backlog if the linear stat scale alone doesn't carry the difficulty
+  curve far enough.
 - Real audio: SFX bank + music, wired to the existing volume sliders
 - Multiple arenas and backgrounds
 - Camera larger than the screen, with scroll

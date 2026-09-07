@@ -21,12 +21,16 @@ double xpThresholdForLevel(int level) {
   return kBaseXpToNextLevel * pow(kXpGrowthFactor, level - 1);
 }
 
-/// The 4 placeholder upgrades (developer's spec, exact wording): VIT
-/// increases HP, DEX increases move speed, STR increases half of each,
-/// INT increases projectile damage. More power-ups land later — this enum
-/// is deliberately small so adding one is a data change (`PlayerUpgrades`
-/// below), not a rewrite of the level-up flow.
-enum UpgradeKind { vit, dex, str, intellect }
+/// The placeholder upgrades (developer's spec, exact wording for the
+/// original 4): VIT increases HP, DEX increases move speed, STR increases
+/// half of each, INT increases projectile damage. `aura` is the first real
+/// skill rather than a flat stat bump (DECISIONS D-027) — a damaging ring
+/// that orbits the player, capped at `UpgradeAmounts.auraMaxStacks` picks
+/// (see `kUpgradeMaxPicks` below), unlike the other four which stack
+/// unlimited times. Adding another upgrade is still just a data change here
+/// (`UpgradeAmounts`, `kUpgradeWeights`, `PlayerUpgrades.apply`), not a
+/// rewrite of the level-up flow.
+enum UpgradeKind { vit, dex, str, intellect, aura }
 
 extension UpgradeKindLabels on UpgradeKind {
   String get label {
@@ -39,6 +43,8 @@ extension UpgradeKindLabels on UpgradeKind {
         return 'Strength';
       case UpgradeKind.intellect:
         return 'Intellect';
+      case UpgradeKind.aura:
+        return 'Aura';
     }
   }
 
@@ -53,6 +59,9 @@ extension UpgradeKindLabels on UpgradeKind {
             '+${UpgradeAmounts.strBonusMoveSpeed.round()} move speed';
       case UpgradeKind.intellect:
         return '+${UpgradeAmounts.intellectBonusDamage.round()} projectile damage';
+      case UpgradeKind.aura:
+        return 'Orbiting spark aura, damages nearby enemies '
+            '(max ${UpgradeAmounts.auraMaxStacks} stacks)';
     }
   }
 }
@@ -69,14 +78,73 @@ class UpgradeAmounts {
   static const double strBonusMaxHp = vitBonusMaxHp / 2;
   static const double strBonusMoveSpeed = dexBonusMoveSpeed / 2;
   static const double intellectBonusDamage = 3;
+
+  // Aura skill (DECISIONS D-027) — a ring of `projectile-spark.png` copies
+  // orbiting the player, ticking damage to everything caught inside
+  // `auraRadiusPx` every `auraTickIntervalSec`. Damage scales per stack,
+  // capped at `auraMaxStacks` (unlike the flat stat upgrades above, which
+  // stack unlimited times) — matches the developer's "max 3 levels" spec.
+  static const int auraMaxStacks = 3;
+  static const double auraRadiusPx = 70;
+  static const double auraTickIntervalSec = 0.5;
+  static const List<double> _auraDamagePerTickByStack = [4, 8, 14];
+
+  /// Damage per tick for the given stack count (1-based, clamped into
+  /// range so a caller can't index out of bounds on a future stack change).
+  static double auraDamagePerTick(int stacks) {
+    final index = stacks.clamp(1, auraMaxStacks) - 1;
+    return _auraDamagePerTickByStack[index];
+  }
 }
 
-/// Picks [count] distinct upgrade kinds at random, out of the full pool.
+/// Relative weights for the level-up roll — placeholder, all equal for now
+/// (developer's call: real tuning happens later in config). Edit this map,
+/// nothing else, to bias which upgrades come up more or less often.
+const Map<UpgradeKind, double> kUpgradeWeights = {
+  UpgradeKind.vit: 1,
+  UpgradeKind.dex: 1,
+  UpgradeKind.str: 1,
+  UpgradeKind.intellect: 1,
+  UpgradeKind.aura: 1,
+};
+
+/// How many times each upgrade may be picked in a round — `null` means
+/// unlimited (the original 4 flat stat upgrades). Aura caps at
+/// `UpgradeAmounts.auraMaxStacks`; once a kind hits its cap,
+/// [rollUpgradeChoices] stops offering it.
+const Map<UpgradeKind, int?> kUpgradeMaxPicks = {
+  UpgradeKind.vit: null,
+  UpgradeKind.dex: null,
+  UpgradeKind.str: null,
+  UpgradeKind.intellect: null,
+  UpgradeKind.aura: UpgradeAmounts.auraMaxStacks,
+};
+
+/// Picks [count] distinct upgrade kinds, weighted by [kUpgradeWeights] and
+/// excluding anything already at its [kUpgradeMaxPicks] cap (pass the
+/// round's current `PlayerUpgrades.pickCounts`; omit it where the cap
+/// doesn't matter, e.g. tests). Weighted sampling without replacement via
+/// the Efraimidis-Spirakis key trick: draw `random()^(1/weight)` per
+/// candidate and keep the top [count] keys — higher weight means a key
+/// closer to 1, so it's more likely to survive the cut.
 /// Pure function of the [Random] passed in — seed it in a test for a
 /// deterministic roll.
-List<UpgradeKind> rollUpgradeChoices(Random random, {int count = 3}) {
-  final pool = List<UpgradeKind>.from(UpgradeKind.values)..shuffle(random);
-  return pool.take(count).toList();
+List<UpgradeKind> rollUpgradeChoices(
+  Random random, {
+  Map<UpgradeKind, int> pickCounts = const {},
+  int count = 3,
+}) {
+  final eligible = UpgradeKind.values.where((kind) {
+    final max = kUpgradeMaxPicks[kind];
+    return max == null || (pickCounts[kind] ?? 0) < max;
+  });
+
+  final keyed = [
+    for (final kind in eligible)
+      (kind, pow(random.nextDouble(), 1 / kUpgradeWeights[kind]!)),
+  ]..sort((a, b) => b.$2.compareTo(a.$2));
+
+  return [for (final entry in keyed.take(count)) entry.$1];
 }
 
 /// Accumulated level-up bonuses for the current round. Deliberately a flat
@@ -110,6 +178,12 @@ class PlayerUpgrades {
         return UpgradeAmounts.strBonusMaxHp;
       case UpgradeKind.intellect:
         bonusDamage += UpgradeAmounts.intellectBonusDamage;
+        return 0;
+      case UpgradeKind.aura:
+        // No direct stat bonus -- ArenaGame reads pickCounts[aura] to
+        // spawn/scale the AuraComponent (game/components/aura.dart, D-027).
+        // Rolls stop offering this kind once it hits auraMaxStacks, so
+        // pickCounts should never exceed it in practice.
         return 0;
     }
   }
