@@ -125,6 +125,7 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
         maxRangePx: BossStats.fireRangePx * 2,
         animation: game.boltAnimation,
         tint: kBossBoltTint,
+        excludeSelf: this,
       ),
     );
   }

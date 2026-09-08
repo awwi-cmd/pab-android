@@ -113,6 +113,25 @@ void main() {
     });
   });
 
+  group('corruption multipliers', () {
+    test('are neutral at level 0', () {
+      expect(corruptionSpawnIntervalMultiplier(0), 1.0);
+      expect(corruptionEnemyStatMultiplier(0), 1.0);
+      expect(corruptionRewardMultiplier(0), 1.0);
+    });
+
+    test('scale linearly with level', () {
+      expect(corruptionSpawnIntervalMultiplier(5), closeTo(0.6, 1e-9));
+      expect(corruptionEnemyStatMultiplier(5), closeTo(1.4, 1e-9));
+      expect(corruptionRewardMultiplier(5), closeTo(1.5, 1e-9));
+    });
+
+    test('spawn interval multiplier never drops below its floor', () {
+      expect(corruptionSpawnIntervalMultiplier(10), greaterThanOrEqualTo(0.2));
+      expect(corruptionSpawnIntervalMultiplier(100), 0.2);
+    });
+  });
+
   group('randomPerimeterPoint', () {
     test('always lands outside the visible rect, inflated by the margin', () {
       const visible = Rect.fromLTWH(0, 0, 360, 800);

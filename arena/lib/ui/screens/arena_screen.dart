@@ -4,6 +4,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
+import '../../core/meta_progression.dart';
 import '../../core/progression.dart';
 import '../../core/settings.dart';
 import '../../data/characters.dart';
@@ -40,13 +41,17 @@ class _ArenaScreenState extends State<ArenaScreen> {
 
   Future<void> _load(CharacterDef character) async {
     // Control scheme is read once at arena entry, never live-switched
-    // mid-round (DECISIONS D-006).
+    // mid-round (DECISIONS D-006). The Upgrades shop's purchases (D-047)
+    // are read the same way — the shop itself is only reachable from
+    // character-select, never mid-round, so a fresh read here is enough.
     final settings = await SettingsRepository().load();
+    final meta = await MetaProgressionRepository().load();
     if (!mounted) return;
     setState(() {
       _game = ArenaGame(
         character: character,
         settings: settings,
+        meta: meta,
         systemInsets: MediaQuery.of(context).padding,
       );
     });
@@ -316,24 +321,34 @@ class _CoinCounterState extends State<_CoinCounter>
               children: [
                 for (final coin in _flyingCoins)
                   _buildFlyingCoin(coin, constraints.maxWidth),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Image.asset(
-                      'assets/images/ui/currency-counter.png',
-                      height: 64,
-                      filterQuality: FilterQuality.none,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      '${_count.value}',
-                      style: const TextStyle(
-                        color: ArenaColors.accent,
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
+                // The asset itself reads as a badge/plaque meant to hold a
+                // number, not a standalone icon next to one -- the earlier
+                // Image+Text Row put the count beside it, which on-device
+                // read as "the number is outside the UI panel for it"
+                // (2026-09-09). Stacked and centered instead, so the count
+                // sits inside the plaque like the art implies.
+                SizedBox(
+                  width: 128,
+                  height: 64,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Image.asset(
+                        'assets/images/ui/currency-counter.png',
+                        width: 128,
+                        height: 64,
+                        filterQuality: FilterQuality.none,
                       ),
-                    ),
-                  ],
+                      Text(
+                        '${_count.value}',
+                        style: const TextStyle(
+                          color: Color(0xFF6B2E00),
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -362,7 +377,8 @@ class _CoinCounterState extends State<_CoinCounter>
             cellSize: 16,
             column: 0, // tier 0 (common) -- just a generic flying coin
             row: 0,
-            displaySize: 20,
+            displaySize: 26, // bumped from 20 -- too small to notice on-device
+
           ),
         ),
       ),

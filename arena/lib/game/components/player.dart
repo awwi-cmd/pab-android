@@ -5,6 +5,7 @@ import 'package:flame/components.dart';
 
 import '../../core/constants.dart';
 import '../../core/progression.dart';
+import '../../core/stats.dart';
 import '../../data/characters.dart';
 import '../anim/anim_state.dart';
 import '../anim/character_animations.dart';
@@ -20,9 +21,10 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
     with HasGameReference<ArenaGame> {
   PlayerComponent({
     required this.character,
+    required this.stats,
     required this.input,
     required CharacterAnimations animations,
-  }) : hp = character.stats.maxHp,
+  }) : hp = stats.maxHp,
        super(
          animations: animations.all,
          current: AnimState.spawn,
@@ -36,6 +38,12 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
        );
 
   final CharacterDef character;
+
+  /// The character's base stats plus whatever's been bought in the
+  /// Upgrades shop (`ArenaGame.effectiveStats`, DECISIONS D-047) — resolved
+  /// once at round start, not re-read from `character` directly, since the
+  /// shop's purchases aren't reachable mid-round anyway.
+  final StatBlock stats;
   final MovementInput input;
 
   double hp;
@@ -53,9 +61,9 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
   /// Base stat plus whatever level-up picks have added this round
   /// (`ArenaGame.upgrades`, DECISIONS D-025) — a flat additive layer on
   /// top of `StatBlock`, not a re-derivation of it.
-  double get effectiveMaxHp => character.stats.maxHp + game.upgrades.bonusMaxHp;
+  double get effectiveMaxHp => stats.maxHp + game.upgrades.bonusMaxHp;
   double get effectiveMoveSpeed =>
-      character.stats.moveSpeedPxPerS + game.upgrades.bonusMoveSpeed;
+      stats.moveSpeedPxPerS + game.upgrades.bonusMoveSpeed;
 
   @override
   void update(double dt) {
@@ -71,7 +79,7 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
       }
     }
 
-    hp = min(effectiveMaxHp, hp + character.stats.hpRegenPerSec * dt);
+    hp = min(effectiveMaxHp, hp + stats.hpRegenPerSec * dt);
 
     if (_invulnTimer > 0) {
       _invulnTimer -= dt;

@@ -91,6 +91,35 @@ double bossStatMultiplier(int spawnIndex) {
   return pow(1 + kBossScalePerSpawn, spawnIndex).toDouble();
 }
 
+/// Corruption (DECISIONS D-047, the Upgrades shop's 5th track) — developer's
+/// spec verbatim: "increases your enemy spawn rate/enemy HP/enemy damage but
+/// increases rewards per level bought." Linear per level (0-10, `MetaProgression
+/// .corruptionLevel`), same shape as [enemyStatMultiplier] above but layered
+/// on top of it rather than replacing it. First-guess placeholders, not
+/// tuned on-device.
+const double kCorruptionSpawnRatePerLevel = 0.08;
+const double kCorruptionEnemyStatPerLevel = 0.08;
+const double kCorruptionRewardPerLevel = 0.10;
+
+/// Multiplies `Spawner`'s scheduled interval — below 1 means faster spawns.
+/// Clamped so max corruption (level 10, -80%) can't collapse the interval to
+/// zero and spawn-lock the frame.
+double corruptionSpawnIntervalMultiplier(int corruptionLevel) {
+  return (1 - corruptionLevel * kCorruptionSpawnRatePerLevel).clamp(0.2, 1.0);
+}
+
+/// Multiplies enemy HP/contact damage at spawn, alongside (not instead of)
+/// [enemyStatMultiplier].
+double corruptionEnemyStatMultiplier(int corruptionLevel) {
+  return 1 + corruptionLevel * kCorruptionEnemyStatPerLevel;
+}
+
+/// Multiplies coin rewards per kill — the "but increases rewards" half of
+/// the trade-off.
+double corruptionRewardMultiplier(int corruptionLevel) {
+  return 1 + corruptionLevel * kCorruptionRewardPerLevel;
+}
+
 /// A random point just outside [visible], by [marginFactor] of its own
 /// width/height (DECISIONS D-041/D-042) — shared by `Spawner` (enemies) and
 /// the boss's spawn point, so both land just off whatever the player can

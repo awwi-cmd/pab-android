@@ -6,6 +6,8 @@ import 'ui/screens/character_select_screen.dart';
 import 'ui/screens/credits_screen.dart';
 import 'ui/screens/main_menu_screen.dart';
 import 'ui/screens/settings_screen.dart';
+import 'ui/screens/shop_screen.dart';
+import 'ui/screens/upgrades_screen.dart';
 
 class ArenaApp extends StatelessWidget {
   const ArenaApp({super.key});
@@ -22,6 +24,8 @@ class ArenaApp extends StatelessWidget {
         SettingsScreen.route: (_) => const SettingsScreen(),
         CreditsScreen.route: (_) => const CreditsScreen(),
         CharacterSelectScreen.route: (_) => const CharacterSelectScreen(),
+        ShopScreen.route: (_) => const ShopScreen(),
+        UpgradesScreen.route: (_) => const UpgradesScreen(),
         ArenaScreen.route: (_) => const ArenaScreen(),
       },
     );

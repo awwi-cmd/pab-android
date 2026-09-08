@@ -1,0 +1,186 @@
+import 'dart:math';
+
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Persistent, cross-round meta-progression (DECISIONS D-047) — the
+/// character-select screen's new "UPGRADES" tab, developer's spec verbatim:
+/// STR/VIT/DEX/INT/CORRUPTION, 10 levels each, bought with coins earned
+/// finishing rounds. This is a *different* wallet from `ArenaGame.
+/// coinsEarned` (that one is round-scoped loot, reset every round per
+/// CLAUDE.md §4.5) — [MetaProgressionRepository.addCoins] is the one place
+/// a round's earnings cross over into this persistent one, called once from
+/// `ArenaGame._endRound`.
+///
+/// Corruption is the odd one out — it doesn't buy a playable stat, it turns
+/// a difficulty/reward dial (`core/game_rules.dart`'s
+/// `corruptionSpawnIntervalMultiplier`/`corruptionEnemyStatMultiplier`/
+/// `corruptionRewardMultiplier` read the level straight off this).
+enum MetaStat { str, vit, dex, intellect, corruption }
+
+extension MetaStatLabels on MetaStat {
+  String get label {
+    switch (this) {
+      case MetaStat.str:
+        return 'STR';
+      case MetaStat.vit:
+        return 'VIT';
+      case MetaStat.dex:
+        return 'DEX';
+      case MetaStat.intellect:
+        return 'INT';
+      case MetaStat.corruption:
+        return 'CORRUPTION';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case MetaStat.str:
+      case MetaStat.vit:
+      case MetaStat.dex:
+      case MetaStat.intellect:
+        return '+1 $label per level, every run.';
+      case MetaStat.corruption:
+        return 'Tougher, faster enemies. Bigger rewards.';
+    }
+  }
+}
+
+/// Every track tops out at 10 (developer's spec: "everything in upgrades
+/// has 10 levels").
+const int kMetaMaxLevel = 10;
+
+/// Cost to go from [currentLevel] to currentLevel + 1 (0-based, so the very
+/// first purchase costs `metaUpgradeCost(0)`) — same growth-curve shape as
+/// the in-round XP curve (`progression.dart`'s
+/// kBaseXpToNextLevel/kXpGrowthFactor), deliberately steep so maxing one
+/// track is a real long-term goal. First-guess placeholder, not tuned.
+const double kMetaBaseCost = 50;
+const double kMetaCostGrowth = 1.35;
+
+int metaUpgradeCost(int currentLevel) {
+  return (kMetaBaseCost * pow(kMetaCostGrowth, currentLevel)).round();
+}
+
+/// A snapshot of the shop's state — loaded fresh at character-select and at
+/// arena entry, saved back on every purchase (same "screens own their own
+/// copy, persist on every change" pattern as `Settings`, CLAUDE.md §4.9: no
+/// state-management library).
+class MetaProgression {
+  MetaProgression({
+    this.coins = 0,
+    this.strLevel = 0,
+    this.vitLevel = 0,
+    this.dexLevel = 0,
+    this.intLevel = 0,
+    this.corruptionLevel = 0,
+  });
+
+  int coins;
+  int strLevel;
+  int vitLevel;
+  int dexLevel;
+  int intLevel;
+  int corruptionLevel;
+
+  int levelOf(MetaStat stat) {
+    switch (stat) {
+      case MetaStat.str:
+        return strLevel;
+      case MetaStat.vit:
+        return vitLevel;
+      case MetaStat.dex:
+        return dexLevel;
+      case MetaStat.intellect:
+        return intLevel;
+      case MetaStat.corruption:
+        return corruptionLevel;
+    }
+  }
+
+  void _setLevel(MetaStat stat, int value) {
+    switch (stat) {
+      case MetaStat.str:
+        strLevel = value;
+        return;
+      case MetaStat.vit:
+        vitLevel = value;
+        return;
+      case MetaStat.dex:
+        dexLevel = value;
+        return;
+      case MetaStat.intellect:
+        intLevel = value;
+        return;
+      case MetaStat.corruption:
+        corruptionLevel = value;
+        return;
+    }
+  }
+
+  /// Buys the next level of [stat] if there's a level left and enough coins
+  /// on hand. Returns whether the purchase went through — callers use this
+  /// to decide whether to bother persisting/re-rendering.
+  bool buy(MetaStat stat) {
+    final current = levelOf(stat);
+    if (current >= kMetaMaxLevel) return false;
+    final cost = metaUpgradeCost(current);
+    if (coins < cost) return false;
+    coins -= cost;
+    _setLevel(stat, current + 1);
+    return true;
+  }
+
+  // +1 attribute point per level — lands directly on `StatBlock`'s own
+  // integer str/vit/dex/intellect scale (core/stats.dart), so a level
+  // bought here is worth exactly what a level of the base attribute is
+  // worth in every derived combat formula, for free.
+  int get bonusStr => strLevel;
+  int get bonusVit => vitLevel;
+  int get bonusDex => dexLevel;
+  int get bonusIntellect => intLevel;
+}
+
+/// Reads/writes [MetaProgression] to `SharedPreferences` — same shape as
+/// `SettingsRepository` (`core/settings.dart`).
+class MetaProgressionRepository {
+  static const _kCoins = 'meta.coins';
+  static const _kStr = 'meta.str';
+  static const _kVit = 'meta.vit';
+  static const _kDex = 'meta.dex';
+  static const _kInt = 'meta.int';
+  static const _kCorruption = 'meta.corruption';
+
+  Future<MetaProgression> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    return MetaProgression(
+      coins: prefs.getInt(_kCoins) ?? 0,
+      strLevel: prefs.getInt(_kStr) ?? 0,
+      vitLevel: prefs.getInt(_kVit) ?? 0,
+      dexLevel: prefs.getInt(_kDex) ?? 0,
+      intLevel: prefs.getInt(_kInt) ?? 0,
+      corruptionLevel: prefs.getInt(_kCorruption) ?? 0,
+    );
+  }
+
+  Future<void> save(MetaProgression meta) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kCoins, meta.coins);
+    await prefs.setInt(_kStr, meta.strLevel);
+    await prefs.setInt(_kVit, meta.vitLevel);
+    await prefs.setInt(_kDex, meta.dexLevel);
+    await prefs.setInt(_kInt, meta.intLevel);
+    await prefs.setInt(_kCorruption, meta.corruptionLevel);
+  }
+
+  /// Round-over credit (DECISIONS D-047) — read-modify-write against
+  /// whatever's currently saved, rather than trusting a copy the caller
+  /// might have loaded a while ago, so this can't clobber a purchase made
+  /// in another screen since that copy was loaded.
+  Future<void> addCoins(int amount) async {
+    if (amount <= 0) return;
+    final current = await load();
+    current.coins += amount;
+    await save(current);
+  }
+}

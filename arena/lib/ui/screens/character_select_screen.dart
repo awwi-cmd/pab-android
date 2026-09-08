@@ -3,11 +3,14 @@ import 'package:flame/widgets.dart' show SpriteAnimationWidget;
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
+import '../../core/meta_progression.dart';
 import '../../data/characters.dart';
 import '../widgets/pixel_button.dart';
 import '../widgets/screen_scaffold.dart';
 import '../widgets/stat_bar.dart';
 import 'arena_screen.dart';
+import 'shop_screen.dart';
+import 'upgrades_screen.dart';
 
 /// PRD §4.4: 2x2 grid. All 4 slots unlocked as of TASKS Phase 8 (real
 /// progression-gated unlocking is planned, not built — every slot defaults
@@ -27,6 +30,24 @@ class CharacterSelectScreen extends StatefulWidget {
 class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
   int _selected = 0;
 
+  // Wallet display only (DECISIONS D-047) -- the actual spending happens in
+  // UpgradesScreen; reloaded every time we come back from either of the two
+  // routes below, since either can change it (Upgrades spends it directly;
+  // Shop is a no-op today but will spend it too once it has real content).
+  int _coins = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCoins();
+  }
+
+  Future<void> _loadCoins() async {
+    final meta = await MetaProgressionRepository().load();
+    if (!mounted) return;
+    setState(() => _coins = meta.coins);
+  }
+
   @override
   Widget build(BuildContext context) {
     final character = kCharacters[_selected];
@@ -38,6 +59,50 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset(
+                  'assets/images/ui/currency-counter.png',
+                  height: 28,
+                  filterQuality: FilterQuality.none,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '$_coins',
+                  style: const TextStyle(
+                    color: ArenaColors.accent,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: PixelButton(
+                    label: 'SHOP',
+                    onPressed: () async {
+                      await Navigator.of(context).pushNamed(ShopScreen.route);
+                      _loadCoins();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: PixelButton(
+                    label: 'UPGRADES',
+                    onPressed: () async {
+                      await Navigator.of(context).pushNamed(UpgradesScreen.route);
+                      _loadCoins();
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             GridView.count(
               crossAxisCount: 2,
               shrinkWrap: true,

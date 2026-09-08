@@ -30,10 +30,11 @@ ItemRarity rollRarity(Random random) {
   return ItemRarity.values.last; // float rounding backstop
 }
 
-/// Gems (DECISIONS D-043): "80% and growing depending on your level" —
-/// +1%/level past 1, clamped at 100%.
-const double kGemBaseDropChance = 0.8;
-const double kGemDropChancePerLevel = 0.01;
+/// Gems (DECISIONS D-043): "80% and growing depending on your level" at
+/// first ship read as way too dense on-device ("spawn near one another") —
+/// 2026-09-09 tune cut both numbers 80% (D-046).
+const double kGemBaseDropChance = 0.16;
+const double kGemDropChancePerLevel = 0.002;
 
 double gemDropChance(int playerLevel) {
   return (kGemBaseDropChance + (playerLevel - 1) * kGemDropChancePerLevel)

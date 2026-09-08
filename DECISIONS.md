@@ -1573,6 +1573,103 @@ do the split first. Nothing about today's features depends on the current
 file shape — the split is pure reorganization once it happens, not a
 behavior change.
 
+## D-046 — Two real bugs from the first on-device Phase 10 pass, plus a gem-rate cut
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer's first real play session against the boss reported
+"boss does not get to attack? He does the animation but I never get to see
+his projectile. Also, the character projectile seems to ignore him, does
+not shoot towards him at all" — plus gems dropping so densely they were
+spawning on top of each other.
+**Decision:** Three fixes, all in code the boss/economy work (D-042/D-043)
+already touched:
+1. **Boss self-hit.** `ProjectileComponent`'s hit-loop reads
+   `game.damageableTargets`, which includes the boss itself (D-042) — the
+   boss's own bolt starts at `position.clone()` (its own position), so the
+   very first `update()` after spawn found it "touching" its own spawn
+   point at distance ≈0 and destroyed itself before ever traveling
+   anywhere. Added an `excludeSelf` param to `ProjectileComponent`,
+   `BossComponent._fire` passes `excludeSelf: this`.
+2. **Player attacks never targeting the boss.** `ProjectileAttack`/
+   `KnifeAttack`/`SpiralFireAttack` all built their targeting list from
+   `game.enemies` directly — a leftover from before the boss existed — so
+   `nearestWithinRange` could never return the boss as a candidate no
+   matter how close it was. All three now target off
+   `game.damageableTargets` (the same list the hit-detection loops already
+   used), matching that getter's own doc comment ("every attack's
+   hit-detection loop reads this instead of `enemies` directly" — the
+   *targeting* half just hadn't been updated to match).
+3. **Gem rate cut 80%** (`kGemBaseDropChance` 0.8→0.16, `kGemDropChancePerLevel`
+   0.01→0.002) — "spawn near one another," too dense at the original
+   numbers.
+**Because:** (1) and (2) are the same root cause from two directions — the
+boss was added to the *can-be-hit* list (`damageableTargets`) without a
+matching audit of every place that used to enumerate `game.enemies` for a
+different purpose (picking a target vs. checking for a hit). (3) is a
+straight tuning response to on-device feedback, same as every other
+first-guess number in this project.
+**Consequences:** Any *future* Damageable (if one is ever added) needs the
+same audit — grep for `game.enemies` in attack code, not just
+`game.damageableTargets`, before assuming it's covered.
+
+## D-047 — Persistent meta-progression: SHOP + UPGRADES from character select
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer's spec verbatim: room for SHOP & UPGRADES on the
+character-select screen before pressing start. SHOP buys items/powers
+("nothing yet, empty, just a back button"). UPGRADES raises STR/VIT/DEX/
+INT/CORRUPTION, each 10 levels, increasing cost, spent from coins earned
+finishing rounds. CORRUPTION specifically: "increases your enemy spawn
+rate/enemy HP/enemy damage but increases rewards per level bought."
+**Decision:** New `core/meta_progression.dart` — `MetaStat` enum (str/vit/
+dex/intellect/corruption), `MetaProgression` (wallet + 5 levels, `.buy()`
+does the afford/cap check and deducts atomically), `metaUpgradeCost`
+(same exponential-growth shape as `progression.dart`'s XP curve — steep on
+purpose, not a first-session buy), `MetaProgressionRepository`
+(`SharedPreferences`, same load/save shape as `SettingsRepository`). Three
+new corruption multiplier functions live in `game_rules.dart` instead
+(gameplay math, not shop data) — `corruptionSpawnIntervalMultiplier`,
+`corruptionEnemyStatMultiplier`, `corruptionRewardMultiplier`, all linear
+per level, first-guess numbers.
+Wired in:
+- `ArenaGame` gains `meta` (loaded once at arena entry, same as `settings`)
+  and `effectiveStats` — `character.stats` plus `meta.bonusStr/Vit/Dex/
+  Intellect` (a flat +1 attribute point per level, landing directly on
+  `StatBlock`'s own integer scale so it flows through every derived combat
+  formula for free). Every place that used to read `character.stats` or
+  `game.character.stats` for combat math now reads `game.effectiveStats`
+  instead — `PlayerComponent` takes a resolved `StatBlock stats` in its
+  constructor (needed before `game` is reachable, since HP is set in the
+  initializer list) rather than reaching for `character.stats` itself.
+- `Spawner` multiplies its scheduled interval by
+  `corruptionSpawnIntervalMultiplier(game.meta.corruptionLevel)`.
+- `ArenaGame.spawnEnemy` multiplies the existing level-based
+  `enemyStatMultiplier` by `corruptionEnemyStatMultiplier` (layered on top,
+  not instead of).
+- Coin rewards (`onEnemyKilled`/`onBossKilled`) route through a shared
+  `_rollCoins()` that applies `corruptionRewardMultiplier`.
+- `ArenaGame._endRound` credits the round's `coinsEarned` into the
+  persistent wallet exactly once
+  (`MetaProgressionRepository().addCoins(...)`, fire-and-forget) — a
+  *different* counter from `coinsEarned` itself, which stays the
+  round-scoped number the RoundOver overlay displays.
+Two new screens (`UpgradesScreen`, `ShopScreen`), two new routes, two new
+buttons + a wallet readout on `CharacterSelectScreen` (reloaded every time
+either route is popped, since either can spend the wallet).
+**Because:** +1 attribute point per shop-level was chosen over a separate
+bonus-tracking layer (the way `PlayerUpgrades`, the in-round system,
+works) specifically because it's *cross-round* — folding it into
+`StatBlock` itself means it's inert dead-simple to reason about (it's
+exactly as if the character's base stats were higher) and costs zero new
+derived-formula code. `ShopScreen` shipped as a literal empty placeholder
+because that's exactly what was asked for — a home for a future feature,
+not a guess at its contents.
+**Consequences:** The Upgrades shop is reachable from character select
+only, never mid-round, so `ArenaGame.meta` is safe to treat as immutable
+for a whole round. Corruption has no upper guardrail beyond its own
+10-level cap and the spawn-interval multiplier's 0.2 floor — needs a real
+playtest to see whether level 10 corruption is "hard but rewarding" or
+"unplayable." Same first-guess-numbers caveat as every other tuning value
+in this project.
+
 ---
 
 ## Open questions
