@@ -1,4 +1,9 @@
+import 'dart:math';
+
+import 'package:flame/components.dart' show Vector2;
+
 import '../core/game_rules.dart';
+import '../core/progression.dart';
 import '../core/stats.dart';
 import 'arena_game.dart';
 import 'components/knife_projectile.dart';
@@ -68,14 +73,21 @@ class ProjectileAttack extends AttackBehavior {
   }
 }
 
-/// The Bruiser's kit (DECISIONS D-029): a spinning knife thrown at the
-/// nearest enemy in range, same targeting as [ProjectileAttack] but it
-/// pierces through every enemy in its path instead of stopping at the
-/// first one, and its sprite turns bloody the moment it draws blood. Reuses
-/// [ProjectileAttack]'s cooldown/range formulas as-is; damage is knocked
-/// down from that shared formula (see [_damageMultiplier]) since pierce
-/// already lets one throw hit several enemies for full knockback each —
-/// first tuning pass, not a final number.
+/// The Bruiser's kit (DECISIONS D-029/D-030/D-031): a spinning knife thrown
+/// at the nearest enemy in range, same targeting as [ProjectileAttack] but
+/// it pierces through every enemy in its path instead of stopping at the
+/// first one, flies until it leaves the arena (no max-range despawn), and
+/// its sprite turns bloody the moment it draws blood. Reuses
+/// [ProjectileAttack]'s cooldown formula as a base, then applies its own
+/// multipliers on top (see the fields below) — pierce is the core
+/// differentiator, the multipliers are tuning.
+///
+/// `knifeMastery` (Bruiser-only, DECISIONS D-031) changes the throw itself
+/// once picked: level 1 is a flat damage buff on the single knife, level 2
+/// adds a second knife thrown behind the player, level 3 throws 4 at once
+/// (one to every side). All of them still originate from the one target
+/// lookup below — the extra knives are geometric offsets from that
+/// direction, not separate targeting.
 class KnifeAttack extends AttackBehavior {
   const KnifeAttack();
 
@@ -83,8 +95,19 @@ class KnifeAttack extends AttackBehavior {
   /// pierce hitting multiple enemies per throw.
   static const _damageMultiplier = 0.7;
 
+  /// 2026-09-09 tune: -30% attack speed (i.e. the cooldown is longer) to
+  /// offset the knife no longer despawning on its own and hitting harder
+  /// per stray hit than a single-target bolt would.
+  static const _attackSpeedMultiplier = 0.7;
+
+  /// 2026-09-09 tune: +15% targeting range vs. the shared formula — the
+  /// knife flies until it leaves the screen now (D-030), so it can afford
+  /// to pick fights a bit further out.
+  static const _rangeMultiplier = 1.15;
+
   @override
-  double cooldownSeconds(StatBlock stats) => 1 / stats.attacksPerSec;
+  double cooldownSeconds(StatBlock stats) =>
+      (1 / stats.attacksPerSec) / _attackSpeedMultiplier;
 
   @override
   void perform(ArenaGame game) {
@@ -95,7 +118,7 @@ class KnifeAttack extends AttackBehavior {
     final index = nearestWithinRange(
       player.position,
       positions,
-      stats.attackRangePx,
+      stats.attackRangePx * _rangeMultiplier,
     );
     if (index == -1) return;
     final target = game.enemies[index];
@@ -104,20 +127,42 @@ class KnifeAttack extends AttackBehavior {
     if (direction.length2 == 0) return; // exactly on top of the target
     direction.normalize();
 
-    game.add(
-      KnifeProjectileComponent(
-        startPosition: player.position.clone(),
-        direction: direction,
-        damage:
-            (stats.damagePerHit + game.upgrades.bonusDamage) *
-            _damageMultiplier,
-        knockback: stats.knockbackImpulse,
-        speedPxPerS: stats.projSpeedPxPerS,
-        maxRangePx: stats.attackRangePx * 1.5,
-        cleanSprite: game.knifeCleanSprite,
-        bloodySprite: game.knifeBloodySprite,
-      ),
-    );
+    final knifeLevel = game.upgrades.pickCounts[UpgradeKind.knifeMastery] ?? 0;
+    final damage = (stats.damagePerHit + game.upgrades.bonusDamage) *
+        _damageMultiplier *
+        (knifeLevel >= 1 ? UpgradeAmounts.knifeMasteryTier1DamageMultiplier : 1);
+
+    for (final angleOffset in _throwAngleOffsets(knifeLevel)) {
+      game.add(
+        KnifeProjectileComponent(
+          startPosition: player.position.clone(),
+          direction: _rotated(direction, angleOffset),
+          damage: damage,
+          knockback: stats.knockbackImpulse,
+          speedPxPerS: stats.projSpeedPxPerS,
+          cleanSprite: game.knifeCleanSprite,
+          bloodySprite: game.knifeBloodySprite,
+        ),
+      );
+    }
     player.playFire();
+  }
+
+  /// Radian offsets from the forward (targeted) direction for the knives
+  /// thrown this cycle, keyed by `knifeMastery` level (DECISIONS D-031):
+  /// level < 2 is just the one forward knife, level 2 adds one thrown
+  /// behind, level 3 is all 4 cardinal offsets from the forward direction
+  /// (front/back/left/right relative to the throw, not the world).
+  static List<double> _throwAngleOffsets(int knifeLevel) {
+    if (knifeLevel >= 3) return [0, pi / 2, pi, -pi / 2];
+    if (knifeLevel == 2) return [0, pi];
+    return [0];
+  }
+
+  static Vector2 _rotated(Vector2 v, double angleRad) {
+    if (angleRad == 0) return v.clone();
+    final cosA = cos(angleRad);
+    final sinA = sin(angleRad);
+    return Vector2(v.x * cosA - v.y * sinA, v.x * sinA + v.y * cosA);
   }
 }

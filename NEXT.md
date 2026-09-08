@@ -54,6 +54,15 @@ weighted now (`kUpgradeWeights`, Efraimidis-Spirakis sampling in
 `rollUpgradeChoices`) with placeholder equal weights — the actual balance
 pass is still to come, this just wires the knob.
 
+**Character-locked upgrades (DECISIONS D-031).** `kCharacterLockedUpgrades`
+(`UpgradeKind -> CharacterDef.id`) + `upgradeKindsFor(characterId)` in
+`core/progression.dart` restrict the roll pool per character —
+`rollUpgradeChoices`'s `candidates` param (defaults to every kind, so
+existing callers/tests are unaffected). `knifeMastery` (Bruiser only) is the
+first one. A future Skirmisher/Warden kit wanting its own locked upgrade is
+one more map entry, not new branching — same shape as adding a plain
+upgrade, just also touch this map.
+
 **`CharacterDef` (`data/characters.dart`).** Every field a character needs
 to be playable — stats, sprite location (`spriteFolder` +
 `spritePrefix`, D-024), attack behavior — is already on this one data

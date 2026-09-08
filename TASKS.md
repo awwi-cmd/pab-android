@@ -270,12 +270,30 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
         in `knife_projectile.dart`), damage -30% vs. the shared per-hit
         formula (`KnifeAttack._damageMultiplier`) to offset pierce hitting
         several enemies per throw.
+        — **2026-09-09 second tune (DECISIONS D-030):** fixed a real bug —
+        the knife was despawning mid-flight (inherited `ProjectileAttack`'s
+        max-travel-range); now the only despawn condition is leaving the
+        arena. Also: -30% attack speed (`KnifeAttack._attackSpeedMultiplier`),
+        knife +20% size again (now 1.5x total, `kKnifeRenderScale`), +15%
+        targeting range (`KnifeAttack._rangeMultiplier`, targeting only — the
+        thrown knife's travel distance is now unlimited).
+      - [x] **Knife Mastery** — Bruiser-only 3-level upgrade (DECISIONS
+        D-031, `UpgradeKind.knifeMastery`): lvl1 +20% knife damage, lvl2
+        throws a second knife behind the player, lvl3 throws 4 at once (one
+        to every side). First character-locked upgrade —
+        `kCharacterLockedUpgrades`/`upgradeKindsFor` in
+        `core/progression.dart` gate the level-up roll pool by
+        `CharacterDef.id`. `flutter analyze` clean, `flutter test` 47/47 (5
+        new), `flutter build apk --debug` succeeds.
       - [ ] Skirmisher — something faster/lighter, fits `dex`-heavy stats
       - [ ] Warden — something tankier, fits `vit`-heavy stats
       - [ ] On-device verification of the Bruiser's knife — **developer**:
         pierce reads clearly (doesn't look like it stopped at the first
         enemy), clean→bloody swap is visible mid-flight, spin doesn't look
-        broken at the knife's actual travel speed
+        broken at the knife's actual travel speed, knife now flies all the
+        way off-screen instead of vanishing early, Knife Mastery only shows
+        up in the level-up popup when playing the Bruiser, and its 3 levels
+        actually look/feel like 1 → 2 → 4 knives
 - [ ] **8.4** Real unlock-by-progression: lock slots 2-4 again and gate them
       behind a persistent unlock condition (kills/rounds/levels — TBD).
       Needs a persistence story beyond `SharedPreferences` settings (round

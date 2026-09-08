@@ -27,10 +27,13 @@ double xpThresholdForLevel(int level) {
 /// skill rather than a flat stat bump (DECISIONS D-027) — a damaging ring
 /// that orbits the player, capped at `UpgradeAmounts.auraMaxStacks` picks
 /// (see `kUpgradeMaxPicks` below), unlike the other four which stack
-/// unlimited times. Adding another upgrade is still just a data change here
-/// (`UpgradeAmounts`, `kUpgradeWeights`, `PlayerUpgrades.apply`), not a
-/// rewrite of the level-up flow.
-enum UpgradeKind { vit, dex, str, intellect, aura }
+/// unlimited times. `knifeMastery` (DECISIONS D-031) is the first
+/// **character-locked** upgrade — see `kCharacterLockedUpgrades`/
+/// `upgradeKindsFor` below, it's only ever offered to the Bruiser. Adding
+/// another upgrade is still just a data change here (`UpgradeAmounts`,
+/// `kUpgradeWeights`, `PlayerUpgrades.apply`), not a rewrite of the
+/// level-up flow.
+enum UpgradeKind { vit, dex, str, intellect, aura, knifeMastery }
 
 extension UpgradeKindLabels on UpgradeKind {
   String get label {
@@ -45,6 +48,8 @@ extension UpgradeKindLabels on UpgradeKind {
         return 'Intellect';
       case UpgradeKind.aura:
         return 'Aura';
+      case UpgradeKind.knifeMastery:
+        return 'Knife Mastery';
     }
   }
 
@@ -62,6 +67,11 @@ extension UpgradeKindLabels on UpgradeKind {
       case UpgradeKind.aura:
         return 'Orbiting spark aura, damages nearby enemies '
             '(max ${UpgradeAmounts.auraMaxStacks} stacks)';
+      case UpgradeKind.knifeMastery:
+        return 'Bruiser only. Lvl1: +${((UpgradeAmounts.knifeMasteryTier1DamageMultiplier - 1) * 100).round()}% '
+            'knife damage. Lvl2: throws a second knife from behind. '
+            'Lvl3: throws 4 knives at once, one to every side '
+            '(max ${UpgradeAmounts.knifeMasteryMaxStacks} levels)';
     }
   }
 }
@@ -98,6 +108,15 @@ class UpgradeAmounts {
     final index = stacks.clamp(1, auraMaxStacks) - 1;
     return _auraDamagePerTickByStack[index];
   }
+
+  // Knife Mastery (DECISIONS D-031) — Bruiser-only, 3 levels: lvl1 is a flat
+  // damage buff on the existing single knife, lvl2 adds a second knife
+  // thrown behind the player, lvl3 goes to 4 knives thrown at once (one to
+  // every side). `game/attack_behavior.dart`'s `KnifeAttack` reads the stack
+  // count directly off `PlayerUpgrades.pickCounts` the same way Aura does —
+  // no flat bonus lives on `PlayerUpgrades` itself.
+  static const int knifeMasteryMaxStacks = 3;
+  static const double knifeMasteryTier1DamageMultiplier = 1.2;
 }
 
 /// Relative weights for the level-up roll — placeholder, all equal for now
@@ -109,6 +128,7 @@ const Map<UpgradeKind, double> kUpgradeWeights = {
   UpgradeKind.str: 1,
   UpgradeKind.intellect: 1,
   UpgradeKind.aura: 1,
+  UpgradeKind.knifeMastery: 1,
 };
 
 /// How many times each upgrade may be picked in a round — `null` means
@@ -121,23 +141,47 @@ const Map<UpgradeKind, int?> kUpgradeMaxPicks = {
   UpgradeKind.str: null,
   UpgradeKind.intellect: null,
   UpgradeKind.aura: UpgradeAmounts.auraMaxStacks,
+  UpgradeKind.knifeMastery: UpgradeAmounts.knifeMasteryMaxStacks,
 };
+
+/// Which `CharacterDef.id` an upgrade is restricted to, if any (DECISIONS
+/// D-031) — an upgrade not listed here is offered to everyone. `knifeMastery`
+/// only makes sense for whoever actually has a knife.
+const Map<UpgradeKind, String> kCharacterLockedUpgrades = {
+  UpgradeKind.knifeMastery: 'bruiser',
+};
+
+/// The upgrade kinds eligible for [characterId] this round — everything
+/// except another character's locked upgrades (`kCharacterLockedUpgrades`).
+/// Pass the result as [rollUpgradeChoices]'s `candidates`.
+List<UpgradeKind> upgradeKindsFor(String characterId) {
+  return [
+    for (final kind in UpgradeKind.values)
+      if (kCharacterLockedUpgrades[kind] == null ||
+          kCharacterLockedUpgrades[kind] == characterId)
+        kind,
+  ];
+}
 
 /// Picks [count] distinct upgrade kinds, weighted by [kUpgradeWeights] and
 /// excluding anything already at its [kUpgradeMaxPicks] cap (pass the
 /// round's current `PlayerUpgrades.pickCounts`; omit it where the cap
-/// doesn't matter, e.g. tests). Weighted sampling without replacement via
-/// the Efraimidis-Spirakis key trick: draw `random()^(1/weight)` per
-/// candidate and keep the top [count] keys — higher weight means a key
-/// closer to 1, so it's more likely to survive the cut.
+/// doesn't matter, e.g. tests). [candidates] narrows the pool before any of
+/// that — pass `upgradeKindsFor(character.id)` to respect character-locked
+/// upgrades (DECISIONS D-031); defaults to every kind. Weighted sampling
+/// without replacement via the Efraimidis-Spirakis key trick: draw
+/// `random()^(1/weight)` per candidate and keep the top [count] keys —
+/// higher weight means a key closer to 1, so it's more likely to survive
+/// the cut.
 /// Pure function of the [Random] passed in — seed it in a test for a
 /// deterministic roll.
 List<UpgradeKind> rollUpgradeChoices(
   Random random, {
   Map<UpgradeKind, int> pickCounts = const {},
   int count = 3,
+  Iterable<UpgradeKind> candidates = UpgradeKind.values,
 }) {
-  final eligible = UpgradeKind.values.where((kind) {
+  final eligible = candidates.where((kind) {
     final max = kUpgradeMaxPicks[kind];
     return max == null || (pickCounts[kind] ?? 0) < max;
   });
@@ -187,6 +231,11 @@ class PlayerUpgrades {
         // spawn/scale the AuraComponent (game/components/aura.dart, D-027).
         // Rolls stop offering this kind once it hits auraMaxStacks, so
         // pickCounts should never exceed it in practice.
+        return 0;
+      case UpgradeKind.knifeMastery:
+        // No direct stat bonus -- KnifeAttack reads pickCounts[knifeMastery]
+        // itself every throw (game/attack_behavior.dart, D-031), same
+        // pattern as aura above.
         return 0;
     }
   }

@@ -76,6 +76,44 @@ void main() {
       }
       expect(sawAura, isTrue);
     });
+
+    test('never offers a kind outside the given candidates', () {
+      for (var seed = 0; seed < 50; seed++) {
+        final choices = rollUpgradeChoices(
+          Random(seed),
+          count: 3,
+          candidates: const [UpgradeKind.vit, UpgradeKind.dex],
+        );
+        for (final kind in choices) {
+          expect(kind, anyOf(UpgradeKind.vit, UpgradeKind.dex));
+        }
+      }
+    });
+  });
+
+  group('upgradeKindsFor (DECISIONS D-031)', () {
+    test('bruiser gets knifeMastery in the pool', () {
+      expect(upgradeKindsFor('bruiser'), contains(UpgradeKind.knifeMastery));
+    });
+
+    test('every other character does not get knifeMastery', () {
+      for (final id in ['apprentice', 'skirmisher', 'warden']) {
+        expect(upgradeKindsFor(id), isNot(contains(UpgradeKind.knifeMastery)));
+      }
+    });
+
+    test('everyone gets the unrestricted kinds', () {
+      for (final id in ['apprentice', 'bruiser', 'skirmisher', 'warden']) {
+        final pool = upgradeKindsFor(id);
+        expect(pool, containsAll([
+          UpgradeKind.vit,
+          UpgradeKind.dex,
+          UpgradeKind.str,
+          UpgradeKind.intellect,
+          UpgradeKind.aura,
+        ]));
+      }
+    });
   });
 
   group('UpgradeAmounts.auraDamagePerTick', () {
@@ -143,6 +181,16 @@ void main() {
       upgrades.apply(UpgradeKind.vit);
       expect(upgrades.bonusMaxHp, UpgradeAmounts.vitBonusMaxHp * 2);
       expect(upgrades.pickCounts[UpgradeKind.vit], 2);
+    });
+
+    test('knifeMastery adds no stat bonus, only tracks its pick count', () {
+      final upgrades = PlayerUpgrades();
+      final healed = upgrades.apply(UpgradeKind.knifeMastery);
+      expect(healed, 0);
+      expect(upgrades.bonusMaxHp, 0);
+      expect(upgrades.bonusMoveSpeed, 0);
+      expect(upgrades.bonusDamage, 0);
+      expect(upgrades.pickCounts[UpgradeKind.knifeMastery], 1);
     });
 
     test('reset clears bonuses and pick counts', () {

@@ -845,6 +845,89 @@ unverified — needs a pass same as every other combat-feel item in this file.
 
 ---
 
+## D-030 — Knife: no max-range despawn, -30% attack speed, +25%/+15% range tunes
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** On-device pass on the Bruiser's knife (D-029) found it despawning
+mid-flight after a hit, before it left the screen — the shared
+`stats.attackRangePx * 1.5` max-travel-range it inherited from
+`ProjectileAttack`/`ProjectileComponent` was cutting it off well short of the
+arena edge. Developer also asked for slower attack speed and a bigger
+targeting range on top.
+**Decision:** `KnifeProjectileComponent` drops the max-range despawn
+entirely — `maxRangePx` param removed, `_traveled` tracking removed, the only
+despawn condition left is `_outOfBounds()` (already existed, checks against
+`game.size` — CLAUDE.md/D-007's fixed camera means world size *is* screen
+size, so "despawn at the world edge" already meant "despawn off-screen", it
+just wasn't the *only* condition before). `KnifeAttack.cooldownSeconds`
+divides the shared `1/attacksPerSec` formula by a new `_attackSpeedMultiplier`
+(0.7, i.e. -30% attack speed → longer cooldown) instead of reusing it as-is.
+Targeting range for the initial nearest-enemy lookup gets its own
+`_rangeMultiplier` (1.15, +15%) applied on top of `stats.attackRangePx`
+— separate from the removed travel-range multiplier, this one only affects
+which enemy the throw picks as its target. Render scale (`kKnifeRenderScale`)
+went through two on-device size tunes this session, +25% then +20% more,
+landing at 1.5 total (was 1, see D-029).
+**Because:** All 4 were explicit developer asks after seeing the knife
+in motion; none is inferred. Removing the travel-range cap rather than just
+raising it matches the literal ask ("must not despawn until it gets out of
+screen") and removes a tuning knob (`maxRangePx`) that no longer does
+anything for this projectile instead of leaving it dead in the constructor.
+**Consequences:** The knife can now cross most of the arena on a single
+throw, piercing anything in its path the whole way — a much longer effective
+threat range than the bolt. `_rangeMultiplier` only gates targeting (does the
+Bruiser bother throwing at that enemy at all), not how far the thrown knife
+can travel once released, which is now unlimited (screen-bound only) — those
+are two independently tunable numbers now, not one shared value.
+
+## D-031 — Knife Mastery: first character-locked upgrade
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer asked for a knife-specific upgrade line in the
+level-up popup, available "only if you have this character" (the Bruiser) —
+the first upgrade that isn't offered to everyone. Existing `rollUpgradeChoices`
+(D-025) drew from the full `UpgradeKind.values` unconditionally; nothing in
+`core/progression.dart` knew what character was playing. Level 1's effect
+wasn't specified by the developer; asked and got "damage buff, still 1 knife"
+as the answer (recommended option), reserving the multi-knife jump for
+levels 2/3 as specified.
+**Decision:** New `UpgradeKind.knifeMastery`, 3-stack-capped like Aura
+(`UpgradeAmounts.knifeMasteryMaxStacks`). Level 1: `KnifeAttack` multiplies
+its damage by `knifeMasteryTier1DamageMultiplier` (1.2, i.e. +20%, partially
+offsetting D-029's -30% pierce nerf) — still one knife. Level 2: throws a
+second knife straight behind the player (180° from the throw direction).
+Level 3: throws 4 at once, at 0°/90°/180°/-90° from the throw direction (one
+to every side) — this replaces level 2's pattern rather than adding to it.
+All the extra knives come from the one existing nearest-enemy lookup; they're
+geometric offsets (`KnifeAttack._rotated`, plain cos/sin, no Flame
+`Vector2.rotate` — not on the type) off that single forward direction, not
+separate target searches. Character-gating is a new `core/progression.dart`
+pair: `kCharacterLockedUpgrades` (a `UpgradeKind -> CharacterDef.id` map,
+just `knifeMastery -> 'bruiser'` for now) and `upgradeKindsFor(characterId)`
+(everything minus another character's locks), which `ArenaGame` passes as
+`rollUpgradeChoices`'s new `candidates` param (defaults to
+`UpgradeKind.values`, so every existing call site/test is unaffected).
+Like Aura, `PlayerUpgrades.apply(knifeMastery)` adds no flat stat bonus —
+`KnifeAttack` reads `pickCounts[UpgradeKind.knifeMastery]` itself every
+throw, same "component reads its own stack count" pattern NEXT.md documents
+for Aura.
+**Because:** A map + a filter function is the minimal shape that generalizes
+to more character-locked upgrades later without touching
+`rollUpgradeChoices`'s sampling logic — adding a second locked upgrade for
+another character is one more map entry, not new branching. Reusing the
+existing single target lookup for all the extra knives (rather than each
+knife re-running `nearestWithinRange`) keeps every knife in one throw aimed
+at a consistent formation instead of each one potentially picking a
+different nearest enemy.
+**Consequences:** `rollUpgradeChoices` callers that care about
+character-gating must remember to pass `candidates` — the Apprentice/
+Skirmisher/Warden all currently get identical pools since only one upgrade
+is locked; this is the seam for the Skirmisher/Warden's own future kits
+(TASKS 8.3) to hang their own locked upgrades off. Level 1's exact number
+(+20%) and the level-3 exact offsets (cardinal, not diagonal) are first
+guesses, unverified on-device — same caveat as every other placeholder
+number in this file.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

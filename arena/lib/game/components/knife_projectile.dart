@@ -10,6 +10,8 @@ import 'enemy.dart';
 /// same as [ProjectileComponent] except it **pierces** — it keeps flying and
 /// damaging every enemy it touches instead of despawning on the first hit —
 /// and its sprite flips from clean to bloody the moment it draws blood.
+/// Unlike [ProjectileComponent] it has no max-range despawn at all (D-030) —
+/// it flies until it leaves the arena, full stop.
 ///
 /// Each enemy can only be hit once per throw ([_hitEnemies]), so hovering
 /// near an already-hit enemy doesn't tick damage every frame.
@@ -21,7 +23,6 @@ class KnifeProjectileComponent extends SpriteComponent
     required this.damage,
     required this.knockback,
     required this.speedPxPerS,
-    required this.maxRangePx,
     required this.bloodySprite,
     required Sprite cleanSprite,
   }) : _direction = direction.normalized(),
@@ -37,14 +38,12 @@ class KnifeProjectileComponent extends SpriteComponent
   final double damage;
   final double knockback;
   final double speedPxPerS;
-  final double maxRangePx;
   final Sprite bloodySprite;
   final Vector2 _direction;
 
   // Cosmetic spin, not a stat. 14.0 base +10% tune (2026-09-08).
   static const _rotationSpeedRadPerSec = 15.4;
 
-  double _traveled = 0;
   final Vector2 _scratch = Vector2.zero(); // reused every frame
   final Set<EnemyComponent> _hitEnemies = {};
   bool _bloodied = false;
@@ -58,10 +57,9 @@ class KnifeProjectileComponent extends SpriteComponent
       ..setFrom(_direction)
       ..scale(step);
     position.add(_scratch);
-    _traveled += step;
     angle += _rotationSpeedRadPerSec * dt;
 
-    if (_traveled >= maxRangePx || _outOfBounds()) {
+    if (_outOfBounds()) {
       removeFromParent();
       return;
     }

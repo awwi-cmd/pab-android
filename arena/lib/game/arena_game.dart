@@ -282,6 +282,7 @@ class ArenaGame extends FlameGame {
     currentLevelUpChoices = rollUpgradeChoices(
       _random,
       pickCounts: upgrades.pickCounts,
+      candidates: upgradeKindsFor(character.id),
     );
     overlays.add('LevelUp');
     menuOpen.value = true;
