@@ -14,14 +14,18 @@ a skill that needs `dash`/`charge`/`channelStaff`/etc. is: drop the sprite
 sheet in, add a line to `CharacterAnimations._fileNames`, done — the enum
 member and the `SpriteAnimationGroupComponent` machinery are already there.
 
-**`AttackBehavior` (`game/attack_behavior.dart`, DECISIONS D-024).**
+**`AttackBehavior` (`game/attack_behavior.dart`, DECISIONS D-024/D-029).**
 `ArenaGame` doesn't know how a character attacks — it owns the cooldown
 timer (round state stays on `ArenaGame`, CLAUDE.md §4.5) and calls
-`character.attackBehavior.perform(this)` when it elapses. The demo ships
-one implementation, `ProjectileAttack`. A melee character, a
-multi-projectile character, a channelled beam — each is a new class
-implementing `AttackBehavior`, not a change to `ArenaGame`. This is where
-a skill system's "active ability" hook would attach too: an
+`character.attackBehavior.perform(this)` when it elapses. `ProjectileAttack`
+is still the default; `KnifeAttack` (D-029, the Bruiser) is the second real
+example — a piercing thrown weapon that reuses `ProjectileAttack`'s exact
+targeting/cooldown/damage math and only differs in what the projectile
+component itself does (keeps flying and hitting instead of despawning on the
+first hit, swaps its own sprite mid-flight). That split — new behavior class
++ new projectile component, `ArenaGame`/`PlayerComponent` untouched — is the
+pattern to repeat for the Skirmisher/Warden kits still open in TASKS 8.3.
+This is also where a skill system's "active ability" hook would attach: an
 `AttackBehavior` doesn't have to be the *auto*-attack specifically, it's
 just "what happens when this timer fires" — a second timer/behavior pair
 on `CharacterDef` would give you a second, independently-cooling ability

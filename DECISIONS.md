@@ -810,6 +810,41 @@ new scope, tracked in TASKS Phase 8, not started.
 
 ---
 
+## D-029 — Bruiser kit: piercing spinning knife, clean→bloody sprite swap
+**Date:** 2026-09-08 · **Status:** Accepted
+**Context:** TASKS 8.3 asks for a distinct `AttackBehavior` per new character
+instead of every slot sharing the Apprentice's bolt. Developer supplied two
+static 32×32 images (`knife_clean.png`/`knife_bloody.png`, not a sheet) and
+specified the mechanic directly: thrown at the nearest target, spins in
+flight, pierces through enemies instead of stopping at the first one, and
+switches from the clean sprite to the bloody one the instant it draws blood.
+**Decision:** New `KnifeAttack` (`game/attack_behavior.dart`) + new
+`KnifeProjectileComponent` (`game/components/knife_projectile.dart`),
+targeting/cooldown/damage/knockback/range formulas copied verbatim from
+`ProjectileAttack` — pierce and the sprite swap are the only differences for
+now, real balance is a later pass same as everywhere else in Phase 7/8.
+Piercing means each enemy the knife touches can only be hit once per throw
+(a `Set<EnemyComponent>` on the component), otherwise standing in its path
+for multiple frames would tick damage every frame; it otherwise flies exactly
+like `ProjectileComponent` (constant velocity, despawns on max range or
+leaving bounds) except it never despawns on hit. `sprite` flips to bloody the
+first time `touching` is non-empty in `update()` and stays flipped for the
+rest of that knife's flight — a fresh throw always starts clean again since
+each `KnifeProjectileComponent` is a new instance.
+**Because:** `SpriteComponent` (not `SpriteAnimationComponent`) is the right
+fit for two static single-frame images — no sheet, no animation, just a
+sprite reference that gets swapped once. `kKnifeRenderScale = 1`
+(`core/constants.dart`) renders the 32×32 native knife at the same on-screen
+footprint as the bolt (16×16 cell × `kProjectileRenderScale` 2 = 32×32) so
+it doesn't read oversized next to the 48×72 player.
+**Consequences:** The Bruiser is now the first character with a real,
+distinct kit (closes half of TASKS 8.3) — the Skirmisher and Warden still
+use `ProjectileAttack` as a placeholder. On-device feel (does pierce read
+clearly, does the bloody swap show up at the size/speed it flies) is
+unverified — needs a pass same as every other combat-feel item in this file.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

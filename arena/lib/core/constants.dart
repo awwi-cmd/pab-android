@@ -35,6 +35,13 @@ const double kProjectileRenderScale = 2;
 /// Floor/border tiles (`assets/images/scenes/`) are authored at 32×32.
 const double kFloorTileRenderScale = 2;
 
+/// The Bruiser's knife projectile (`vfx/projectiles/knife_*.png`, DECISIONS
+/// D-029) is a single 32×32 static image, not a 16×16 sheet cell like the
+/// bolt/spark. Scale 1 renders it at the same 32×32 on-screen footprint as
+/// the bolt (`kProjectileRenderScale` applied to a 16×16 cell) rather than
+/// stacking another multiplier on an already-full-size sprite.
+const double kKnifeRenderScale = 1;
+
 /// Flame component render order (CLAUDE.md §4.10) — layer via these
 /// constants, never a magic `priority:` int on a component.
 class ArenaPriority {

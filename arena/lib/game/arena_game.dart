@@ -53,6 +53,8 @@ class ArenaGame extends FlameGame {
   late SpriteAnimation _boltAnimation;
   late SpriteAnimation _sparkAnimation;
   late SpriteAnimation _auraSparkAnimation;
+  late Sprite _knifeCleanSprite;
+  late Sprite _knifeBloodySprite;
   final Random _random = Random();
 
   /// The Aura skill's orbiting-ring component (DECISIONS D-027) — null
@@ -64,6 +66,12 @@ class ArenaGame extends FlameGame {
   /// projectiles from — the animation itself isn't per-character yet, but
   /// the behavior that fires it is (DECISIONS D-024).
   SpriteAnimation get boltAnimation => _boltAnimation;
+
+  /// Exposed for [KnifeAttack] (DECISIONS D-029) the same way [boltAnimation]
+  /// is for [ProjectileAttack] — the Bruiser's knife swaps between these two
+  /// static sprites itself once it draws blood.
+  Sprite get knifeCleanSprite => _knifeCleanSprite;
+  Sprite get knifeBloodySprite => _knifeBloodySprite;
 
   /// Flutter-observable mirror of round-over state, so the movement-input
   /// overlay (a Flutter widget, not a Flame overlay) knows to stop
@@ -142,6 +150,10 @@ class ArenaGame extends FlameGame {
       cellHeight: 16,
       stepTime: 0.05,
     );
+    // Single static images, not sheets (DECISIONS D-029) -- Sprite.load, not
+    // loadSheetAnimation.
+    _knifeCleanSprite = await Sprite.load('vfx/projectiles/knife_clean.png');
+    _knifeBloodySprite = await Sprite.load('vfx/projectiles/knife_bloody.png');
     resetRound();
   }
 

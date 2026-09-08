@@ -257,11 +257,20 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
       idle portraits (not padlocks) on Character Select, each is selectable,
       stat bars/derived readout update correctly per character, each enters
       the arena and plays/animates/fires correctly
-- [ ] **8.3** Give each of the 3 new characters its own `AttackBehavior`
-      (melee for the Bruiser, something faster/lighter for the Skirmisher,
-      something tankier for the Warden are the obvious fits given their stat
-      spreads) instead of sharing `ProjectileAttack()`. Design the actual
-      kits before building — this is real scope, not a data tweak.
+- [~] **8.3** Give each of the 3 new characters its own `AttackBehavior`
+      instead of sharing `ProjectileAttack()`.
+      - [x] Bruiser — `KnifeAttack` (DECISIONS D-029): spinning knife,
+        pierces every enemy in its path, sprite swaps clean→bloody on first
+        blood. `flutter analyze` clean, `flutter test` 42/42 (no new tests —
+        no new gameplay math, pierce is component-level, not `game_rules.dart`
+        material), `flutter build apk --debug` succeeds. On-device feel is
+        part of 8.3's on-device pass below.
+      - [ ] Skirmisher — something faster/lighter, fits `dex`-heavy stats
+      - [ ] Warden — something tankier, fits `vit`-heavy stats
+      - [ ] On-device verification of the Bruiser's knife — **developer**:
+        pierce reads clearly (doesn't look like it stopped at the first
+        enemy), clean→bloody swap is visible mid-flight, spin doesn't look
+        broken at the knife's actual travel speed
 - [ ] **8.4** Real unlock-by-progression: lock slots 2-4 again and gate them
       behind a persistent unlock condition (kills/rounds/levels — TBD).
       Needs a persistence story beyond `SharedPreferences` settings (round

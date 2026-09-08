@@ -40,7 +40,8 @@ class CharacterDef {
 
 /// The 4 select-screen slots (PRD §5.2). All 4 are unlocked and playable as
 /// of TASKS Phase 8 — real unlock-via-progression gating is planned but not
-/// built yet, so every slot defaults open for now. Slots 2-4 all share the
+/// built yet, so every slot defaults open for now. The Bruiser has its own
+/// `KnifeAttack` (D-029); the Skirmisher and Warden still share the
 /// Apprentice's `ProjectileAttack` as a placeholder until each gets its own
 /// `AttackBehavior` (CLAUDE.md §4.12).
 const List<CharacterDef> kCharacters = [
@@ -57,13 +58,14 @@ const List<CharacterDef> kCharacters = [
   CharacterDef(
     id: 'bruiser',
     name: 'The Bruiser',
-    descriptor: 'A heavy hitter — bolts for now, a melee kit is planned.',
+    descriptor: 'Throws a spinning knife that cuts through the whole line.',
     stats: StatBlock(str: 8, vit: 7, dex: 3, intellect: 2),
     spriteFolder: 'assets/images/characters/second',
     spritePrefix: 'black',
-    // Placeholder: same bolt as the Apprentice (TASKS Phase 8) until the
-    // Bruiser gets its own AttackBehavior — melee is the obvious real fit.
-    attackBehavior: ProjectileAttack(),
+    // First real distinct kit (TASKS 8.3, DECISIONS D-029) — pierces every
+    // enemy in its path instead of stopping at the first, unlike everyone
+    // else's ProjectileAttack.
+    attackBehavior: KnifeAttack(),
     unlocked: true,
   ),
   CharacterDef(
