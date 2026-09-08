@@ -5,7 +5,7 @@ import 'package:flame/components.dart';
 
 import '../../core/constants.dart';
 import '../arena_game.dart';
-import 'enemy.dart';
+import 'damageable.dart';
 
 /// One half of the Skirmisher's Spiral Fire skill (DECISIONS D-034/D-039):
 /// two of these are always launched together, [phase] apart by pi radians,
@@ -101,15 +101,15 @@ class SpiralFireProjectileComponent extends SpriteAnimationComponent
     position.add(_scratch);
     angle = _angle; // the sprite itself tumbles in sync with the orbit
 
-    final enemies = game.enemies;
-    EnemyComponent? hit;
-    for (var i = 0; i < enemies.length; i++) {
-      final enemy = enemies[i];
-      if (enemy.isDying) continue;
-      final touching = position.distanceTo(enemy.position) <
-          (size.x / 2 + enemy.size.x / 2);
+    final targets = game.damageableTargets;
+    Damageable? hit;
+    for (var i = 0; i < targets.length; i++) {
+      final target = targets[i];
+      if (target.isDying) continue;
+      final touching = position.distanceTo(target.position) <
+          (size.x / 2 + target.size.x / 2);
       if (touching) {
-        hit = enemy;
+        hit = target;
         break;
       }
     }

@@ -4,10 +4,12 @@ import 'package:flame/components.dart';
 
 import '../../core/constants.dart';
 import '../arena_game.dart';
-import 'enemy.dart';
+import 'damageable.dart';
 
 /// Straight-line, constant speed, one enemy per projectile, no pierce, no
-/// homing/leading (PRD §6.3 / DECISIONS D-005).
+/// homing/leading (PRD §6.3 / DECISIONS D-005). Also the boss's bolt
+/// (DECISIONS D-042) via [tint] — same shape, sprite recoloured green
+/// rather than a whole second component class.
 class ProjectileComponent extends SpriteAnimationComponent
     with HasGameReference<ArenaGame> {
   ProjectileComponent({
@@ -18,13 +20,18 @@ class ProjectileComponent extends SpriteAnimationComponent
     required this.speedPxPerS,
     required this.maxRangePx,
     required SpriteAnimation animation,
+    Color? tint,
   }) : _direction = direction.normalized(),
        super(
          animation: animation,
          position: startPosition,
          size: Vector2.all(16 * kProjectileRenderScale),
          anchor: Anchor.center,
-         paint: Paint()..filterQuality = FilterQuality.none, // D-011
+         paint: Paint()
+           ..filterQuality = FilterQuality.none // D-011
+           ..colorFilter = tint == null
+               ? null
+               : ColorFilter.mode(tint, BlendMode.srcIn),
          priority: ArenaPriority.projectile,
        );
 
@@ -53,15 +60,15 @@ class ProjectileComponent extends SpriteAnimationComponent
       return;
     }
 
-    final enemies = game.enemies;
-    EnemyComponent? hit;
-    for (var i = 0; i < enemies.length; i++) {
-      final enemy = enemies[i];
-      if (enemy.isDying) continue; // already dead, let the shot pass through
-      final touching = position.distanceTo(enemy.position) <
-          (size.x / 2 + enemy.size.x / 2);
+    final targets = game.damageableTargets;
+    Damageable? hit;
+    for (var i = 0; i < targets.length; i++) {
+      final target = targets[i];
+      if (target.isDying) continue; // already dead, let the shot pass through
+      final touching = position.distanceTo(target.position) <
+          (size.x / 2 + target.size.x / 2);
       if (touching) {
-        hit = enemy;
+        hit = target;
         break;
       }
     }

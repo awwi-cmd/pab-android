@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
@@ -193,7 +195,10 @@ class _RoundOverOverlay extends StatelessWidget {
                 value: '${game.damageDealt.round()}',
               ),
               _StatRow(label: 'Level reached', value: '${game.level}'),
-              const SizedBox(height: 32),
+              _StatRow(label: 'Gems collected', value: '${game.gemsCollected}'),
+              const SizedBox(height: 16),
+              _CoinCounter(total: game.coinsEarned),
+              const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
@@ -232,6 +237,199 @@ class _StatRow extends StatelessWidget {
           Text(label, style: const TextStyle(color: ArenaColors.textDim)),
           Text(value, style: const TextStyle(color: ArenaColors.textPrimary)),
         ],
+      ),
+    );
+  }
+}
+
+/// Round Over's money reveal (DECISIONS D-043) — a big red coin
+/// (`ui/currency-counter.png`) with the round's total counting up from 0
+/// next to it, while a handful of small coins fly in from outside the
+/// widget and shrink to nothing right as they reach it (developer's
+/// explicit vision: "jumping in the big red coin, with this size reducing
+/// like fade out... right exactly when they would hit the coin"). Purely
+/// decorative — [ArenaGame.coinsEarned] is already final by the time this
+/// builds (round state stops changing once `RoundOver` is showing).
+class _CoinCounter extends StatefulWidget {
+  const _CoinCounter({required this.total});
+
+  final int total;
+
+  @override
+  State<_CoinCounter> createState() => _CoinCounterState();
+}
+
+class _CoinCounterState extends State<_CoinCounter>
+    with SingleTickerProviderStateMixin {
+  static const _duration = Duration(milliseconds: 1600);
+  static const _maxFlyingCoins = 10;
+
+  late final AnimationController _controller;
+  late final Animation<int> _count;
+  late final List<_FlyingCoinSpec> _flyingCoins;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: _duration)
+      ..forward();
+    _count = IntTween(begin: 0, end: widget.total).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+
+    final random = Random();
+    // Capped regardless of the real total -- a big round shouldn't try to
+    // animate hundreds of individual coins.
+    final coinCount = widget.total > 0 ? _maxFlyingCoins : 0;
+    _flyingCoins = List.generate(coinCount, (i) {
+      final startDelay = i / coinCount * 0.5; // staggered, not simultaneous
+      return _FlyingCoinSpec(
+        fromLeft: random.nextBool(),
+        startDistance: 1.2 + random.nextDouble() * 0.8, // x half-width, off-widget
+        startYOffset: (random.nextDouble() - 0.5) * 72,
+        interval: Interval(
+          startDelay,
+          (startDelay + 0.5).clamp(0.0, 1.0),
+          curve: Curves.easeIn,
+        ),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 88,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) => Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                for (final coin in _flyingCoins)
+                  _buildFlyingCoin(coin, constraints.maxWidth),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      'assets/images/ui/currency-counter.png',
+                      height: 64,
+                      filterQuality: FilterQuality.none,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      '${_count.value}',
+                      style: const TextStyle(
+                        color: ArenaColors.accent,
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFlyingCoin(_FlyingCoinSpec coin, double width) {
+    // t: 0 at its own start (off-widget, full size), 1 at arrival (at the
+    // coin icon, shrunk to nothing) -- exactly the developer's spec.
+    final t = coin.interval.transform(_controller.value);
+    final startX = (coin.fromLeft ? -1 : 1) * coin.startDistance * width / 2;
+    final remaining = 1 - t;
+    return Transform.translate(
+      offset: Offset(startX * remaining, coin.startYOffset * remaining),
+      child: Opacity(
+        opacity: remaining,
+        child: Transform.scale(
+          scale: remaining,
+          child: const _SpriteCell(
+            asset: 'assets/images/consumables/money.png',
+            sheetWidth: 80,
+            sheetHeight: 192,
+            cellSize: 16,
+            column: 0, // tier 0 (common) -- just a generic flying coin
+            row: 0,
+            displaySize: 20,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FlyingCoinSpec {
+  const _FlyingCoinSpec({
+    required this.fromLeft,
+    required this.startDistance,
+    required this.startYOffset,
+    required this.interval,
+  });
+
+  final bool fromLeft;
+  final double startDistance;
+  final double startYOffset;
+  final Interval interval;
+}
+
+/// Crops one cell out of a sprite sheet for a plain Flutter `Image.asset`
+/// (DECISIONS D-043) — used for the flying coins above, since they're a
+/// Flutter widget animation (Round Over is a Flutter overlay, D-010), not a
+/// Flame component. `OverflowBox` renders the whole sheet at [displaySize]-
+/// relative scale and `ClipRect` keeps only the one cell visible; the
+/// [Alignment] math positions that cell's pixels at the box's origin.
+class _SpriteCell extends StatelessWidget {
+  const _SpriteCell({
+    required this.asset,
+    required this.sheetWidth,
+    required this.sheetHeight,
+    required this.cellSize,
+    required this.column,
+    required this.row,
+    required this.displaySize,
+  });
+
+  final String asset;
+  final double sheetWidth;
+  final double sheetHeight;
+  final double cellSize;
+  final int column;
+  final int row;
+  final double displaySize;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = displaySize / cellSize;
+    return SizedBox(
+      width: displaySize,
+      height: displaySize,
+      child: ClipRect(
+        child: OverflowBox(
+          maxWidth: sheetWidth * scale,
+          maxHeight: sheetHeight * scale,
+          alignment: Alignment(
+            2 * (column * cellSize) / (sheetWidth - cellSize) - 1,
+            2 * (row * cellSize) / (sheetHeight - cellSize) - 1,
+          ),
+          child: Image.asset(
+            asset,
+            width: sheetWidth * scale,
+            height: sheetHeight * scale,
+            filterQuality: FilterQuality.none,
+          ),
+        ),
       ),
     );
   }

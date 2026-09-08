@@ -83,13 +83,13 @@ class AuraComponent extends PositionComponent with HasGameReference<ArenaGame> {
     if (stacks <= 0) return; // shouldn't happen once spawned, guard anyway
     final damage = UpgradeAmounts.auraDamagePerTick(stacks);
 
-    final enemies = game.enemies;
-    final positions = [for (final enemy in enemies) enemy.position];
+    final targets = game.damageableTargets;
+    final positions = [for (final target in targets) target.position];
     for (final index in allWithinRange(position, positions, _radiusPx)) {
-      final enemy = enemies[index];
-      if (enemy.isDying) continue;
-      enemy.takeDamage(damage);
-      game.onProjectileHit(enemy.position.clone(), damage);
+      final target = targets[index];
+      if (target.isDying) continue;
+      target.takeDamage(damage);
+      game.onProjectileHit(target.position.clone(), damage);
     }
   }
 }

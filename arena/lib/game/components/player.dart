@@ -136,4 +136,10 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
     final healed = game.upgrades.apply(kind);
     hp = min(effectiveMaxHp, hp + healed);
   }
+
+  /// A potion pickup (DECISIONS D-043) — clamped the same way every other
+  /// heal in this file is, never past [effectiveMaxHp].
+  void heal(double amount) {
+    hp = min(effectiveMaxHp, hp + amount);
+  }
 }

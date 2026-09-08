@@ -6,7 +6,37 @@ this before starting the real game on top of the demo.
 
 ---
 
+## Read this first: `arena_game.dart` needs to be split (DECISIONS D-045)
+
+It's ~820 lines, well past CLAUDE.md §5's ~300-line guideline, after Phase
+10 (boss/SFX/economy) piled onto Phase 9 (camera) without pausing to fix
+it — a deliberate, logged trade-off (D-045), not an oversight, but it means
+**the very next non-trivial change to this file should be the split, not
+another feature on top of it.** The shape is already visible: pull the ~20
+`SpriteAnimation`/`Sprite` fields and the whole loading block out of
+`onLoad()` into a `VfxLibrary`/`AssetLibrary` class `ArenaGame` just holds
+an instance of. TASKS 10.7 tracks this.
+
 ## The extension points that already exist
+
+**`Damageable` (`game/components/damageable.dart`, DECISIONS D-042).** Any
+future thing a player attack should be able to hit — a destructible object,
+a second boss, a turret — implements this small interface (`isDying`/
+`position`/`size`/`applyKnockback`/`takeDamage`) and adds itself to
+`ArenaGame.damageableTargets` (currently `[...enemies, ?_boss]`) rather
+than teaching every attack file about a new concrete type. `BossComponent`
+is the existing second example alongside `EnemyComponent` — worth reading
+if the next thing needs its own state machine (idle/walk/fire/death) that
+doesn't fit `EnemyComponent`'s simpler always-chase behavior.
+
+**The economy's shared rarity model (`core/economy.dart`, DECISIONS D-043).**
+`ItemRarity` + `rollRarity` + `kRarityWeights` is one roll shared by gems,
+money, and potions — a fourth resource should roll the same way (add a
+value table keyed by `ItemRarity`, don't invent a new probability scheme).
+`loadColumnAnimation` (`sheet_loader.dart`) is the loader for any future
+sheet arranged as side-by-side item-type columns rather than the row-major
+layout every character/VFX sheet uses — check which layout a new sheet
+actually is before assuming `loadSheetAnimation` fits.
 
 **`ArenaGame.addToWorld`/`addToHud` (DECISIONS D-040, Phase 9).** As of the
 roaming-world work, `ArenaGame` actually uses `FlameGame`'s built-in

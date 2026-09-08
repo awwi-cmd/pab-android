@@ -37,7 +37,8 @@ it: **Phase 7 (in-round leveling, upgrade choices, pause menu, enemy scaling,
 and the Aura skill) is built** — see DECISIONS D-025/D-026/D-027. **Phase 8
 (roster expansion — all 4 characters unlocked and playable) is started** —
 see D-028. **Phase 9 (roaming world: camera + free movement) is started** —
-see D-040. This is real, ongoing post-demo work now, not speculative scope;
+see D-040. **Phase 10 (boss fight, SFX, loot economy) is built** — see
+D-042/D-043/D-044. This is real, ongoing post-demo work now, not speculative scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
 The Backlog is still binding for what hasn't been explicitly asked for — keep
@@ -89,7 +90,7 @@ batch files. Always `set FLUTTER=C:\src\flutter\bin\flutter.bat`.
 
 ## 3. Repository layout
 
-Kept current as of Phase 9.4 (2026-09-09) — update this tree when you add a
+Kept current as of Phase 10.5 (2026-09-09) — update this tree when you add a
 file that will confuse the next person if it's missing here, same discipline
 as `TASKS.md`.
 
@@ -112,12 +113,15 @@ ArenaDemo/                    <- repo root, open this in your editor
     │   │   ├── characters/second/     // Bruiser sheets, black-<state>.png (D-028)
     │   │   ├── characters/third/      // Skirmisher sheets, third-<state>.png (D-028)
     │   │   ├── characters/fourth/     // Warden sheets, fourth-<state>.png (D-028)
-    │   │   ├── characters/enemies/    // 3 skins, enemy-<name>-{run,die}.png (D-022)
+    │   │   ├── characters/enemies/    // 3 grunt skins + boss_map1.png (D-022/D-042)
     │   │   ├── vfx/projectiles/       // bolt + hit-spark + Bruiser's knife (D-029)
-    │   │   ├── vfx/vfx/                // shield/blood/fire/pixel-fire/sparkle/impact/explosion
-    │   │   │                            //   9x7 grid PNGs — D-032/D-033/D-034/D-035
+    │   │   ├── vfx/vfx/                // shield/blood/fire/pixel-fire/sparkle/impact/explosion/
+    │   │   │                            //   anima — 9x7 grid PNGs — D-032/D-033/D-034/D-035/D-042
+    │   │   ├── consumables/            // gems/money/potions.png, 5 rarity cols x N anim rows (D-043)
+    │   │   ├── ui/                     // currency-counter.png (round-over "big red coin", D-043)
     │   │   └── scenes/                // floor tile variants + border tile (D-023)
-    │   └── audio/                     // declared, unused (no audio bus yet)
+    │   └── audio/
+    │       └── core/                  // sfx-explosion.wav, sfx-you-died.wav (D-044)
     └── lib/
         ├── main.dart              // runApp only
         ├── app.dart               // MaterialApp, routes, theme
@@ -126,8 +130,9 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   ├── stats.dart         // StatBlock + ALL derived-stat formulas, EnemyStats
         │   ├── settings.dart      // Settings model + SharedPreferences I/O
         │   ├── game_rules.dart    // pure gameplay math (targeting, spawn decay, knockback,
-        │   │                      //   enemy level-scaling D-026, area-effect range D-027)
-        │   └── progression.dart   // XP curve, UpgradeKind (incl. Aura), PlayerUpgrades — D-025/D-027
+        │   │                      //   enemy/boss level-scaling D-026/D-042, randomPerimeterPoint D-041)
+        │   ├── progression.dart   // XP curve, UpgradeKind (incl. Aura), PlayerUpgrades — D-025/D-027
+        │   └── economy.dart       // ItemRarity + gem/coin/potion value tables — D-043
         ├── data/
         │   └── characters.dart    // CharacterDef list (4 slots, all unlocked, D-028)
         ├── ui/
@@ -139,16 +144,22 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   │   └── arena_screen.dart      // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu)
         │   └── widgets/                   // buttons, stat bars, shared chrome
         └── game/
-            ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling; addToWorld/addToHud split — D-040
+            ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling; addToWorld/addToHud split — D-040.
+            │                              //   ~820 lines, split overdue — D-045, TASKS 10.7
             ├── attack_behavior.dart       // AttackBehavior (+ onEquipped hook) + ProjectileAttack + KnifeAttack + SpiralFireAttack — D-024/D-029/D-034/D-036
             ├── components/
-            │   ├── player.dart              // takeDamage spawns blood-impact VFX (D-033); free movement, no bounds clamp (D-040)
-            │   ├── enemy.dart              // hp/contactDamage scaled by level at spawn — D-026
-            │   ├── projectile.dart          // _outOfBounds is camera.visibleWorldRect-relative — D-040
+            │   ├── player.dart              // takeDamage spawns blood-impact VFX (D-033); heal() for potions (D-043); free movement, no bounds clamp (D-040)
+            │   ├── enemy.dart              // hp/contactDamage scaled by level at spawn (D-026); implements Damageable (D-042)
+            │   ├── damageable.dart          // shared hit-detection interface, enemy + boss — D-042
+            │   ├── boss.dart                // idle/walk/fire/death state machine, teleport-on-approach — D-042
+            │   ├── projectile.dart          // _outOfBounds is camera.visibleWorldRect-relative (D-040); optional tint param for the boss's green bolt (D-042)
             │   ├── knife_projectile.dart    // Bruiser kit: pierces, clean->bloody sprite swap — D-029
             │   ├── spiral_fire_projectile.dart // Skirmisher kit: orbiting yin-yang pair — D-034
             │   ├── tracking_effect.dart      // VFX glued to a moving target, optional fade-out — D-034/D-035/D-036
             │   ├── spawner.dart              // camera-relative spawn ring + straggler culling — D-041
+            │   ├── gem.dart                  // world pickup, self-collects near the player — D-043
+            │   ├── potion.dart               // world pickup + float bob, heals on touch — D-043
+            │   ├── potion_spawner.dart       // periodic random-area drop — D-043
             │   ├── hp_bar.dart               // now on camera.viewport (HUD), not world — D-040
             │   ├── damage_text.dart
             │   ├── arena_floor.dart          // endless tiling from camera.visibleWorldRect, no border — D-041

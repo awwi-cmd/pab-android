@@ -458,6 +458,78 @@ attack kit still works at any distance from the start point.
 
 ---
 
+## Phase 10 — Boss fight, SFX, loot economy
+*Goal: a real milestone fight (the boss), the first working audio, and a
+loot loop (gems/potions in the world, money revealed at round-over).
+Developer delivered `boss_map1.png`, `audio/core/`, and
+`consumables/{gems,money,potions}.png` and specced all three directly.*
+
+- [x] **10.1** The boss (DECISIONS D-042) — `boss_map1.png` sliced into
+      idle(6)/walk(3)/fire(5)/death(10) frames (found by inspecting actual
+      non-blank cells, not the visual thumbnail, which is misleading on
+      this asset). Spawns at levels 3/6/9 via a real threshold check on
+      every level-up (real or debug), ~20% stronger each spawn
+      (`bossStatMultiplier`, compounding). Ranged: holds range and fires a
+      green-tinted bolt (`ProjectileComponent`'s new `tint` param — same
+      sprite/animation as the Apprentice's bolt) on a cooldown, walks
+      closer when out of range, teleports to the mirror point across the
+      player (`effect_anima` at both ends) the instant the player closes
+      to melee. New `Damageable` interface (`game/components/
+      damageable.dart`) lets the boss and every grunt share the exact same
+      attack hit-detection code (`ArenaGame.damageableTargets`) without
+      either knowing the other exists. Every hit plays `effect_impact`,
+      the kill plays `effect_explosion2` (+ its SFX, 10.2). `flutter
+      analyze` clean, `flutter test` 62/62 (6 new), `flutter build apk
+      --debug` succeeds.
+- [x] **10.2** SFX (DECISIONS D-044) — first real audio in the project.
+      `sfx-explosion.wav` on any explosion effect (Spiral Fire kill *or*
+      boss kill, one hook) and `sfx-you-died.wav` on a real player death
+      (not the debug-die button). Volume derives from the existing
+      `Settings.sfxVolume` slider, capped low on top per the developer's
+      "not that loud" ask.
+- [x] **10.3** Gems (DECISIONS D-043) — drop from kills at
+      `gemDropChance(level)` (80% base, +1%/level, capped at 100%), one of
+      5 rarity tiers (`gems.png` columns, weighted `rollRarity`), sit in
+      the world as `GemComponent` until the player walks within
+      `kItemPickupRadiusPx`. Round-over shows a total count.
+- [x] **10.4** Potions (DECISIONS D-043) — `PotionSpawner` drops one
+      randomly in a generous area around the camera's current view every
+      15s (capped at 5 live), floats up/down in place
+      (`kPotionFloatAmplitudePx`/`Sec`) on top of its own looping
+      animation, heals a flat tier-based amount on touch. "We will add
+      more logic later" per the developer — healing is the whole mechanic
+      for now.
+- [x] **10.5** Money (DECISIONS D-043) — never a world object: every kill
+      rolls a coin value (same rarity roll as gems) into a silent running
+      total, revealed only at round-over via a new animated `_CoinCounter`
+      widget — a number counting 0→total next to `ui/currency-counter.png`
+      while up to 10 small coins fly in from off-widget and shrink to
+      nothing right as they arrive, per the developer's detailed spec.
+      `flutter analyze` clean, `flutter test` 62/62, `flutter build apk
+      --debug` succeeds.
+- [ ] **10.6** On-device verification — **developer**: boss actually
+      spawns at levels 3/6/9 and feels tougher each time, its bolt reads
+      as bright green, it teleports away convincingly when approached
+      (with both anima flashes visible, neither one lingering), every hit
+      shows the impact flash, the kill explosion sound plays and isn't
+      jarring; the death SFX plays on a real death but not the debug-die
+      button; gems visibly drop and get picked up; potions are visible,
+      float, and heal; the round-over coin count-up/flying-coins animation
+      reads as intended and the number matches what was actually earned.
+- [ ] **10.7** `arena_game.dart` split (DECISIONS D-045) — now ~820 lines,
+      well past CLAUDE.md §5's ~300-line guideline. Extract the ~20
+      `SpriteAnimation`/`Sprite` fields and their entire `onLoad()` loading
+      block into a separate `VfxLibrary`/`AssetLibrary` class; `ArenaGame`
+      keeps round state, spawn/kill bookkeeping, `addToWorld`/`addToHud`.
+      Do this **before** the next feature that touches `ArenaGame`
+      significantly.
+
+**Exit criterion:** a full round can include a boss encounter with working
+audio feedback, gems/potions appearing and being collected in the world,
+and an accurate, well-presented coin total at round-over.
+
+---
+
 ## Backlog (post-demo — do not start)
 
 Kept here so ideas have somewhere to go that isn't the current sprint.

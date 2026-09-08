@@ -11,11 +11,12 @@ import 'enemy.dart';
 /// These are spawn-cadence numbers, not combat numbers — kept here rather
 /// than `core/stats.dart` (CLAUDE.md §4.3 is about damage/speed/HP values).
 ///
-/// [_randomPerimeterPoint] is centered on the camera's current view
-/// (DECISIONS D-041, Phase 9.4 — closes the D-040 gap), not a fixed rect at
-/// the world origin: spawns land just outside whatever the player can
-/// currently see, by [_visibleMarginFactor], so nothing pops in on-screen
-/// but nothing spawns so far out it's irrelevant either. [_cullStragglers]
+/// Spawn points come from `core/game_rules.dart`'s `randomPerimeterPoint`
+/// (DECISIONS D-041/D-042, shared with the boss's own spawn point), centered
+/// on the camera's current view rather than a fixed rect at the world
+/// origin: spawns land just outside whatever the player can currently see,
+/// by [_visibleMarginFactor], so nothing pops in on-screen but nothing
+/// spawns so far out it's irrelevant either. [_cullStragglers]
 /// is the other half of the same fix — enemies move slower than every
 /// playable character (`EnemyStats.moveSpeedPxPerS` 70 vs. 120+ for the
 /// player), so in an unbounded world one that spawns behind a player who
@@ -71,7 +72,13 @@ class Spawner extends Component with HasGameReference<ArenaGame> {
     if (_timeUntilNextSpawn <= 0) {
       _timeUntilNextSpawn = _interval;
       if (game.enemies.length < _maxLiveEnemies) {
-        game.spawnEnemy(_randomPerimeterPoint());
+        game.spawnEnemy(
+          randomPerimeterPoint(
+            _random,
+            game.camera.visibleWorldRect,
+            marginFactor: _visibleMarginFactor,
+          ),
+        );
       }
     }
 
@@ -79,28 +86,6 @@ class Spawner extends Component with HasGameReference<ArenaGame> {
     if (_timeUntilNextCullCheck <= 0) {
       _timeUntilNextCullCheck = _cullCheckIntervalSec;
       _cullStragglers();
-    }
-  }
-
-  Vector2 _randomPerimeterPoint() {
-    final visible = game.camera.visibleWorldRect;
-    final marginX = visible.width * _visibleMarginFactor;
-    final marginY = visible.height * _visibleMarginFactor;
-    final left = visible.left - marginX;
-    final right = visible.right + marginX;
-    final top = visible.top - marginY;
-    final bottom = visible.bottom + marginY;
-
-    final side = _random.nextInt(4);
-    switch (side) {
-      case 0: // top
-        return Vector2(left + _random.nextDouble() * (right - left), top);
-      case 1: // bottom
-        return Vector2(left + _random.nextDouble() * (right - left), bottom);
-      case 2: // left
-        return Vector2(left, top + _random.nextDouble() * (bottom - top));
-      default: // right
-        return Vector2(right, top + _random.nextDouble() * (bottom - top));
     }
   }
 

@@ -3,10 +3,12 @@ import 'dart:ui';
 
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
+import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter/widgets.dart' show EdgeInsets;
 
 import '../core/constants.dart';
+import '../core/economy.dart';
 import '../core/game_rules.dart';
 import '../core/progression.dart';
 import '../core/settings.dart';
@@ -16,10 +18,15 @@ import 'anim/enemy_animations.dart';
 import 'anim/sheet_loader.dart';
 import 'components/arena_floor.dart';
 import 'components/aura.dart';
+import 'components/boss.dart';
+import 'components/damageable.dart';
 import 'components/damage_text.dart';
 import 'components/enemy.dart';
+import 'components/gem.dart';
 import 'components/hp_bar.dart';
 import 'components/player.dart';
+import 'components/potion.dart';
+import 'components/potion_spawner.dart';
 import 'components/spawner.dart';
 import 'components/tracking_effect.dart';
 import 'input/movement_input.dart';
@@ -63,12 +70,40 @@ class ArenaGame extends FlameGame {
   late SpriteAnimation _sparkleAnimation;
   late SpriteAnimation _impactAnimation;
   late SpriteAnimation _explosionAnimation;
+  late SpriteAnimation _animaAnimation;
+  late Map<BossAnim, SpriteAnimation> _bossAnimations;
+  late List<SpriteAnimation> _gemAnimations; // indexed by ItemRarity
+  late List<SpriteAnimation> _potionAnimations; // indexed by ItemRarity
   final Random _random = Random();
 
   /// The Aura skill's orbiting-ring component (DECISIONS D-027) — null
   /// until the first Aura pick, created once and left in place afterwards;
   /// later picks just raise the stack count it reads each tick.
   AuraComponent? _aura;
+
+  /// The boss (DECISIONS D-042) — null when not currently fought. At most
+  /// one alive at a time; a spawn queued while one is already up
+  /// (`_pendingBossSpawns`) waits for [onBossKilled] instead of stacking a
+  /// second one.
+  BossComponent? _boss;
+  static const _bossSpawnLevels = [3, 6, 9];
+  static const _bossSpawnMarginFactor = 0.15; // same as Spawner's enemy ring
+  int _nextBossSpawnIndex = 0;
+  int _pendingBossSpawns = 0;
+  int _bossSpawnsCreated = 0;
+
+  /// Everything a player attack can hit (DECISIONS D-042) — grunts plus the
+  /// boss, if one is currently up. Every attack's hit-detection loop reads
+  /// this instead of [enemies] directly.
+  List<Damageable> get damageableTargets => [
+        ...enemies,
+        ?_boss,
+      ];
+
+  // Economy (DECISIONS D-043) -- resets every round like everything else.
+  int gemsCollected = 0;
+  int coinsEarned = 0;
+  int potionCount = 0;
 
   /// Exposed for [AttackBehavior]s (`attack_behavior.dart`) to build
   /// projectiles from — the animation itself isn't per-character yet, but
@@ -85,6 +120,10 @@ class ArenaGame extends FlameGame {
   /// [boltAnimation]/[knifeCleanSprite] are for the other kits.
   SpriteAnimation get pixelFireAnimation => _pixelFireAnimation;
   SpriteAnimation get sparkleAnimation => _sparkleAnimation;
+
+  /// Exposed for [BossComponent] (DECISIONS D-042) the same way the above
+  /// are for the playable kits.
+  SpriteAnimation get animaAnimation => _animaAnimation;
 
   /// Flutter-observable mirror of round-over state, so the movement-input
   /// overlay (a Flutter widget, not a Flame overlay) knows to stop
@@ -239,6 +278,87 @@ class ArenaGame extends FlameGame {
       amountPerRow: 9,
       loop: false,
     );
+    // The boss's teleport flourish (DECISIONS D-042) -- plays once at both
+    // the departure and arrival points.
+    _animaAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_anima.png',
+      cellWidth: 429,
+      cellHeight: 437,
+      stepTime: 0.02,
+      frameCount: 60,
+      amountPerRow: 9,
+      loop: false,
+    );
+    // The boss (DECISIONS D-042) -- one 4-cols x 8-rows sheet holding
+    // idle/walk/fire/death back to back, in that reading order (not one
+    // image per state like every character sheet before it). Frame ranges
+    // found by inspecting the sheet's actual non-blank cells: idle is 6
+    // frames (rows 0-1), walk 3 (row 2), fire 5 (rows 3-4), death 10
+    // (rows 5-7).
+    const bossCellWidth = 256.0;
+    const bossCellHeight = 192.0;
+    _bossAnimations = {
+      BossAnim.idle: await loadSheetAnimation(
+        'characters/enemies/boss_map1.png',
+        cellWidth: bossCellWidth,
+        cellHeight: bossCellHeight,
+        stepTime: 0.15,
+        frameCount: 6,
+        amountPerRow: 4,
+      ),
+      BossAnim.walk: await loadSheetAnimation(
+        'characters/enemies/boss_map1.png',
+        cellWidth: bossCellWidth,
+        cellHeight: bossCellHeight,
+        stepTime: 0.12,
+        frameCount: 3,
+        amountPerRow: 4,
+        texturePosition: Vector2(0, 2 * bossCellHeight),
+      ),
+      BossAnim.fire: await loadSheetAnimation(
+        'characters/enemies/boss_map1.png',
+        cellWidth: bossCellWidth,
+        cellHeight: bossCellHeight,
+        stepTime: 0.08,
+        frameCount: 5,
+        amountPerRow: 4,
+        texturePosition: Vector2(0, 3 * bossCellHeight),
+        loop: false,
+      ),
+      BossAnim.death: await loadSheetAnimation(
+        'characters/enemies/boss_map1.png',
+        cellWidth: bossCellWidth,
+        cellHeight: bossCellHeight,
+        stepTime: 0.15,
+        frameCount: 10,
+        amountPerRow: 4,
+        texturePosition: Vector2(0, 5 * bossCellHeight),
+        loop: false,
+      ),
+    };
+    // Gems/potions (DECISIONS D-043) -- 5 rarity tiers, left to right, each
+    // its own vertical animation strip (loadColumnAnimation, not the
+    // row-major loadSheetAnimation every other sheet uses).
+    _gemAnimations = [
+      for (var tier = 0; tier < ItemRarity.values.length; tier++)
+        await loadColumnAnimation(
+          'consumables/gems.png',
+          cellSize: 16,
+          column: tier,
+          rows: 9,
+          stepTime: 0.1,
+        ),
+    ];
+    _potionAnimations = [
+      for (var tier = 0; tier < ItemRarity.values.length; tier++)
+        await loadColumnAnimation(
+          'consumables/potions.png',
+          cellSize: 16,
+          column: tier,
+          rows: 8,
+          stepTime: 0.12,
+        ),
+    ];
     resetRound();
   }
 
@@ -277,6 +397,13 @@ class ArenaGame extends FlameGame {
     debugGodMode = false;
     menuOpen.value = false;
     _aura = null; // the old instance was already removed via removeAll above
+    _boss = null;
+    _nextBossSpawnIndex = 0;
+    _pendingBossSpawns = 0;
+    _bossSpawnsCreated = 0;
+    gemsCollected = 0;
+    coinsEarned = 0;
+    potionCount = 0;
 
     addToWorld(ArenaFloor());
     player = PlayerComponent(
@@ -302,6 +429,7 @@ class ArenaGame extends FlameGame {
     character.attackBehavior.onEquipped(this);
     addToHud(HpBarComponent());
     addToWorld(Spawner());
+    addToWorld(PotionSpawner());
 
     if (settings.showFps) {
       // Below the HP bar (top-left, 24,24 + 14 tall) so they don't overlap.
@@ -378,10 +506,38 @@ class ArenaGame extends FlameGame {
   }
 
   void onEnemyKilled(EnemyComponent enemy) {
+    final deathPosition = enemy.position.clone();
     enemies.remove(enemy);
     enemy.removeFromParent();
     kills++;
     grantXp(kXpPerKill);
+
+    // Economy (DECISIONS D-043) -- gems drop in the world, coins are a
+    // silent running total shown only at round-over.
+    if (rollGemDrop(_random, level)) {
+      final rarity = rollRarity(_random);
+      addToWorld(
+        GemComponent(
+          startPosition: deathPosition,
+          rarity: rarity,
+          animation: _gemAnimations[rarity.index],
+        ),
+      );
+    }
+    coinsEarned += rollCoinValue(_random);
+  }
+
+  /// The boss (DECISIONS D-042) — same shape as [onEnemyKilled] but no gem
+  /// drop (not designed yet what a boss should drop beyond currency/XP) and
+  /// a flat bonus on both the coins and XP it grants, since it's meant to
+  /// feel like a real milestone.
+  void onBossKilled(BossComponent boss) {
+    boss.removeFromParent();
+    _boss = null;
+    kills++;
+    grantXp(kBossXpReward);
+    coinsEarned += rollCoinValue(_random) * kBossCoinMultiplier;
+    _maybeSpawnBoss(); // in case another spawn was queued while this one was up
   }
 
   /// Silently removes an enemy that's fallen too far behind the player to
@@ -405,6 +561,7 @@ class ArenaGame extends FlameGame {
       level++;
       _xpToNextLevel = xpThresholdForLevel(level);
       _pendingLevelUps++;
+      _checkBossSpawnThreshold();
     }
     _maybeShowNextLevelUp();
   }
@@ -415,7 +572,43 @@ class ArenaGame extends FlameGame {
   void debugGrantLevelUp() {
     level++;
     _pendingLevelUps++;
+    _checkBossSpawnThreshold();
     _maybeShowNextLevelUp();
+  }
+
+  /// The boss spawns at levels 3/6/9 (DECISIONS D-042), "right when you
+  /// level up" — checked every time [level] actually increases (both real
+  /// XP and the debug grant), not just once, so a jump across more than one
+  /// threshold in a single call (e.g. debug-granting several levels at
+  /// once) queues all of them rather than only the first.
+  void _checkBossSpawnThreshold() {
+    while (_nextBossSpawnIndex < _bossSpawnLevels.length &&
+        level >= _bossSpawnLevels[_nextBossSpawnIndex]) {
+      _pendingBossSpawns++;
+      _nextBossSpawnIndex++;
+    }
+    _maybeSpawnBoss();
+  }
+
+  /// Only one boss at a time — a spawn queued while one is already up waits
+  /// here until [onBossKilled] calls this again, rather than stacking a
+  /// second one.
+  void _maybeSpawnBoss() {
+    if (_boss != null || _pendingBossSpawns <= 0) return;
+    _pendingBossSpawns--;
+    final spawnPoint = randomPerimeterPoint(
+      _random,
+      camera.visibleWorldRect,
+      marginFactor: _bossSpawnMarginFactor,
+    );
+    final boss = BossComponent(
+      startPosition: spawnPoint,
+      animations: _bossAnimations,
+      statMultiplier: bossStatMultiplier(_bossSpawnsCreated),
+    );
+    _bossSpawnsCreated++;
+    _boss = boss;
+    addToWorld(boss);
   }
 
   void _maybeShowNextLevelUp() {
@@ -563,11 +756,53 @@ class ArenaGame extends FlameGame {
         kSpiralExplosionWidthPx * kSpiralExplosionAspect,
       ),
     );
+    // DECISIONS D-044: "when we kill boss, when any explosion effect is
+    // played" -- one hook covers both, since a boss kill also calls this.
+    _playSfx('core/sfx-explosion.wav');
+  }
+
+  /// DECISIONS D-043 — called by [GemComponent] when the player walks close
+  /// enough to one.
+  void collectGem(ItemRarity rarity) {
+    gemsCollected++;
+  }
+
+  /// DECISIONS D-043 — called by [PotionComponent] when the player walks
+  /// close enough to one. "We will add more logic later" per the developer
+  /// — a flat heal by tier is the whole mechanic for now.
+  void collectPotion(ItemRarity rarity) {
+    potionCount--;
+    player.heal(potionHealAmount(rarity));
+  }
+
+  /// Called by [PotionSpawner] on its own timer.
+  void spawnPotion(Vector2 at) {
+    final rarity = rollRarity(_random);
+    potionCount++;
+    addToWorld(
+      PotionComponent(
+        startPosition: at,
+        rarity: rarity,
+        animation: _potionAnimations[rarity.index],
+      ),
+    );
+  }
+
+  /// One-shot SFX at a volume derived from the player's own SFX slider
+  /// (`Settings.sfxVolume`, 0-100), capped low regardless — "make sure they
+  /// are not that loud" (DECISIONS D-044).
+  void _playSfx(String file) {
+    final volume = (settings.sfxVolume / 100) * kSfxVolumeCap;
+    if (volume <= 0) return;
+    FlameAudio.play(file, volume: volume);
   }
 
   /// PRD §6.5: freeze after the death frame, then show Round Over. Debug
-  /// stand-in `debugDie()` shares this same path.
+  /// stand-in `debugDie()` shares this same path -- but skips the SFX
+  /// (`_roundEndDelay == null` guards it to once), since a debug kill isn't
+  /// a real death.
   void onPlayerDied() {
+    if (_roundEndDelay == null) _playSfx('core/sfx-you-died.wav');
     _roundEndDelay ??= _roundEndDelaySec;
   }
 

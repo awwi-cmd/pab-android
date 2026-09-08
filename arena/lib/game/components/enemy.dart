@@ -6,6 +6,7 @@ import '../../core/constants.dart';
 import '../../core/game_rules.dart';
 import '../../core/stats.dart';
 import '../arena_game.dart';
+import 'damageable.dart';
 
 enum EnemyAnim { run, death }
 
@@ -13,8 +14,14 @@ enum EnemyAnim { run, death }
 /// profile (developer's call: visual variety only, not new enemy types;
 /// PRD §9 keeps "more than one enemy type" out of scope for the demo).
 /// Stats come from [EnemyStats], never typed inline here (CLAUDE.md §4.3).
+///
+/// `implements Damageable` (DECISIONS D-042) costs nothing here — every
+/// member it requires already exists with a matching signature — but lets
+/// every attack's hit-detection loop treat this and [BossComponent]
+/// identically.
 class EnemyComponent extends SpriteAnimationGroupComponent<EnemyAnim>
-    with HasGameReference<ArenaGame> {
+    with HasGameReference<ArenaGame>
+    implements Damageable {
   EnemyComponent({
     required Vector2 startPosition,
     required SpriteAnimation runAnimation,
@@ -50,6 +57,7 @@ class EnemyComponent extends SpriteAnimationGroupComponent<EnemyAnim>
 
   final Vector2 _scratch = Vector2.zero(); // reused every frame, no allocation
 
+  @override
   bool get isDying => current == EnemyAnim.death;
 
   @override
@@ -93,6 +101,7 @@ class EnemyComponent extends SpriteAnimationGroupComponent<EnemyAnim>
   /// Instant shove away from the hit, converting the PRD's px/s knockback
   /// formula into a one-off distance rather than a decaying velocity —
   /// simpler, and plenty for the demo's feel.
+  @override
   void applyKnockback(Vector2 direction, double impulsePxPerS) {
     if (isDying) return;
     _scratch.setFrom(direction);
@@ -103,6 +112,7 @@ class EnemyComponent extends SpriteAnimationGroupComponent<EnemyAnim>
     position.add(_scratch);
   }
 
+  @override
   void takeDamage(double amount) {
     if (isDying) return;
     hp -= amount;

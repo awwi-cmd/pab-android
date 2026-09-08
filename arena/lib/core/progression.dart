@@ -10,6 +10,10 @@ import 'dart:math';
 /// of skin (DECISIONS D-022 — skins are visual only).
 const double kXpPerKill = 10;
 
+/// The boss (DECISIONS D-042) is worth a flat multiple of a grunt kill —
+/// it's meant to feel like a real milestone, not just another kill.
+const double kBossXpReward = kXpPerKill * 10;
+
 /// XP-to-next-level curve: grows by [kXpGrowthFactor] every level, so
 /// levelling deliberately slows down rather than staying linear
 /// (developer's call: the default pace read as too fast).

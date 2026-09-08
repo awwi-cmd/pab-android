@@ -84,6 +84,45 @@ const double kSparkleOpacity = 0.5;
 /// starts dying (D-036) — see `TrackingSpriteEffect.fadeOutWhen`.
 const double kEliteFireFadeOutSec = 0.4;
 
+/// The boss (`boss_map1.png`, DECISIONS D-042) — a 4-cols × 8-rows sheet,
+/// native cell 256×192. Rendered noticeably bigger than the 48×72 player/
+/// grunts, first-guess placeholder like everything else here.
+const double kBossWidthPx = 140;
+const double kBossAspect = 192 / 256;
+
+/// "Bright green, like green screen green" (developer's literal ask) — pure
+/// chroma-key green, applied as a `ColorFilter.mode(_, BlendMode.srcIn)` on
+/// `ProjectileComponent`'s paint so the boss's bolt is the same sprite as
+/// the Apprentice's, just recoloured.
+const Color kBossBoltTint = Color(0xFF00FF00);
+
+/// The boss's teleport flourish (`effect_anima.png`, 9×7 grid, native cell
+/// 429×437) — plays once at the departure point and once at the arrival
+/// point (DECISIONS D-042).
+const double kAnimaWidthPx = 160;
+const double kAnimaAspect = 437 / 429;
+
+/// SFX (DECISIONS D-044) — multiplies `Settings.sfxVolume` (0-100, the
+/// user's own slider) rather than replacing it, capped low per the
+/// developer's explicit "make sure they are not that loud" ask.
+const double kSfxVolumeCap = 0.35;
+
+/// Gems/money/potions (`assets/images/consumables/`, DECISIONS D-043) are
+/// all the same native 16×16 cell, 5 columns (rarity tiers) × N animation
+/// rows — see `loadColumnAnimation`. One shared render scale, matching
+/// `kProjectileRenderScale`'s reasoning: small icon, doesn't need to read
+/// as large as a character.
+const double kItemRenderScale = 2.5;
+
+/// How close the player has to walk to a gem/potion to collect it.
+const double kItemPickupRadiusPx = 28;
+
+/// Potions float up and down in place while sitting on the ground
+/// (developer's explicit ask) — a simple sine offset on top of their own
+/// looping sprite animation, not a second spritesheet.
+const double kPotionFloatAmplitudePx = 6;
+const double kPotionFloatPeriodSec = 1.6;
+
 /// Flame component render order (CLAUDE.md §4.10) — layer via these
 /// constants, never a magic `priority:` int on a component.
 class ArenaPriority {
@@ -91,6 +130,9 @@ class ArenaPriority {
 
   static const floor = 0;
   static const groundEffects = 5;
+  // Gems/potions (D-043) sit on the ground, above the floor/ground effects
+  // but below anything that walks.
+  static const pickup = 7;
   static const enemy = 10;
   // Above `enemy` so an elite's fire glow (D-035/D-036) reads on top of the
   // enemy sprite instead of peeking out from behind it.

@@ -4,7 +4,7 @@ import 'package:flame/components.dart';
 
 import '../../core/constants.dart';
 import '../arena_game.dart';
-import 'enemy.dart';
+import 'damageable.dart';
 
 /// The Bruiser's knife (DECISIONS D-029): straight-line, constant speed,
 /// same as [ProjectileComponent] except it **pierces** — it keeps flying and
@@ -45,7 +45,7 @@ class KnifeProjectileComponent extends SpriteComponent
   static const _rotationSpeedRadPerSec = 15.4;
 
   final Vector2 _scratch = Vector2.zero(); // reused every frame
-  final Set<EnemyComponent> _hitEnemies = {};
+  final Set<Damageable> _hitEnemies = {};
   bool _bloodied = false;
 
   @override
@@ -64,21 +64,22 @@ class KnifeProjectileComponent extends SpriteComponent
       return;
     }
 
-    // Snapshot first -- takeDamage() can remove an enemy from game.enemies,
-    // which must not happen mid-iteration (same rule as ProjectileComponent).
-    final touching = <EnemyComponent>[];
-    for (final enemy in List<EnemyComponent>.of(game.enemies)) {
-      if (enemy.isDying || _hitEnemies.contains(enemy)) continue;
-      final isTouching = position.distanceTo(enemy.position) <
-          (size.x / 2 + enemy.size.x / 2);
-      if (isTouching) touching.add(enemy);
+    // Snapshot first -- takeDamage() can remove a target from
+    // game.damageableTargets, which must not happen mid-iteration (same
+    // rule as ProjectileComponent).
+    final touching = <Damageable>[];
+    for (final target in List<Damageable>.of(game.damageableTargets)) {
+      if (target.isDying || _hitEnemies.contains(target)) continue;
+      final isTouching = position.distanceTo(target.position) <
+          (size.x / 2 + target.size.x / 2);
+      if (isTouching) touching.add(target);
     }
 
-    for (final enemy in touching) {
-      _hitEnemies.add(enemy);
-      enemy.applyKnockback(_direction, knockback);
-      enemy.takeDamage(damage);
-      game.onProjectileHit(enemy.position.clone(), damage);
+    for (final target in touching) {
+      _hitEnemies.add(target);
+      target.applyKnockback(_direction, knockback);
+      target.takeDamage(damage);
+      game.onProjectileHit(target.position.clone(), damage);
     }
 
     if (touching.isNotEmpty && !_bloodied) {

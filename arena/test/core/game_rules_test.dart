@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:ui' show Offset, Rect;
 
 import 'package:arena/core/game_rules.dart';
 import 'package:flame/game.dart' show Vector2;
@@ -98,6 +99,37 @@ void main() {
       }
       final rate = trueCount / trials;
       expect(rate, closeTo(kEliteChance, 0.02)); // generous tolerance
+    });
+  });
+
+  group('bossStatMultiplier', () {
+    test('is 1 for the first spawn (index 0)', () {
+      expect(bossStatMultiplier(0), 1.0);
+    });
+
+    test('compounds ~20% per spawn, not flat', () {
+      expect(bossStatMultiplier(1), closeTo(1.2, 1e-9));
+      expect(bossStatMultiplier(2), closeTo(1.44, 1e-9)); // 1.2^2, not 1.4
+    });
+  });
+
+  group('randomPerimeterPoint', () {
+    test('always lands outside the visible rect, inflated by the margin', () {
+      const visible = Rect.fromLTWH(0, 0, 360, 800);
+      final random = Random(3);
+      for (var i = 0; i < 200; i++) {
+        final point = randomPerimeterPoint(random, visible, marginFactor: 0.15);
+        final inflated = visible.inflate(0.01); // float-rounding slack
+        expect(inflated.contains(Offset(point.x, point.y)), isFalse);
+      }
+    });
+
+    test('is deterministic for a given seed', () {
+      const visible = Rect.fromLTWH(0, 0, 360, 800);
+      expect(
+        randomPerimeterPoint(Random(9), visible, marginFactor: 0.15),
+        randomPerimeterPoint(Random(9), visible, marginFactor: 0.15),
+      );
     });
   });
 }
