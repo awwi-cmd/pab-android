@@ -1319,6 +1319,61 @@ been scope beyond what was asked for this pass. `HpBarComponent`/
 `ArenaFloor`'s doc comments updated to drop the D-007 assumption they were
 written against.
 
+## D-041 — Phase 9.3/9.4: endless floor, camera-relative spawning, straggler culling
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** On-device pass on 9.1 surfaced 4 issues, screenshotted:
+(1) the old bounded arena's border tiles were still visible as a stray line
+partway across the screen once the camera scrolled past where that patch
+used to end; (2) the floor genuinely only ever covered the original
+patch — walking past it showed empty background, exactly the gap D-040
+flagged; (3) enemies could spawn inside the visible view instead of outside
+it; (4) far enough from the start, enemies stopped spawning at all. This
+entry closes TASKS 9.3 and 9.4 together, since (3) and (4) turned out to
+share one root cause.
+**Decision:** `ArenaFloor` rewritten to render every frame from
+`game.camera.visibleWorldRect` directly — no more fixed `size`/
+`onGameResize`-driven pattern grid, no more border tiles at all (an
+infinite world has no edge to draw one on, which is what fixes (1) for
+free). Tile variant per cell is a deterministic hash of `(col, row)` plus a
+per-round random seed, not `Random()` per frame — the same cell always
+renders the same tile if you leave and come back, only the seed differs
+round to round. `Spawner._randomPerimeterPoint` now builds its perimeter
+from `visibleWorldRect` inflated by `_visibleMarginFactor` (0.15, the
+developer's literal "maybe 15% further" ask) instead of a fixed rect at the
+origin — spawns always land just outside whatever the player can currently
+see, wherever that is.
+That alone would have re-broken (4) in a new shape: `EnemyStats.
+moveSpeedPxPerS` (70) is slower than every playable character's
+`moveSpeedPxPerS` (120+), so in an unbounded world an enemy that spawns
+behind a player moving mostly one direction can fall behind and never
+catch up — previously impossible, since world-equals-screen (D-007) meant
+every live enemy was already always near the player. Left alone, those
+enemies never die, permanently occupying slots under `Spawner.
+_maxLiveEnemies` (60) until nothing new can spawn — the actual mechanism
+behind the reported "stops spawning far from start" bug. Fixed with
+`Spawner._cullStragglers`, ticking once a second: any enemy farther than
+`_cullDistanceFactor` (3.0) times the visible view's larger dimension from
+the player is removed via a new `ArenaGame.cullEnemy` — same removal as a
+normal kill, minus the kill count/XP grant, so it doesn't misreport round
+stats. 3.0x is well beyond the spawn margin specifically so normal chasing
+(an enemy temporarily behind mid-pursuit) is never mistaken for stragglers.
+**Because:** Deriving both the floor's tile range and the spawn ring from
+`visibleWorldRect` (rather than reintroducing a second "where is the player
+now" concept) means both automatically track whatever the camera is
+actually doing — including any future zoom/viewport changes — without
+needing their own separate camera-following logic. Culling was not
+explicitly requested but is required for (4) to be *actually* fixed rather
+than just moved: recentering spawns alone does not stop already-unreachable
+enemies (or ones created by an unlucky chase) from permanently eating the
+population cap.
+**Consequences:** `TrackingSpriteEffect`-based effects (an elite's fire
+glow) clean themselves up for free on a cull the same way they do on a
+real death, since they already key off the target leaving the tree, not
+off `onEnemyKilled` specifically. No stat/UI changes — culled enemies are
+invisible to the player by construction (they're always far outside the
+view when it happens). TASKS 9.5 (revisit anything else that assumed a
+bounded arena) is still open.
+
 ---
 
 ## Open questions

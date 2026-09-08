@@ -411,33 +411,46 @@ slice at a time per the developer's own chosen order, not all at once
       from spawn — fixed to check `camera.visibleWorldRect` instead.
       `flutter analyze` clean, `flutter test` 49/49, `flutter build apk
       --debug` succeeds.
-      - **Known, deliberately deferred gaps (not bugs — next 2 slices):**
-        `ArenaFloor` still only tiles one `game.size` patch at the world
-        origin — walking past its edge reveals the plain background
-        colour. `Spawner` still spawns enemies around that same origin
-        rect, not around the player — enemies stop appearing once the
-        player wanders far enough away. Both flagged in-code.
-- [ ] **9.2** On-device verification of 9.1 — **developer**: movement feels
-      free/unbounded in all 4 directions, camera tracks the player smoothly
-      (no jitter/lag), HP bar and FPS counter stay fixed on screen while
-      the world scrolls under them, all 3 attack kits (bolt/knife/Spiral
-      Fire) still land hits at various distances from spawn — **known
-      limitation to expect, not a bug to report:** walking away from the
-      start reveals empty background where the floor ends, and enemies
-      stop spawning nearby since they still spawn at the original spot
-- [ ] **9.3** Endless floor tiling — `ArenaFloor` needs to tile outward
-      from wherever the camera currently is, not just the original
-      `game.size` patch at the origin.
-- [ ] **9.4** Re-center enemy spawning on the player — `Spawner.
-      _randomPerimeterPoint` needs to spawn in a ring around the player's
-      *current* world position, not a fixed rect at the origin. Likely also
-      needs a "despawn/cull enemies too far behind the player" rule so the
-      live-enemy list doesn't accumulate stragglers forever in an infinite
-      world (ask before adding that if it's not obviously implied).
-- [ ] **9.5** Revisit anything that assumed a fixed/bounded arena once 9.3/
-      9.4 land: `EnemyComponent`'s movement-toward-player logic, any future
-      minimap/HUD element, whether 60-live-enemy cap still makes sense at
-      this scale.
+      - **2026-09-09 on-device pass found 4 issues** (screenshotted),
+        closed by 9.3/9.4 below: the border was still visible (a stray
+        line where the old bounded patch's edge used to be), the floor
+        genuinely didn't extend past that patch, enemies could spawn
+        inside the visible view, and spawning stopped entirely far enough
+        from the start.
+- [x] **9.3** Endless floor tiling + border removal (DECISIONS D-041):
+      `ArenaFloor` rewritten to render from `game.camera.visibleWorldRect`
+      every frame instead of a fixed pattern baked into one `game.size`
+      patch — tile variant per cell is a deterministic hash of `(col, row)`
+      + a per-round seed, not `Random()` per frame, so revisiting a cell
+      shows the same tile. Border tiles removed outright — an infinite
+      world has no edge to draw one on, which is what fixed the
+      still-visible-border bug for free.
+- [x] **9.4** Camera-relative spawning + straggler culling (DECISIONS
+      D-041): `Spawner._randomPerimeterPoint` now builds its ring from
+      `visibleWorldRect` inflated 15% (`_visibleMarginFactor`, the
+      developer's literal ask) instead of a fixed rect at the origin.
+      Turned out (3) and (4) shared one root cause: enemies (70px/s) are
+      slower than every character (120+px/s), so one that spawns behind a
+      player moving mostly one direction can fall behind forever in an
+      unbounded world — previously impossible under the old fixed arena.
+      Unculled, those permanently ate into the 60-live-enemy cap until
+      nothing new could spawn — the actual mechanism behind (4). Fixed
+      with `Spawner._cullStragglers` (ticks once/sec, removes anything
+      >3x the visible view's larger dimension from the player via new
+      `ArenaGame.cullEnemy` — same as a kill, minus kill count/XP).
+      `flutter analyze` clean, `flutter test` 49/49, `flutter build apk
+      --debug` succeeds.
+- [ ] **9.2** On-device verification of 9.1/9.3/9.4 together —
+      **developer**: movement feels free/unbounded, camera tracks
+      smoothly, HP bar/FPS counter stay fixed while the world scrolls,
+      floor now tiles endlessly in every direction with no visible border
+      anywhere, enemies only ever spawn just outside what's visible (never
+      pop in on-screen), spawning keeps working no matter how far from the
+      start point, all 3 attack kits still land hits at any distance
+- [ ] **9.5** Revisit anything that assumed a fixed/bounded arena now that
+      9.3/9.4 are in: `EnemyComponent`'s movement-toward-player logic, any
+      future minimap/HUD element, whether 60-live-enemy cap still makes
+      sense at this scale.
 
 **Exit criterion:** the player can walk indefinitely in any direction, the
 world keeps generating around them (floor + enemies), and every existing
@@ -467,8 +480,8 @@ Kept here so ideas have somewhere to go that isn't the current sprint.
 - Real audio: SFX bank + music, wired to the existing volume sliders
 - Multiple arenas and backgrounds
 - ~~Camera larger than the screen, with scroll~~ — started Phase 9 (D-040):
-  camera + free movement land in 9.1, endless floor/re-centered spawning
-  still open (9.3/9.4).
+  camera + free movement (9.1), endless floor + camera-relative spawning
+  with straggler culling (9.3/9.4) all land — D-040/D-041.
 - Enemy separation/steering so they stop stacking
 - Object pooling if the perf budget gets tight
 - Haptics on hit and death

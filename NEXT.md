@@ -23,15 +23,23 @@ easy, quiet bug: a component added the old way still renders, just without
 ever moving relative to the camera, which reads as "this thing is following
 the player like a HUD element" even though it's meant to sit in the world.
 
-**Two known, deliberately deferred gaps from Phase 9.1 (TASKS 9.3/9.4,
-D-040)** — not bugs, the next two slices of the same feature, in the
-developer's own chosen build order: `ArenaFloor` still only tiles one
-`game.size` patch at the world origin (no endless tiling yet — walking past
-its edge reveals the plain background colour); `Spawner.
-_randomPerimeterPoint` still spawns around that same origin rect instead of
-around the player's current position (enemies stop appearing once the
-player wanders far enough away). Both are flagged in-code at the exact spot
-that needs to change.
+**Endless world rendering pattern (DECISIONS D-041, Phase 9.3/9.4).**
+`ArenaFloor` and `Spawner` both derive everything from
+`game.camera.visibleWorldRect` fresh each frame/tick rather than any cached
+notion of "where the world is" — that's the pattern to follow for any
+future component that needs to cover or react to the area around the
+player in an unbounded world (a minimap, a fog-of-war effect, a boss that
+should always spawn just off-screen). `ArenaFloor`'s per-cell tile pick is
+a deterministic hash of `(col, row)` plus a per-round seed, not
+`Random()` per frame — anything else that needs "this world location always
+looks/behaves the same way" should use the same trick rather than caching a
+grown-on-demand data structure. `Spawner._cullStragglers` is the other half
+worth knowing: in an unbounded world, anything slower than the player
+(enemies at 70px/s vs. 120+px/s for every character) can fall behind
+forever, so any future spawned-and-chasing entity needs its own answer to
+"what happens if it never catches up" — silent removal via a
+kill-stat-free method (`ArenaGame.cullEnemy`) is the existing answer for
+enemies specifically.
 
 **`AnimState` (`game/anim/anim_state.dart`)** lists every state on the
 reference sheet, not just the six the demo wires (DECISIONS D-012). Adding

@@ -89,7 +89,7 @@ batch files. Always `set FLUTTER=C:\src\flutter\bin\flutter.bat`.
 
 ## 3. Repository layout
 
-Kept current as of Phase 9.1 (2026-09-09) — update this tree when you add a
+Kept current as of Phase 9.4 (2026-09-09) — update this tree when you add a
 file that will confuse the next person if it's missing here, same discipline
 as `TASKS.md`.
 
@@ -148,10 +148,10 @@ ArenaDemo/                    <- repo root, open this in your editor
             │   ├── knife_projectile.dart    // Bruiser kit: pierces, clean->bloody sprite swap — D-029
             │   ├── spiral_fire_projectile.dart // Skirmisher kit: orbiting yin-yang pair — D-034
             │   ├── tracking_effect.dart      // VFX glued to a moving target, optional fade-out — D-034/D-035/D-036
-            │   ├── spawner.dart              // still spawns around the world origin, not the player — known gap, D-040
+            │   ├── spawner.dart              // camera-relative spawn ring + straggler culling — D-041
             │   ├── hp_bar.dart               // now on camera.viewport (HUD), not world — D-040
             │   ├── damage_text.dart
-            │   ├── arena_floor.dart          // still one game.size patch at the origin, not endless — known gap, D-040
+            │   ├── arena_floor.dart          // endless tiling from camera.visibleWorldRect, no border — D-041
             │   └── aura.dart                // Aura skill: shield-ring visual, area-tick damage — D-027/D-032
             ├── input/
             │   ├── movement_input.dart    // the 3 control schemes, scheme-agnostic Vector2

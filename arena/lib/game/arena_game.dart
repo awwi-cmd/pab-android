@@ -384,6 +384,17 @@ class ArenaGame extends FlameGame {
     grantXp(kXpPerKill);
   }
 
+  /// Silently removes an enemy that's fallen too far behind the player to
+  /// ever catch up (DECISIONS D-041, `Spawner._cullStragglers`) — no kill
+  /// count, no XP, unlike [onEnemyKilled]. Any of the enemy's own
+  /// components that key off it leaving the tree (e.g. an elite's
+  /// `TrackingSpriteEffect` fire glow) clean themselves up the same way
+  /// they would on a normal death.
+  void cullEnemy(EnemyComponent enemy) {
+    enemies.remove(enemy);
+    enemy.removeFromParent();
+  }
+
   /// Kills grant XP directly — no drops (developer's spec). Loops in case
   /// one grant crosses more than one threshold at once.
   void grantXp(double amount) {
