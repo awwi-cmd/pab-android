@@ -976,6 +976,16 @@ gone, not kept behind a flag — if a future skill wants that "several small
 sprites around a circle" look again, D-027's original `aura.dart` history
 in git is the reference, not dead code left in this file.
 
+**2026-09-09 update:** first on-device look at the ring read "too bright,
+in your face" — added `_opacity`/`_contrast`, both 0.8 (-20% each), on the
+`SpriteAnimationComponent`'s `paint`. Opacity via `Paint.color`'s alpha
+(`Color.fromRGBO(255, 255, 255, _opacity)`); contrast via a standard
+scale-toward-grey `ColorFilter.matrix` (`AuraComponent._contrastMatrix`) —
+the two compose independently in Flutter's paint pipeline (alpha controls
+overall opacity, `colorFilter` transforms the sampled color before that
+alpha is applied), so stacking both doesn't fight itself. `_dealDamage`/
+radius/sizing untouched — purely a paint-layer tune on top of D-032's swap.
+
 ---
 
 ## Open questions

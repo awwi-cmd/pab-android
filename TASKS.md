@@ -237,6 +237,9 @@ built 2026-09-07 — see DECISIONS D-025 for the full design reasoning).*
       `flutter test` 47/47, `flutter build apk --debug` succeeds. On-device
       re-verify needed: does the new ring read clearly, does its spin speed
       (first guess: ~1.8s per loop) feel right.
+      — **2026-09-09 update 5:** -20% opacity, -20% contrast (developer's
+      call: too bright/in-your-face). `flutter analyze` clean, `flutter
+      test` 47/47, `flutter build apk --debug` succeeds.
 
 flutter analyze clean, flutter test passes (32 tests, 12 new), flutter build
 apk --debug succeeds. No automated coverage of the pause/overlay orchestration

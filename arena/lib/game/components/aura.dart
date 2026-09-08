@@ -33,12 +33,35 @@ class AuraComponent extends PositionComponent with HasGameReference<ArenaGame> {
         animation: shieldAnimation,
         size: Vector2.all(_radiusPx * 2),
         anchor: Anchor.center,
-        paint: Paint()..filterQuality = FilterQuality.none, // D-011
+        paint: Paint()
+          ..filterQuality = FilterQuality.none // D-011
+          ..color = const Color.fromRGBO(255, 255, 255, _opacity)
+          ..colorFilter = ColorFilter.matrix(_contrastMatrix(_contrast)),
       ),
     );
   }
 
   static const _radiusPx = UpgradeAmounts.auraRadiusPx;
+
+  // 2026-09-09 tune (developer's call): the raw asset read "too bright,
+  // in-your-face" on-device -- -20% opacity, -20% contrast.
+  static const _opacity = 0.8;
+  static const _contrast = 0.8;
+
+  /// Standard contrast-scaling color matrix: scales every channel toward
+  /// (away from, if [factor] > 1) the 50% grey midpoint by [factor], alpha
+  /// untouched (last row `0 0 0 1 0`). `Color.fromRGBO`'s own alpha above
+  /// handles opacity separately -- this only pulls the ring's own colors
+  /// closer together, it doesn't fade it out.
+  static List<double> _contrastMatrix(double factor) {
+    final translate = (1 - factor) * 255 / 2;
+    return [
+      factor, 0, 0, 0, translate,
+      0, factor, 0, 0, translate,
+      0, 0, factor, 0, translate,
+      0, 0, 0, 1, 0,
+    ];
+  }
 
   double _tickTimer = UpgradeAmounts.auraTickIntervalSec;
 
