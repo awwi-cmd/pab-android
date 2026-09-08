@@ -83,6 +83,7 @@ class ArenaGame extends FlameGame {
   /// Exposed for [SpiralFireAttack] (DECISIONS D-034) the same way
   /// [boltAnimation]/[knifeCleanSprite] are for the other kits.
   SpriteAnimation get pixelFireAnimation => _pixelFireAnimation;
+  SpriteAnimation get sparkleAnimation => _sparkleAnimation;
 
   /// Flutter-observable mirror of round-over state, so the movement-input
   /// overlay (a Flutter widget, not a Flame overlay) knows to stop
@@ -200,6 +201,10 @@ class ArenaGame extends FlameGame {
       frameCount: 60,
       amountPerRow: 9,
     );
+    // Looping (DECISIONS D-036): the Skirmisher's cast sparkle is now an
+    // always-on visual for the whole round, not a one-shot per cast, so it
+    // needs to keep animating indefinitely rather than freeze on its last
+    // frame.
     _sparkleAnimation = await loadSheetAnimation(
       'vfx/vfx/effect_sparkles-constelation.png',
       cellWidth: 309,
@@ -207,7 +212,6 @@ class ArenaGame extends FlameGame {
       stepTime: 0.008,
       frameCount: 60,
       amountPerRow: 9,
-      loop: false,
     );
     // First real cell is index 1, not 0 -- effect_impact.png's (0,0) cell is
     // blank on this sheet. Included as frame 0 anyway (one invisible ~12ms
@@ -273,6 +277,13 @@ class ArenaGame extends FlameGame {
       animations: _animations,
     )..position = size / 2;
     add(player);
+    // Hook for any persistent per-kit visual/setup that isn't tied to a
+    // single perform() call (DECISIONS D-036) -- SpiralFireAttack's
+    // always-on cast sparkle is the only override so far. Default no-op,
+    // called here rather than branched on `character.id` (CLAUDE.md §4.12:
+    // character-specific behavior is a strategy object, not an `if` in
+    // ArenaGame).
+    character.attackBehavior.onEquipped(this);
     add(HpBarComponent());
     add(Spawner());
 
@@ -323,13 +334,16 @@ class ArenaGame extends FlameGame {
     enemies.add(enemy);
     add(enemy);
 
-    // Elite marker (DECISIONS D-035) -- visual only, no stat change. A
+    // Elite marker (DECISIONS D-035/D-036) -- visual only, no stat change. A
     // separate top-level sibling rather than a child of `enemy`: a
     // component's own children render on top of it (Flame renders self then
-    // children), which would put the glow in front of the enemy instead of
-    // under it. `groundEffects` priority (< `enemy`) plus tracking the
-    // enemy's position every frame gets the same "glued to it" effect with
-    // the right z-order instead.
+    // children) regardless of the child's own priority, so a child could
+    // never be tucked *behind* `enemy` -- irrelevant now since D-036 wants
+    // it on top anyway, but it's still a sibling (not a child) so its
+    // `enemyOverlay` priority is actually respected against other
+    // top-level components. Fades out (not a hard cut) the instant the
+    // enemy starts dying, rather than staying at full brightness through
+    // the whole death animation and then vanishing on removal.
     if (rollIsElite(_random)) {
       final width = enemy.size.x; // never wider than the enemy, per the ask
       add(
@@ -338,8 +352,10 @@ class ArenaGame extends FlameGame {
           offset: Vector2(0, enemy.size.y * 0.3), // toward the feet, not center
           animation: _eliteFireAnimation,
           size: Vector2(width, width * kEliteFireAspect),
-          priority: ArenaPriority.groundEffects,
+          priority: ArenaPriority.enemyOverlay,
           removeOnFinish: false, // persists for the enemy's whole lifetime
+          fadeOutWhen: () => enemy.isDying,
+          fadeOutDurationSec: kEliteFireFadeOutSec,
         ),
       );
     }
@@ -498,26 +514,6 @@ class ArenaGame extends FlameGame {
       _bloodImpactAnimation,
       at,
       size: Vector2(width, width * kBloodImpactAspect),
-    );
-  }
-
-  /// The Skirmisher's Spiral Fire cast flourish (DECISIONS D-034) — glued to
-  /// [caster] for its short duration (`TrackingSpriteEffect`) rather than a
-  /// fixed point, since the player can keep moving mid-cast. Rendered behind
-  /// the caster (`groundEffects` priority < `player`) and dimmed to 35%
-  /// opacity per spec.
-  void spawnCastSparkle(PositionComponent caster) {
-    final width = caster.size.x * kSparkleWidthFactor;
-    add(
-      TrackingSpriteEffect(
-        target: caster,
-        animation: _sparkleAnimation,
-        size: Vector2(width, width * kSparkleAspect),
-        priority: ArenaPriority.groundEffects,
-        paint: Paint()
-          ..filterQuality = FilterQuality.none // D-011
-          ..color = const Color.fromRGBO(255, 255, 255, 0.35),
-      ),
     );
   }
 

@@ -56,7 +56,8 @@ class SpiralFireProjectileComponent extends SpriteAnimationComponent
   final double _totalDistance;
 
   static const _orbitRadiusPx = 24.0; // first guess, not tuned on-device yet
-  static const _spinSpeedRadPerSec = 10.0;
+  // 2026-09-09 tune: -30% vs. the original 10.0 first guess.
+  static const _spinSpeedRadPerSec = 7.0;
 
   double _traveled = 0;
   double _angle;

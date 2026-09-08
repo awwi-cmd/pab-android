@@ -1,7 +1,9 @@
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:flame/components.dart' show Vector2;
 
+import '../core/constants.dart';
 import '../core/game_rules.dart';
 import '../core/progression.dart';
 import '../core/stats.dart';
@@ -9,6 +11,7 @@ import 'arena_game.dart';
 import 'components/knife_projectile.dart';
 import 'components/projectile.dart';
 import 'components/spiral_fire_projectile.dart';
+import 'components/tracking_effect.dart';
 
 /// How a `CharacterDef` attacks (DECISIONS D-024). `ArenaGame` owns the
 /// cooldown timer (round state stays on `ArenaGame`, CLAUDE.md §4.5) and
@@ -30,6 +33,15 @@ abstract class AttackBehavior {
   /// projectile, start a melee swing — it's responsible for its own
   /// "nothing to attack" no-op case.
   void perform(ArenaGame game);
+
+  /// Called once when this becomes the active character's kit for the
+  /// round (`ArenaGame.resetRound`, right after the player is created) —
+  /// the hook for any persistent per-kit visual/setup that isn't tied to a
+  /// single [perform] call (DECISIONS D-036: `SpiralFireAttack`'s always-on
+  /// cast sparkle is the first user). Default no-op; override only if the
+  /// kit needs one. Kept here rather than an `if (character.id == ...)` in
+  /// `ArenaGame` (CLAUDE.md §4.12).
+  void onEquipped(ArenaGame game) {}
 }
 
 /// The only attack in the demo: fires one projectile at the nearest enemy
@@ -168,20 +180,47 @@ class KnifeAttack extends AttackBehavior {
   }
 }
 
-/// The Skirmisher's kit (DECISIONS D-034): "Spiral Fire" — two
+/// The Skirmisher's kit (DECISIONS D-034/D-037): "Spiral Fire" — two
 /// `SpiralFireProjectileComponent`s launched together at the nearest enemy
 /// in range (pi radians of orbit phase apart, so they spiral around each
-/// other like a yin-yang pair converging on the target), plus a cast
-/// sparkle on the caster's own body (`ArenaGame.spawnCastSparkle`). Same
-/// targeting/cooldown formula as [ProjectileAttack]; unlike it, two shots go
-/// out per cast instead of one — full per-hit damage each, not halved, so
-/// this hits harder than a single bolt in exchange for however that first
-/// on-device pass reads (no tune pass yet, unlike the knife which took two).
+/// other like a yin-yang pair converging on the target), plus a permanent
+/// cast-sparkle visual on the caster's own body (D-036, [onEquipped] below)
+/// that's on for the whole round, not just while casting. Same cooldown
+/// formula as [ProjectileAttack]; targeting range and per-hit damage each
+/// get their own multiplier (see the fields below) rather than reusing the
+/// shared formula as-is, same pattern as [KnifeAttack]'s tuning fields.
 class SpiralFireAttack extends AttackBehavior {
   const SpiralFireAttack();
 
+  /// 2026-09-09 tune: +40% targeting range vs. the shared formula.
+  static const _rangeMultiplier = 1.4;
+
+  /// 2026-09-09 tune: -40% vs. the shared per-hit formula, to offset two
+  /// full shots going out per cast instead of one.
+  static const _damageMultiplier = 0.6;
+
   @override
   double cooldownSeconds(StatBlock stats) => 1 / stats.attacksPerSec;
+
+  @override
+  void onEquipped(ArenaGame game) {
+    // Always-on for the round (DECISIONS D-036) -- not spawned per cast
+    // anymore, so it's visible at all times rather than flashing only when
+    // the Skirmisher actually fires.
+    final player = game.player;
+    final width = player.size.x * kSparkleWidthFactor;
+    game.add(
+      TrackingSpriteEffect(
+        target: player,
+        animation: game.sparkleAnimation,
+        size: Vector2(width, width * kSparkleAspect),
+        priority: ArenaPriority.groundEffects, // behind the caster
+        paint: Paint()
+          ..filterQuality = FilterQuality.none // D-011
+          ..color = const Color.fromRGBO(255, 255, 255, kSparkleOpacity),
+      ),
+    );
+  }
 
   @override
   void perform(ArenaGame game) {
@@ -192,7 +231,7 @@ class SpiralFireAttack extends AttackBehavior {
     final index = nearestWithinRange(
       player.position,
       positions,
-      stats.attackRangePx,
+      stats.attackRangePx * _rangeMultiplier,
     );
     if (index == -1) return;
     final target = game.enemies[index];
@@ -201,7 +240,8 @@ class SpiralFireAttack extends AttackBehavior {
       return; // exactly on top of the target
     }
 
-    final damage = stats.damagePerHit + game.upgrades.bonusDamage;
+    final damage =
+        (stats.damagePerHit + game.upgrades.bonusDamage) * _damageMultiplier;
     for (final phase in [0.0, pi]) {
       game.add(
         SpiralFireProjectileComponent(
@@ -215,7 +255,6 @@ class SpiralFireAttack extends AttackBehavior {
         ),
       );
     }
-    game.spawnCastSparkle(player);
     player.playFire();
   }
 }

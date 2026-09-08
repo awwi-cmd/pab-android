@@ -1116,6 +1116,79 @@ size actually look like it's under the enemy rather than through it.
 
 ---
 
+## D-036 — Elite fire on top + fades on death; cast sparkle made persistent
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** First on-device-adjacent feedback on D-034/D-035: elite fire
+should render **on top of** the enemy (not behind it as D-035 shipped), and
+should start fading the instant the enemy dies rather than staying at full
+brightness through the whole death animation and then vanishing the frame
+it's removed. Separately, the cast sparkle had a real bug: `spawnCastSparkle`
+was called once per `SpiralFireAttack.perform()` as a one-shot flash — the
+developer wants it "visible at all times," not just for the ~0.5s after a
+cast.
+**Decision:** Three changes. (1) New `ArenaPriority.enemyOverlay` (12, between
+`enemy` 10 and `player` 15) — elite fire now renders at this priority instead
+of `groundEffects` (5), so it reads on top of the enemy sprite. (2)
+`TrackingSpriteEffect` gained `fadeOutWhen`/`fadeOutDurationSec` — a poll
+function checked every frame once `target` is still mounted; the first time
+it returns true, opacity ramps to 0 over `fadeOutDurationSec` (0.4s,
+`kEliteFireFadeOutSec`) and the component removes itself at the end of the
+ramp instead of waiting for `target.isMounted` to flip. The elite spawn in
+`ArenaGame.spawnEnemy` passes `fadeOutWhen: () => enemy.isDying` —
+`EnemyComponent.isDying` flips synchronously the moment `takeDamage` reduces
+hp to 0, well before the death animation finishes and the enemy is actually
+removed, so the glow starts dying with the enemy instead of after it. (3)
+The cast sparkle moved off the per-cast path entirely: `_sparkleAnimation`
+now loads with `loop: true` (was one-shot), and a new `AttackBehavior.
+onEquipped(ArenaGame)` lifecycle hook — called once from `ArenaGame.
+resetRound()` right after the player is created, default no-op — is where
+`SpiralFireAttack` now spawns one persistent `TrackingSpriteEffect` on the
+player for the whole round. `spawnCastSparkle`/the per-cast call in `perform()`
+are gone.
+**Because:** `onEquipped` rather than an `if (character.attackBehavior is
+SpiralFireAttack)` branch in `ArenaGame` is CLAUDE.md §4.12 — character/kit-
+specific behavior is a strategy-object method, not a type-check in the
+generic owner. `fadeOutWhen` as a poll closure (not a one-off event/callback)
+keeps `TrackingSpriteEffect` decoupled from knowing anything about
+`EnemyComponent` specifically — it can fade-trigger off any boolean
+condition a future caller wants, elite death is just the first one.
+**Consequences:** Every `AttackBehavior` now has 3 lifecycle touchpoints
+(`cooldownSeconds`, `perform`, `onEquipped`) instead of 2 — `ProjectileAttack`/
+`KnifeAttack` don't override the new one, no change to them. The sparkle's
+opacity also went 0.35 → 0.5 (`kSparkleOpacity`) per "a little more visible"
+in the same round of feedback — bundled into this entry rather than a
+separate one since it's the same constant/same conversation.
+
+## D-037 — Spiral Fire retune: +40% range, -30% spin speed, -40% damage
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** First feedback pass on `SpiralFireAttack` (D-034): targeting
+range should be bigger, the orbiting spin should be slower, and per-hit
+damage should come down — same "ship it plain, then tune from a real
+reaction" pattern as the knife (D-029→D-030) and the Aura ring (D-027 update).
+**Decision:** `SpiralFireAttack` gained its own `_rangeMultiplier` (1.4,
++40% vs. the shared `stats.attackRangePx` formula, applied only to the
+initial target lookup — same role `KnifeAttack._rangeMultiplier` plays) and
+`_damageMultiplier` (0.6, -40% vs. the shared per-hit formula, same role as
+`KnifeAttack._damageMultiplier`). `SpiralFireProjectileComponent
+._spinSpeedRadPerSec` (the orbit's angular speed, not the forward travel
+speed — "spiral" reads as the orbiting wobble, not how fast the pair
+advances toward the target) dropped from 10.0 to 7.0 (-30%).
+**Because:** Naming these per-kit tuning fields the same way `KnifeAttack`'s
+already are keeps the pattern recognizable — anyone tuning a kit later knows
+to look for a `_rangeMultiplier`/`_damageMultiplier`/similar rather than
+hunting for where a formula got inlined differently per class. Reading
+"speed" in "make projectiles spiral with 30% less speed" as the orbit's
+angular speed (not `speedPxPerS`, the forward travel speed already driven by
+`stats.projSpeedPxPerS` like every other kit) matches what "spiral" actually
+refers to — the wobble, not the advance.
+**Consequences:** Two full-damage shots at 0.6x each is still more total
+per-cast damage than a single `ProjectileAttack`/`KnifeAttack` hit at 1x
+(1.2x combined) — intentionally not brought all the way down to parity,
+since two-projectiles-that-can-both-connect is the kit's whole identity;
+further tuning is expected same as everywhere else in this file.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

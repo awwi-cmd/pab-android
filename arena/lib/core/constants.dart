@@ -76,6 +76,14 @@ const double kSpiralImpactAspect = 383 / 305;
 const double kSpiralExplosionWidthPx = 64; // effect_explosion2.png cell 355x365
 const double kSpiralExplosionAspect = 365 / 355;
 
+/// The Skirmisher's cast sparkle opacity (D-034/D-036) -- 0.35 at first
+/// ship read as too faint on-device, bumped to 0.5.
+const double kSparkleOpacity = 0.5;
+
+/// How long an elite's fire glow takes to fade to nothing once the enemy
+/// starts dying (D-036) — see `TrackingSpriteEffect.fadeOutWhen`.
+const double kEliteFireFadeOutSec = 0.4;
+
 /// Flame component render order (CLAUDE.md §4.10) — layer via these
 /// constants, never a magic `priority:` int on a component.
 class ArenaPriority {
@@ -84,6 +92,9 @@ class ArenaPriority {
   static const floor = 0;
   static const groundEffects = 5;
   static const enemy = 10;
+  // Above `enemy` so an elite's fire glow (D-035/D-036) reads on top of the
+  // enemy sprite instead of peeking out from behind it.
+  static const enemyOverlay = 12;
   static const player = 15;
   static const projectile = 20;
   static const hitEffects = 25;

@@ -301,13 +301,23 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
         `SpiralFireProjectileComponent`s launched together, pi radians of
         orbit phase apart, spiraling around a shared advancing point that
         converges on the target (yin-yang look); a `sparkles-constelation`
-        flourish plays behind the caster's body at 35% opacity on every
-        cast. Non-lethal hits play `effect_impact`, kills play
-        `effect_explosion2` — on top of, not instead of, the existing shared
-        hit-spark/damage-number feedback. Full per-hit damage on each of the
-        2 shots, not halved — first pass, no tune yet (unlike the knife's
-        two rounds). `flutter analyze` clean, `flutter test` 49/49,
-        `flutter build apk --debug` succeeds.
+        flourish plays behind the caster's body. Non-lethal hits play
+        `effect_impact`, kills play `effect_explosion2` — on top of, not
+        instead of, the existing shared hit-spark/damage-number feedback.
+        `flutter analyze` clean, `flutter test` 49/49, `flutter build apk
+        --debug` succeeds.
+        — **2026-09-09 tune (DECISIONS D-036/D-037):** fixed a real bug —
+        the cast sparkle was a one-shot per cast, developer wants it
+        visible at all times; it's now spawned once per round
+        (`AttackBehavior.onEquipped`, a new lifecycle hook) as a permanent
+        looping effect on the caster instead. Also: sparkle opacity 35% →
+        50% ("a little more visible"), +40% targeting range
+        (`SpiralFireAttack._rangeMultiplier`), -30% orbit spin speed
+        (`SpiralFireProjectileComponent._spinSpeedRadPerSec`, the wobble,
+        not the forward travel speed), -40% damage per hit
+        (`SpiralFireAttack._damageMultiplier`) — two shots at 0.6x each is
+        still more total damage than a single-shot kit, deliberately not
+        brought to parity.
       - [ ] Warden — something tankier, fits `vit`-heavy stats
       - [ ] On-device verification of the Bruiser's knife — **developer**:
         pierce reads clearly (doesn't look like it stopped at the first
@@ -318,10 +328,10 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
         actually look/feel like 1 → 2 → 4 knives
       - [ ] On-device verification of the Skirmisher's Spiral Fire —
         **developer**: the spiral/yin-yang motion reads as intentional (not
-        just wobbly), sparkle flourish is visible behind the character at
-        35% opacity, impact vs. explosion picks correctly (explosion only on
-        a kill), overall damage output (2 full-damage shots per cast) feels
-        right vs. the other 2 kits
+        just wobbly) at the slower spin speed, sparkle is visible on the
+        caster's body at all times (not just mid-cast) at 50% opacity,
+        impact vs. explosion picks correctly (explosion only on a kill),
+        overall damage output feels right vs. the other 2 kits
 - [ ] **8.4** Real unlock-by-progression: lock slots 2-4 again and gate them
       behind a persistent unlock condition (kills/rounds/levels — TBD).
       Needs a persistence story beyond `SharedPreferences` settings (round
@@ -333,18 +343,25 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
       `flutter analyze` clean, `flutter test` 49/49, `flutter build apk
       --debug` succeeds.
 - [x] **8.6** Elite enemies — 15% of spawns (`kEliteChance`,
-      `core/game_rules.dart`) get a persistent `effect_dithered-fire` glow
-      under them, sized to never exceed the enemy's own width (DECISIONS
-      D-035). Visual-only for now — no stat/behavior difference, so this is
-      a first slice of the Backlog's "enemy variety" item, not the whole
-      thing. `flutter analyze` clean, `flutter test` 49/49 (2 new, including
-      a statistical check on the roll rate), `flutter build apk --debug`
+      `core/game_rules.dart`) get a persistent `effect_dithered-fire` glow,
+      sized to never exceed the enemy's own width (DECISIONS D-035).
+      Visual-only for now — no stat/behavior difference, so this is a first
+      slice of the Backlog's "enemy variety" item, not the whole thing.
+      `flutter analyze` clean, `flutter test` 49/49 (2 new, including a
+      statistical check on the roll rate), `flutter build apk --debug`
       succeeds.
+      — **2026-09-09 update (DECISIONS D-036):** developer feedback — glow
+      now renders on top of the enemy (new `ArenaPriority.enemyOverlay`,
+      was `groundEffects`/behind), and fades out over 0.4s
+      (`kEliteFireFadeOutSec`) starting the instant the enemy starts dying
+      (`EnemyComponent.isDying`) instead of staying at full brightness
+      through the whole death animation and then vanishing on removal.
 - [ ] **8.7** On-device verification of 8.5/8.6 — **developer**: blood
       splat lands on the body (not off it), position visibly varies hit to
-      hit, roughly 1 in 6-7 enemies shows the fire glow, glow tracks the
-      enemy correctly (including when it dies/despawns) and never reads
-      wider than the enemy sprite itself
+      hit, roughly 1 in 6-7 enemies shows the fire glow on top of them
+      (not behind), it visibly fades out as soon as that enemy dies rather
+      than cutting off abruptly, and it never reads wider than the enemy
+      sprite itself
 
 **Exit criterion:** 4 distinct playable characters, each unlocked by real
 progression instead of by default, each with its own attack kit.

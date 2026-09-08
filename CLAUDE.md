@@ -83,7 +83,7 @@ batch files. Always `set FLUTTER=C:\src\flutter\bin\flutter.bat`.
 
 ## 3. Repository layout
 
-Kept current as of Phase 8.6 (2026-09-09) — update this tree when you add a
+Kept current as of Phase 8.6 tune pass (2026-09-09) — update this tree when you add a
 file that will confuse the next person if it's missing here, same discipline
 as `TASKS.md`.
 
@@ -134,14 +134,14 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   └── widgets/                   // buttons, stat bars, shared chrome
         └── game/
             ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling
-            ├── attack_behavior.dart       // AttackBehavior + ProjectileAttack + KnifeAttack + SpiralFireAttack — D-024/D-029/D-034
+            ├── attack_behavior.dart       // AttackBehavior (+ onEquipped hook) + ProjectileAttack + KnifeAttack + SpiralFireAttack — D-024/D-029/D-034/D-036
             ├── components/
             │   ├── player.dart              // takeDamage spawns blood-impact VFX — D-033
             │   ├── enemy.dart              // hp/contactDamage scaled by level at spawn — D-026
             │   ├── projectile.dart
             │   ├── knife_projectile.dart    // Bruiser kit: pierces, clean->bloody sprite swap — D-029
             │   ├── spiral_fire_projectile.dart // Skirmisher kit: orbiting yin-yang pair — D-034
-            │   ├── tracking_effect.dart      // VFX glued to a moving target — D-034/D-035
+            │   ├── tracking_effect.dart      // VFX glued to a moving target, optional fade-out — D-034/D-035/D-036
             │   ├── spawner.dart
             │   ├── hp_bar.dart
             │   ├── damage_text.dart
