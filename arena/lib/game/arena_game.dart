@@ -52,7 +52,9 @@ class ArenaGame extends FlameGame {
   late EnemyAnimations _enemyAnimations;
   late SpriteAnimation _boltAnimation;
   late SpriteAnimation _sparkAnimation;
-  late SpriteAnimation _auraSparkAnimation;
+  late SpriteAnimation _auraShieldAnimation;
+  late Sprite _knifeCleanSprite;
+  late Sprite _knifeBloodySprite;
   final Random _random = Random();
 
   /// The Aura skill's orbiting-ring component (DECISIONS D-027) — null
@@ -64,6 +66,12 @@ class ArenaGame extends FlameGame {
   /// projectiles from — the animation itself isn't per-character yet, but
   /// the behavior that fires it is (DECISIONS D-024).
   SpriteAnimation get boltAnimation => _boltAnimation;
+
+  /// Exposed for [KnifeAttack] (DECISIONS D-029) the same way [boltAnimation]
+  /// is for [ProjectileAttack] — the Bruiser's knife swaps between these two
+  /// static sprites itself once it draws blood.
+  Sprite get knifeCleanSprite => _knifeCleanSprite;
+  Sprite get knifeBloodySprite => _knifeBloodySprite;
 
   /// Flutter-observable mirror of round-over state, so the movement-input
   /// overlay (a Flutter widget, not a Flame overlay) knows to stop
@@ -133,15 +141,22 @@ class ArenaGame extends FlameGame {
       stepTime: 0.05,
       loop: false,
     );
-    // Same sheet as the one-off hit spark above, but looping -- the Aura
-    // skill's ring sparks (DECISIONS D-027) play continuously rather than
-    // once per hit.
-    _auraSparkAnimation = await loadSheetAnimation(
-      'vfx/projectiles/projectile-spark.png',
-      cellWidth: 16,
-      cellHeight: 16,
-      stepTime: 0.05,
+    // Aura's shield ring (DECISIONS D-032) -- a 9x7 grid sheet, 60 real
+    // frames padded out to a 63-cell rectangle (the last 3 cells of the
+    // last row are blank), not a single-row strip like every other sheet
+    // in this project.
+    _auraShieldAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_electric-shield.png',
+      cellWidth: 265,
+      cellHeight: 265,
+      stepTime: 0.03,
+      frameCount: 60,
+      amountPerRow: 9,
     );
+    // Single static images, not sheets (DECISIONS D-029) -- Sprite.load, not
+    // loadSheetAnimation.
+    _knifeCleanSprite = await Sprite.load('vfx/projectiles/knife_clean.png');
+    _knifeBloodySprite = await Sprite.load('vfx/projectiles/knife_bloody.png');
     resetRound();
   }
 
@@ -270,6 +285,7 @@ class ArenaGame extends FlameGame {
     currentLevelUpChoices = rollUpgradeChoices(
       _random,
       pickCounts: upgrades.pickCounts,
+      candidates: upgradeKindsFor(character.id),
     );
     overlays.add('LevelUp');
     menuOpen.value = true;
@@ -320,7 +336,7 @@ class ArenaGame extends FlameGame {
   void _syncAura() {
     if (_aura != null) return;
     if ((upgrades.pickCounts[UpgradeKind.aura] ?? 0) <= 0) return;
-    _aura = AuraComponent(sparkAnimation: _auraSparkAnimation);
+    _aura = AuraComponent(shieldAnimation: _auraShieldAnimation);
     add(_aura!);
   }
 

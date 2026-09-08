@@ -14,14 +14,18 @@ a skill that needs `dash`/`charge`/`channelStaff`/etc. is: drop the sprite
 sheet in, add a line to `CharacterAnimations._fileNames`, done — the enum
 member and the `SpriteAnimationGroupComponent` machinery are already there.
 
-**`AttackBehavior` (`game/attack_behavior.dart`, DECISIONS D-024).**
+**`AttackBehavior` (`game/attack_behavior.dart`, DECISIONS D-024/D-029).**
 `ArenaGame` doesn't know how a character attacks — it owns the cooldown
 timer (round state stays on `ArenaGame`, CLAUDE.md §4.5) and calls
-`character.attackBehavior.perform(this)` when it elapses. The demo ships
-one implementation, `ProjectileAttack`. A melee character, a
-multi-projectile character, a channelled beam — each is a new class
-implementing `AttackBehavior`, not a change to `ArenaGame`. This is where
-a skill system's "active ability" hook would attach too: an
+`character.attackBehavior.perform(this)` when it elapses. `ProjectileAttack`
+is still the default; `KnifeAttack` (D-029, the Bruiser) is the second real
+example — a piercing thrown weapon that reuses `ProjectileAttack`'s exact
+targeting/cooldown/damage math and only differs in what the projectile
+component itself does (keeps flying and hitting instead of despawning on the
+first hit, swaps its own sprite mid-flight). That split — new behavior class
++ new projectile component, `ArenaGame`/`PlayerComponent` untouched — is the
+pattern to repeat for the Skirmisher/Warden kits still open in TASKS 8.3.
+This is also where a skill system's "active ability" hook would attach: an
 `AttackBehavior` doesn't have to be the *auto*-attack specifically, it's
 just "what happens when this timer fires" — a second timer/behavior pair
 on `CharacterDef` would give you a second, independently-cooling ability
@@ -41,7 +45,7 @@ weighted roll, the "view your upgrades" screen and the pause-menu plumbing
 all generalize to N upgrades. D-027's Aura is the second real example and
 it's a genuine skill, not a stat bump — `kUpgradeMaxPicks` (`null` =
 unlimited, an int = cap) is there for exactly that, and a skill that needs
-a live Flame component (like Aura's orbiting ring) follows the same
+a live Flame component (like Aura's shield ring, D-032) follows the same
 pattern: `ArenaGame` owns the component (`_aura`), creates it lazily off
 `upgrades.pickCounts` the first time it's picked (`_syncAura()`), and the
 component reads its own current strength from `pickCounts` every tick
@@ -49,6 +53,15 @@ rather than being handed a value or rebuilt per pick. The roll itself is
 weighted now (`kUpgradeWeights`, Efraimidis-Spirakis sampling in
 `rollUpgradeChoices`) with placeholder equal weights — the actual balance
 pass is still to come, this just wires the knob.
+
+**Character-locked upgrades (DECISIONS D-031).** `kCharacterLockedUpgrades`
+(`UpgradeKind -> CharacterDef.id`) + `upgradeKindsFor(characterId)` in
+`core/progression.dart` restrict the roll pool per character —
+`rollUpgradeChoices`'s `candidates` param (defaults to every kind, so
+existing callers/tests are unaffected). `knifeMastery` (Bruiser only) is the
+first one. A future Skirmisher/Warden kit wanting its own locked upgrade is
+one more map entry, not new branching — same shape as adding a plain
+upgrade, just also touch this map.
 
 **`CharacterDef` (`data/characters.dart`).** Every field a character needs
 to be playable — stats, sprite location (`spriteFolder` +

@@ -780,6 +780,214 @@ feedback, zero changes to the range check itself.
 
 ---
 
+## D-028 — Slots 2-4 unlocked with real assets, sharing the Apprentice's bolt
+**Date:** 2026-09-08 · **Status:** Accepted
+**Context:** Developer delivered full sprite sheets (`black`/`third`/`fourth`
+prefixes, 10 states each — same set as `main`, plus `dash`/`flash`/`fly`/`warp`
+left unwired same as `main`'s) for the Bruiser, Skirmisher, and Warden slots.
+CLAUDE.md §6 ("ask before scope") applied because unlocking them and giving
+each a distinct kit are two different asks.
+**Decision:** Wire all 3 new slots as fully unlocked (no progression gate
+yet — that's a separate future feature) using their real sprite folders, but
+give every one of them `ProjectileAttack()` — the same bolt the Apprentice
+uses — as a deliberate placeholder. `CharacterDef.unlocked` no longer singles
+out the Apprentice; it's just `true` everywhere until real unlock-by-progress
+is built.
+**Because:** The developer explicitly asked for "same main ability for now,
+we'll change it later" and "unlockable from the beginning ... we'll unlock
+them all with progression later, for now all unlocked" — both are staged,
+not final. `AttackBehavior` (D-024) already supports a per-character kit with
+zero `ArenaGame` changes, so nothing here blocks that follow-up; it's a data
+edit on `CharacterDef.attackBehavior`, tracked as TASKS Phase 8 items.
+**Consequences:** All 4 characters currently play identically except for
+stats/sprite — visual variety without mechanical variety yet. `_idleFrameCount`
+in `character_select_screen.dart`'s portrait widget stays hardcoded at 4
+(confirmed via PNG `IHDR` dims: all four `*-idle.png` sheets are 64×24, i.e.
+4 frames at the shared 16×24 cell) — still needs a manual bump if a future
+character ships an idle sheet with a different frame count. Progression-gated
+unlocking (locking 2-4 again, then re-opening them via in-game milestones) is
+new scope, tracked in TASKS Phase 8, not started.
+
+---
+
+## D-029 — Bruiser kit: piercing spinning knife, clean→bloody sprite swap
+**Date:** 2026-09-08 · **Status:** Accepted
+**Context:** TASKS 8.3 asks for a distinct `AttackBehavior` per new character
+instead of every slot sharing the Apprentice's bolt. Developer supplied two
+static 32×32 images (`knife_clean.png`/`knife_bloody.png`, not a sheet) and
+specified the mechanic directly: thrown at the nearest target, spins in
+flight, pierces through enemies instead of stopping at the first one, and
+switches from the clean sprite to the bloody one the instant it draws blood.
+**Decision:** New `KnifeAttack` (`game/attack_behavior.dart`) + new
+`KnifeProjectileComponent` (`game/components/knife_projectile.dart`),
+targeting/cooldown/damage/knockback/range formulas copied verbatim from
+`ProjectileAttack` — pierce and the sprite swap are the only differences for
+now, real balance is a later pass same as everywhere else in Phase 7/8.
+Piercing means each enemy the knife touches can only be hit once per throw
+(a `Set<EnemyComponent>` on the component), otherwise standing in its path
+for multiple frames would tick damage every frame; it otherwise flies exactly
+like `ProjectileComponent` (constant velocity, despawns on max range or
+leaving bounds) except it never despawns on hit. `sprite` flips to bloody the
+first time `touching` is non-empty in `update()` and stays flipped for the
+rest of that knife's flight — a fresh throw always starts clean again since
+each `KnifeProjectileComponent` is a new instance.
+**Because:** `SpriteComponent` (not `SpriteAnimationComponent`) is the right
+fit for two static single-frame images — no sheet, no animation, just a
+sprite reference that gets swapped once. `kKnifeRenderScale = 1`
+(`core/constants.dart`) renders the 32×32 native knife at the same on-screen
+footprint as the bolt (16×16 cell × `kProjectileRenderScale` 2 = 32×32) so
+it doesn't read oversized next to the 48×72 player.
+**Consequences:** The Bruiser is now the first character with a real,
+distinct kit (closes half of TASKS 8.3) — the Skirmisher and Warden still
+use `ProjectileAttack` as a placeholder. On-device feel (does pierce read
+clearly, does the bloody swap show up at the size/speed it flies) is
+unverified — needs a pass same as every other combat-feel item in this file.
+
+---
+
+## D-030 — Knife: no max-range despawn, -30% attack speed, +25%/+15% range tunes
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** On-device pass on the Bruiser's knife (D-029) found it despawning
+mid-flight after a hit, before it left the screen — the shared
+`stats.attackRangePx * 1.5` max-travel-range it inherited from
+`ProjectileAttack`/`ProjectileComponent` was cutting it off well short of the
+arena edge. Developer also asked for slower attack speed and a bigger
+targeting range on top.
+**Decision:** `KnifeProjectileComponent` drops the max-range despawn
+entirely — `maxRangePx` param removed, `_traveled` tracking removed, the only
+despawn condition left is `_outOfBounds()` (already existed, checks against
+`game.size` — CLAUDE.md/D-007's fixed camera means world size *is* screen
+size, so "despawn at the world edge" already meant "despawn off-screen", it
+just wasn't the *only* condition before). `KnifeAttack.cooldownSeconds`
+divides the shared `1/attacksPerSec` formula by a new `_attackSpeedMultiplier`
+(0.7, i.e. -30% attack speed → longer cooldown) instead of reusing it as-is.
+Targeting range for the initial nearest-enemy lookup gets its own
+`_rangeMultiplier` (1.15, +15%) applied on top of `stats.attackRangePx`
+— separate from the removed travel-range multiplier, this one only affects
+which enemy the throw picks as its target. Render scale (`kKnifeRenderScale`)
+went through two on-device size tunes this session, +25% then +20% more,
+landing at 1.5 total (was 1, see D-029).
+**Because:** All 4 were explicit developer asks after seeing the knife
+in motion; none is inferred. Removing the travel-range cap rather than just
+raising it matches the literal ask ("must not despawn until it gets out of
+screen") and removes a tuning knob (`maxRangePx`) that no longer does
+anything for this projectile instead of leaving it dead in the constructor.
+**Consequences:** The knife can now cross most of the arena on a single
+throw, piercing anything in its path the whole way — a much longer effective
+threat range than the bolt. `_rangeMultiplier` only gates targeting (does the
+Bruiser bother throwing at that enemy at all), not how far the thrown knife
+can travel once released, which is now unlimited (screen-bound only) — those
+are two independently tunable numbers now, not one shared value.
+
+## D-031 — Knife Mastery: first character-locked upgrade
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer asked for a knife-specific upgrade line in the
+level-up popup, available "only if you have this character" (the Bruiser) —
+the first upgrade that isn't offered to everyone. Existing `rollUpgradeChoices`
+(D-025) drew from the full `UpgradeKind.values` unconditionally; nothing in
+`core/progression.dart` knew what character was playing. Level 1's effect
+wasn't specified by the developer; asked and got "damage buff, still 1 knife"
+as the answer (recommended option), reserving the multi-knife jump for
+levels 2/3 as specified.
+**Decision:** New `UpgradeKind.knifeMastery`, 3-stack-capped like Aura
+(`UpgradeAmounts.knifeMasteryMaxStacks`). Level 1: `KnifeAttack` multiplies
+its damage by `knifeMasteryTier1DamageMultiplier` (1.2, i.e. +20%, partially
+offsetting D-029's -30% pierce nerf) — still one knife. Level 2: throws a
+second knife straight behind the player (180° from the throw direction).
+Level 3: throws 4 at once, at 0°/90°/180°/-90° from the throw direction (one
+to every side) — this replaces level 2's pattern rather than adding to it.
+All the extra knives come from the one existing nearest-enemy lookup; they're
+geometric offsets (`KnifeAttack._rotated`, plain cos/sin, no Flame
+`Vector2.rotate` — not on the type) off that single forward direction, not
+separate target searches. Character-gating is a new `core/progression.dart`
+pair: `kCharacterLockedUpgrades` (a `UpgradeKind -> CharacterDef.id` map,
+just `knifeMastery -> 'bruiser'` for now) and `upgradeKindsFor(characterId)`
+(everything minus another character's locks), which `ArenaGame` passes as
+`rollUpgradeChoices`'s new `candidates` param (defaults to
+`UpgradeKind.values`, so every existing call site/test is unaffected).
+Like Aura, `PlayerUpgrades.apply(knifeMastery)` adds no flat stat bonus —
+`KnifeAttack` reads `pickCounts[UpgradeKind.knifeMastery]` itself every
+throw, same "component reads its own stack count" pattern NEXT.md documents
+for Aura.
+**Because:** A map + a filter function is the minimal shape that generalizes
+to more character-locked upgrades later without touching
+`rollUpgradeChoices`'s sampling logic — adding a second locked upgrade for
+another character is one more map entry, not new branching. Reusing the
+existing single target lookup for all the extra knives (rather than each
+knife re-running `nearestWithinRange`) keeps every knife in one throw aimed
+at a consistent formation instead of each one potentially picking a
+different nearest enemy.
+**Consequences:** `rollUpgradeChoices` callers that care about
+character-gating must remember to pass `candidates` — the Apprentice/
+Skirmisher/Warden all currently get identical pools since only one upgrade
+is locked; this is the seam for the Skirmisher/Warden's own future kits
+(TASKS 8.3) to hang their own locked upgrades off. Level 1's exact number
+(+20%) and the level-3 exact offsets (cardinal, not diagonal) are first
+guesses, unverified on-device — same caveat as every other placeholder
+number in this file.
+
+---
+
+## D-032 — Aura visual swap: orbiting sparks → `effect_electric-shield.png`
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** D-027 built the Aura's visual from 6 copies of the existing
+`projectile-spark.png` hit-spark placed around a circle and rotated as a
+group, because no dedicated asset existed yet. Developer supplied a real
+shield-ring asset (`assets/images/vfx/vfx/effect_electric-shield.png`) and
+asked for the swap, with two hard constraints: keep the radius/damage logic
+exactly as-is, and don't let the new visual read bigger than the actual
+damage area.
+**Decision:** `effect_electric-shield.png` turned out to be a 2385×1855 grid
+sheet — 265×265 cells, 9 per row × 7 rows, 60 real animation frames padded
+into a 63-cell rectangle (confirmed by checking each cell's alpha channel:
+rows 0-5 are all populated, row 6 has frames 0-5 and blank alpha at 6-8).
+That's a multi-row layout, which `loadSheetAnimation` (`game/anim/
+sheet_loader.dart`, D-015) didn't support — every other sheet in this
+project is a single left-to-right strip. Extended it with optional
+`frameCount`/`amountPerRow` params (both `null` by default, preserving the
+exact old single-row behavior for every existing caller) rather than
+writing a one-off loader just for this asset. `AuraComponent` now adds one
+centered `SpriteAnimationComponent` playing that sheet instead of building
+6 orbiting spark children + a manual per-frame rotation of the whole group
+— the sheet's own frames already animate the spin, so the extra rotation
+code was removed rather than compounded on top. Sized to
+`Vector2.all(_radiusPx * 2)` — the damage diameter exactly, not a pixel
+more; because the source art has its own inset padding around the ring
+inside each frame, the actual visible ring ends up a little *inside* the
+hit circle rather than exactly on its edge, which satisfies "never bigger
+than the damage area" with margin to spare rather than by exact coincidence.
+`_dealDamage()`/`_tickTimer`/the `allWithinRange` radius check are all
+byte-for-byte untouched — this was a rendering-layer swap only.
+**Because:** A generalized sheet loader is the CLAUDE.md §4.3-consistent
+choice — the alternative (a bespoke loader for one asset) would fork the
+"how do I read a sprite sheet" logic in two places for no reason. Exact
+diameter (not e.g. 1.5× or a fudge factor) is the simplest way to guarantee
+the "not bigger" constraint without needing to hand-measure the ring's
+actual radius inside its frame padding.
+**Consequences:** Aura's `SpriteAnimation` field/param name changed
+(`_auraSparkAnimation`→`_auraShieldAnimation`,
+`sparkAnimation`→`shieldAnimation`) — anything referencing the old names
+(NEXT.md's Aura writeup) needs the same update, done alongside this entry.
+`stepTime` (0.03s/frame × 60 frames ≈ 1.8s per full loop) is a first guess
+for how fast the ring should spin, unverified on-device — same caveat as
+every other placeholder timing number in this file. The old
+orbiting-sparks approach (multiple children + manual group rotation) is
+gone, not kept behind a flag — if a future skill wants that "several small
+sprites around a circle" look again, D-027's original `aura.dart` history
+in git is the reference, not dead code left in this file.
+
+**2026-09-09 update:** first on-device look at the ring read "too bright,
+in your face" — added `_opacity`/`_contrast`, both 0.8 (-20% each), on the
+`SpriteAnimationComponent`'s `paint`. Opacity via `Paint.color`'s alpha
+(`Color.fromRGBO(255, 255, 255, _opacity)`); contrast via a standard
+scale-toward-grey `ColorFilter.matrix` (`AuraComponent._contrastMatrix`) —
+the two compose independently in Flutter's paint pipeline (alpha controls
+overall opacity, `colorFilter` transforms the sampled color before that
+alpha is applied), so stacking both doesn't fight itself. `_dealDamage`/
+radius/sizing untouched — purely a paint-layer tune on top of D-032's swap.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

@@ -9,9 +9,12 @@ import '../widgets/screen_scaffold.dart';
 import '../widgets/stat_bar.dart';
 import 'arena_screen.dart';
 
-/// PRD §4.4: 2x2 grid, slot 1 playable, slots 2-4 locked silhouettes.
-/// Stat bars + raw numbers, plus a derived readout computed live from
-/// `StatBlock` (TASKS 2.4-2.7) — never typed in by hand (DECISIONS D-008).
+/// PRD §4.4: 2x2 grid. All 4 slots unlocked as of TASKS Phase 8 (real
+/// progression-gated unlocking is planned, not built — every slot defaults
+/// open for now); the padlock rendering stays keyed off `unlocked` so it
+/// still works once locking comes back. Stat bars + raw numbers, plus a
+/// derived readout computed live from `StatBlock` (TASKS 2.4-2.7) — never
+/// typed in by hand (DECISIONS D-008).
 class CharacterSelectScreen extends StatefulWidget {
   const CharacterSelectScreen({super.key});
 

@@ -228,6 +228,18 @@ built 2026-09-07 — see DECISIONS D-025 for the full design reasoning).*
       — **2026-09-08 update 3: confirmed working.** Coverage was correct
       the whole time; the diagnostic pulse is now removed, aura ships with
       just the orbiting sparks. Merged to main.
+      — **2026-09-09 update 4 (DECISIONS D-032):** visual swapped from the
+      orbiting-sparks placeholder to a real asset,
+      `vfx/vfx/effect_electric-shield.png` (a 9x7 grid sheet, 60 frames —
+      `game/anim/sheet_loader.dart` gained grid-sheet support for this).
+      Sized to the damage diameter exactly so it can't read bigger than the
+      hit area. Radius/damage logic untouched. `flutter analyze` clean,
+      `flutter test` 47/47, `flutter build apk --debug` succeeds. On-device
+      re-verify needed: does the new ring read clearly, does its spin speed
+      (first guess: ~1.8s per loop) feel right.
+      — **2026-09-09 update 5:** -20% opacity, -20% contrast (developer's
+      call: too bright/in-your-face). `flutter analyze` clean, `flutter
+      test` 47/47, `flutter build apk --debug` succeeds.
 
 flutter analyze clean, flutter test passes (32 tests, 12 new), flutter build
 apk --debug succeeds. No automated coverage of the pause/overlay orchestration
@@ -242,12 +254,77 @@ demo's existing flow (Phases 0-6) regressing.
 
 ---
 
+## Phase 8 — Roster expansion
+*Goal: all 4 select-screen slots are real, playable characters, not one demo
+character plus placeholders. Started 2026-09-08 when the developer delivered
+full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
+
+- [x] **8.1** Wire the Bruiser/Skirmisher/Warden slots to their real sprite
+      folders (`second`/`black` prefix, `third`, `fourth`) and unlock all 4
+      characters — no progression gate yet, everything just defaults open
+      (D-028). `flutter analyze` clean, `flutter test` passes (42 tests, no
+      new ones — no new gameplay logic), `flutter build apk --debug`
+      succeeds.
+- [ ] **8.2** On-device verification — **developer**: all 4 tiles show real
+      idle portraits (not padlocks) on Character Select, each is selectable,
+      stat bars/derived readout update correctly per character, each enters
+      the arena and plays/animates/fires correctly
+- [~] **8.3** Give each of the 3 new characters its own `AttackBehavior`
+      instead of sharing `ProjectileAttack()`.
+      - [x] Bruiser — `KnifeAttack` (DECISIONS D-029): spinning knife,
+        pierces every enemy in its path, sprite swaps clean→bloody on first
+        blood. `flutter analyze` clean, `flutter test` 42/42 (no new tests —
+        no new gameplay math, pierce is component-level, not `game_rules.dart`
+        material), `flutter build apk --debug` succeeds. On-device feel is
+        part of 8.3's on-device pass below.
+        — **2026-09-08 first tune (developer's call, pre-on-device):** knife
+        +25% size (`kKnifeRenderScale`), spin +10% (`_rotationSpeedRadPerSec`
+        in `knife_projectile.dart`), damage -30% vs. the shared per-hit
+        formula (`KnifeAttack._damageMultiplier`) to offset pierce hitting
+        several enemies per throw.
+        — **2026-09-09 second tune (DECISIONS D-030):** fixed a real bug —
+        the knife was despawning mid-flight (inherited `ProjectileAttack`'s
+        max-travel-range); now the only despawn condition is leaving the
+        arena. Also: -30% attack speed (`KnifeAttack._attackSpeedMultiplier`),
+        knife +20% size again (now 1.5x total, `kKnifeRenderScale`), +15%
+        targeting range (`KnifeAttack._rangeMultiplier`, targeting only — the
+        thrown knife's travel distance is now unlimited).
+      - [x] **Knife Mastery** — Bruiser-only 3-level upgrade (DECISIONS
+        D-031, `UpgradeKind.knifeMastery`): lvl1 +20% knife damage, lvl2
+        throws a second knife behind the player, lvl3 throws 4 at once (one
+        to every side). First character-locked upgrade —
+        `kCharacterLockedUpgrades`/`upgradeKindsFor` in
+        `core/progression.dart` gate the level-up roll pool by
+        `CharacterDef.id`. `flutter analyze` clean, `flutter test` 47/47 (5
+        new), `flutter build apk --debug` succeeds.
+      - [ ] Skirmisher — something faster/lighter, fits `dex`-heavy stats
+      - [ ] Warden — something tankier, fits `vit`-heavy stats
+      - [ ] On-device verification of the Bruiser's knife — **developer**:
+        pierce reads clearly (doesn't look like it stopped at the first
+        enemy), clean→bloody swap is visible mid-flight, spin doesn't look
+        broken at the knife's actual travel speed, knife now flies all the
+        way off-screen instead of vanishing early, Knife Mastery only shows
+        up in the level-up popup when playing the Bruiser, and its 3 levels
+        actually look/feel like 1 → 2 → 4 knives
+- [ ] **8.4** Real unlock-by-progression: lock slots 2-4 again and gate them
+      behind a persistent unlock condition (kills/rounds/levels — TBD).
+      Needs a persistence story beyond `SharedPreferences` settings (round
+      state resets every round by design, CLAUDE.md §4.5 — unlocks can't).
+      Ask before picking the unlock condition/mechanism; don't guess.
+
+**Exit criterion:** 4 distinct playable characters, each unlocked by real
+progression instead of by default, each with its own attack kit.
+
+---
+
 ## Backlog (post-demo — do not start)
 
 Kept here so ideas have somewhere to go that isn't the current sprint.
 
 - Skill system using the reserved animation states (teleport, dash, charge, channel, cast)
-- Additional playable characters (slots 2–4) with distinct projectiles
+- ~~Additional playable characters (slots 2–4)~~ — started Phase 8 (D-028):
+  assets wired, all 4 unlocked, sharing one bolt attack. Distinct
+  attack kits (8.3) and real unlock-by-progression (8.4) still open.
 - Enemy variety with distinct stats: ranged, fast/swarm, tanky, elite (D-022:
   3 skins were wired for visual variety only, one shared `EnemyStats` profile
   — still true "one enemy type" per PRD §9, so this backlog item stands)

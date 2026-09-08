@@ -29,9 +29,11 @@ Round ends on death.
 that demo and is frozen as a record of it — `§9 Explicitly out of scope` there
 was binding *for the demo* and mostly still is, but the project has moved past
 it: **Phase 7 (in-round leveling, upgrade choices, pause menu, enemy scaling,
-and the Aura skill) is built** — see DECISIONS D-025/D-026/D-027. This is
-real, ongoing post-demo work now, not speculative scope; new post-demo phases
-get their own section in `TASKS.md` the same way, not dumped in the Backlog.
+and the Aura skill) is built** — see DECISIONS D-025/D-026/D-027. **Phase 8
+(roster expansion — all 4 characters unlocked and playable) is started** —
+see D-028. This is real, ongoing post-demo work now, not speculative scope;
+new post-demo phases get their own section in `TASKS.md` the same way, not
+dumped in the Backlog.
 The Backlog is still binding for what hasn't been explicitly asked for — keep
 asking before building ahead of what's actually been requested (CLAUDE.md §6
 "Ask before scope" — this has come up for real more than once and the answer
@@ -81,7 +83,7 @@ batch files. Always `set FLUTTER=C:\src\flutter\bin\flutter.bat`.
 
 ## 3. Repository layout
 
-Kept current as of Phase 7.11 (2026-09-08) — update this tree when you add a
+Kept current as of Phase 8.3 (partial, 2026-09-08) — update this tree when you add a
 file that will confuse the next person if it's missing here, same discipline
 as `TASKS.md`.
 
@@ -101,8 +103,12 @@ ArenaDemo/                    <- repo root, open this in your editor
     ├── assets/
     │   ├── images/
     │   │   ├── characters/main/       // Apprentice sheets, main-<state>.png (D-015)
+    │   │   ├── characters/second/     // Bruiser sheets, black-<state>.png (D-028)
+    │   │   ├── characters/third/      // Skirmisher sheets, third-<state>.png (D-028)
+    │   │   ├── characters/fourth/     // Warden sheets, fourth-<state>.png (D-028)
     │   │   ├── characters/enemies/    // 3 skins, enemy-<name>-{run,die}.png (D-022)
-    │   │   ├── vfx/projectiles/       // bolt + hit-spark
+    │   │   ├── vfx/projectiles/       // bolt + hit-spark + Bruiser's knife (D-029)
+    │   │   ├── vfx/vfx/                // Aura's shield-ring sheet (D-032), other unused effect GIFs
     │   │   └── scenes/                // floor tile variants + border tile (D-023)
     │   └── audio/                     // declared, unused (no audio bus yet)
     └── lib/
@@ -116,7 +122,7 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   │                      //   enemy level-scaling D-026, area-effect range D-027)
         │   └── progression.dart   // XP curve, UpgradeKind (incl. Aura), PlayerUpgrades — D-025/D-027
         ├── data/
-        │   └── characters.dart    // CharacterDef list (4 slots, 1 unlocked)
+        │   └── characters.dart    // CharacterDef list (4 slots, all unlocked, D-028)
         ├── ui/
         │   ├── screens/
         │   │   ├── main_menu_screen.dart
@@ -127,16 +133,17 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   └── widgets/                   // buttons, stat bars, shared chrome
         └── game/
             ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling
-            ├── attack_behavior.dart       // AttackBehavior + ProjectileAttack — D-024
+            ├── attack_behavior.dart       // AttackBehavior + ProjectileAttack + KnifeAttack — D-024/D-029
             ├── components/
             │   ├── player.dart
             │   ├── enemy.dart              // hp/contactDamage scaled by level at spawn — D-026
             │   ├── projectile.dart
+            │   ├── knife_projectile.dart    // Bruiser kit: pierces, clean->bloody sprite swap — D-029
             │   ├── spawner.dart
             │   ├── hp_bar.dart
             │   ├── damage_text.dart
             │   ├── arena_floor.dart
-            │   └── aura.dart                // Aura skill: orbiting sparks, area-tick damage — D-027
+            │   └── aura.dart                // Aura skill: shield-ring visual, area-tick damage — D-027/D-032
             ├── input/
             │   ├── movement_input.dart    // the 3 control schemes, scheme-agnostic Vector2
             │   └── joystick_overlay.dart  // the 3 schemes' actual Flutter touch capture
