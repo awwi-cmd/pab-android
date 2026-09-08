@@ -129,6 +129,8 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
     if (_invulnTimer > 0 || current == AnimState.death) return;
     hp = (hp - amount).clamp(0, effectiveMaxHp);
     _invulnTimer = _invulnDurationSec;
+    game.spawnBloodImpact(); // DECISIONS D-033: only on damage that lands
+
     if (hp <= 0) {
       current = AnimState.death;
       game.onPlayerDied();

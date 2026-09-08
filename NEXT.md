@@ -24,7 +24,16 @@ targeting/cooldown/damage math and only differs in what the projectile
 component itself does (keeps flying and hitting instead of despawning on the
 first hit, swaps its own sprite mid-flight). That split — new behavior class
 + new projectile component, `ArenaGame`/`PlayerComponent` untouched — is the
-pattern to repeat for the Skirmisher/Warden kits still open in TASKS 8.3.
+pattern to repeat for the Warden kit still open in TASKS 8.3. `SpiralFireAttack`
+(D-034, the Skirmisher) is the third example and the first built around real
+VFX beyond a sprite swap — two projectiles orbiting a shared advancing point,
+plus a cast/hit/kill flourish each. `TrackingSpriteEffect`
+(`game/components/tracking_effect.dart`, D-034/D-035) is the new shared piece
+worth knowing: a VFX glued to any still-alive `PositionComponent` (follows it
+every frame, self-removes once that component leaves the tree) — reused
+as-is for the Skirmisher's cast sparkle and for elite enemies' fire glow
+(D-035), and the thing to reach for whenever a future skill needs a visual
+that has to track a moving character rather than sit at a fixed point.
 This is also where a skill system's "active ability" hook would attach: an
 `AttackBehavior` doesn't have to be the *auto*-attack specifically, it's
 just "what happens when this timer fires" — a second timer/behavior pair

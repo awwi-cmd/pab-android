@@ -41,9 +41,9 @@ class CharacterDef {
 /// The 4 select-screen slots (PRD §5.2). All 4 are unlocked and playable as
 /// of TASKS Phase 8 — real unlock-via-progression gating is planned but not
 /// built yet, so every slot defaults open for now. The Bruiser has its own
-/// `KnifeAttack` (D-029); the Skirmisher and Warden still share the
-/// Apprentice's `ProjectileAttack` as a placeholder until each gets its own
-/// `AttackBehavior` (CLAUDE.md §4.12).
+/// `KnifeAttack` (D-029) and the Skirmisher has `SpiralFireAttack` (D-034);
+/// the Warden still shares the Apprentice's `ProjectileAttack` as a
+/// placeholder until it gets its own `AttackBehavior` (CLAUDE.md §4.12).
 const List<CharacterDef> kCharacters = [
   CharacterDef(
     id: 'apprentice',
@@ -71,11 +71,13 @@ const List<CharacterDef> kCharacters = [
   CharacterDef(
     id: 'skirmisher',
     name: 'The Skirmisher',
-    descriptor: 'Fast and precise — bolts for now, a real kit is planned.',
+    descriptor: 'Twin spiral flames circle each other on the way to the target.',
     stats: StatBlock(str: 4, vit: 3, dex: 9, intellect: 4),
     spriteFolder: 'assets/images/characters/third',
     spritePrefix: 'third',
-    attackBehavior: ProjectileAttack(),
+    // Second distinct kit (TASKS 8.3, DECISIONS D-034) -- two projectiles
+    // orbiting a shared advancing point, converging on the target.
+    attackBehavior: SpiralFireAttack(),
     unlocked: true,
   ),
   CharacterDef(

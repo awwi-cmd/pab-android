@@ -21,6 +21,7 @@ import 'components/enemy.dart';
 import 'components/hp_bar.dart';
 import 'components/player.dart';
 import 'components/spawner.dart';
+import 'components/tracking_effect.dart';
 import 'input/movement_input.dart';
 
 /// Owns round state end to end (CLAUDE.md §4.5): elapsed time, kills,
@@ -55,6 +56,12 @@ class ArenaGame extends FlameGame {
   late SpriteAnimation _auraShieldAnimation;
   late Sprite _knifeCleanSprite;
   late Sprite _knifeBloodySprite;
+  late SpriteAnimation _bloodImpactAnimation;
+  late SpriteAnimation _eliteFireAnimation;
+  late SpriteAnimation _pixelFireAnimation;
+  late SpriteAnimation _sparkleAnimation;
+  late SpriteAnimation _impactAnimation;
+  late SpriteAnimation _explosionAnimation;
   final Random _random = Random();
 
   /// The Aura skill's orbiting-ring component (DECISIONS D-027) — null
@@ -72,6 +79,10 @@ class ArenaGame extends FlameGame {
   /// static sprites itself once it draws blood.
   Sprite get knifeCleanSprite => _knifeCleanSprite;
   Sprite get knifeBloodySprite => _knifeBloodySprite;
+
+  /// Exposed for [SpiralFireAttack] (DECISIONS D-034) the same way
+  /// [boltAnimation]/[knifeCleanSprite] are for the other kits.
+  SpriteAnimation get pixelFireAnimation => _pixelFireAnimation;
 
   /// Flutter-observable mirror of round-over state, so the movement-input
   /// overlay (a Flutter widget, not a Flame overlay) knows to stop
@@ -157,6 +168,70 @@ class ArenaGame extends FlameGame {
     // loadSheetAnimation.
     _knifeCleanSprite = await Sprite.load('vfx/projectiles/knife_clean.png');
     _knifeBloodySprite = await Sprite.load('vfx/projectiles/knife_bloody.png');
+    // Player hit-splat (DECISIONS D-033) -- one-shot, doesn't loop.
+    _bloodImpactAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_blood-impact.png',
+      cellWidth: 60,
+      cellHeight: 63,
+      stepTime: 0.012,
+      frameCount: 48,
+      amountPerRow: 9,
+      loop: false,
+    );
+    // Elite enemy marker (DECISIONS D-035) -- persistent looping glow, lives
+    // as long as the enemy it's tracking does.
+    _eliteFireAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_dithered-fire.png',
+      cellWidth: 517,
+      cellHeight: 246,
+      stepTime: 0.05,
+      frameCount: 60,
+      amountPerRow: 9,
+    );
+    // Skirmisher's Spiral Fire skill (DECISIONS D-034) -- three sheets:
+    // the projectile itself (loops for however long it's in flight), the
+    // cast sparkle on the caster's body (one-shot), the hit/kill flourishes
+    // (one-shot each, picked by whether that hit was lethal).
+    _pixelFireAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_pixel-fire.png',
+      cellWidth: 173,
+      cellHeight: 197,
+      stepTime: 0.03,
+      frameCount: 60,
+      amountPerRow: 9,
+    );
+    _sparkleAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_sparkles-constelation.png',
+      cellWidth: 309,
+      cellHeight: 313,
+      stepTime: 0.008,
+      frameCount: 60,
+      amountPerRow: 9,
+      loop: false,
+    );
+    // First real cell is index 1, not 0 -- effect_impact.png's (0,0) cell is
+    // blank on this sheet. Included as frame 0 anyway (one invisible ~12ms
+    // frame at the very start of a one-shot flash is imperceptible) rather
+    // than adding texturePosition-offset support to the loader for it.
+    _impactAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_impact.png',
+      cellWidth: 305,
+      cellHeight: 383,
+      stepTime: 0.012,
+      frameCount: 29,
+      amountPerRow: 9,
+      loop: false,
+    );
+    // Same leading-blank-cell situation as effect_impact.png above.
+    _explosionAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_explosion2.png',
+      cellWidth: 355,
+      cellHeight: 365,
+      stepTime: 0.011,
+      frameCount: 53,
+      amountPerRow: 9,
+      loop: false,
+    );
     resetRound();
   }
 
@@ -247,6 +322,27 @@ class ArenaGame extends FlameGame {
     );
     enemies.add(enemy);
     add(enemy);
+
+    // Elite marker (DECISIONS D-035) -- visual only, no stat change. A
+    // separate top-level sibling rather than a child of `enemy`: a
+    // component's own children render on top of it (Flame renders self then
+    // children), which would put the glow in front of the enemy instead of
+    // under it. `groundEffects` priority (< `enemy`) plus tracking the
+    // enemy's position every frame gets the same "glued to it" effect with
+    // the right z-order instead.
+    if (rollIsElite(_random)) {
+      final width = enemy.size.x; // never wider than the enemy, per the ask
+      add(
+        TrackingSpriteEffect(
+          target: enemy,
+          offset: Vector2(0, enemy.size.y * 0.3), // toward the feet, not center
+          animation: _eliteFireAnimation,
+          size: Vector2(width, width * kEliteFireAspect),
+          priority: ArenaPriority.groundEffects,
+          removeOnFinish: false, // persists for the enemy's whole lifetime
+        ),
+      );
+    }
   }
 
   void onEnemyKilled(EnemyComponent enemy) {
@@ -357,6 +453,93 @@ class ArenaGame extends FlameGame {
       ),
     );
     add(DamageTextComponent(position: at.clone(), amount: damage));
+  }
+
+  /// A one-shot VFX at a fixed point that removes itself once its animation
+  /// finishes — for effects tied to a moment (a hit, a kill), not to a
+  /// still-living target's body (that's `TrackingSpriteEffect`, DECISIONS
+  /// D-033/D-034/D-035). [opacity] defaults to fully opaque.
+  void spawnEffect(
+    SpriteAnimation animation,
+    Vector2 at, {
+    required Vector2 size,
+    double opacity = 1,
+    int priority = ArenaPriority.hitEffects,
+  }) {
+    add(
+      SpriteAnimationComponent(
+        animation: animation,
+        position: at,
+        size: size,
+        anchor: Anchor.center,
+        removeOnFinish: true,
+        priority: priority,
+        paint: Paint()
+          ..filterQuality = FilterQuality.none // D-011
+          ..color = Color.fromRGBO(255, 255, 255, opacity),
+      ),
+    );
+  }
+
+  /// Player hit feedback (DECISIONS D-033) — a blood splat somewhere on the
+  /// player's own body, a different spot each time so it doesn't read as a
+  /// static decal. Called from `PlayerComponent.takeDamage` only when
+  /// damage actually lands (not during i-frames/god mode).
+  void spawnBloodImpact() {
+    final width = player.size.x * kBloodImpactWidthFactor;
+    final maxOffsetX = player.size.x * 0.3;
+    final maxOffsetY = player.size.y * 0.3;
+    final at = player.position +
+        Vector2(
+          (_random.nextDouble() * 2 - 1) * maxOffsetX,
+          (_random.nextDouble() * 2 - 1) * maxOffsetY,
+        );
+    spawnEffect(
+      _bloodImpactAnimation,
+      at,
+      size: Vector2(width, width * kBloodImpactAspect),
+    );
+  }
+
+  /// The Skirmisher's Spiral Fire cast flourish (DECISIONS D-034) — glued to
+  /// [caster] for its short duration (`TrackingSpriteEffect`) rather than a
+  /// fixed point, since the player can keep moving mid-cast. Rendered behind
+  /// the caster (`groundEffects` priority < `player`) and dimmed to 35%
+  /// opacity per spec.
+  void spawnCastSparkle(PositionComponent caster) {
+    final width = caster.size.x * kSparkleWidthFactor;
+    add(
+      TrackingSpriteEffect(
+        target: caster,
+        animation: _sparkleAnimation,
+        size: Vector2(width, width * kSparkleAspect),
+        priority: ArenaPriority.groundEffects,
+        paint: Paint()
+          ..filterQuality = FilterQuality.none // D-011
+          ..color = const Color.fromRGBO(255, 255, 255, 0.35),
+      ),
+    );
+  }
+
+  /// Non-lethal hit from the Skirmisher's Spiral Fire (DECISIONS D-034) —
+  /// [spawnExplosionEffect] plays instead when that hit was the kill.
+  void spawnImpactEffect(Vector2 at) {
+    spawnEffect(
+      _impactAnimation,
+      at,
+      size: Vector2(kSpiralImpactWidthPx, kSpiralImpactWidthPx * kSpiralImpactAspect),
+    );
+  }
+
+  void spawnExplosionEffect(Vector2 at) {
+    spawnEffect(
+      _explosionAnimation,
+      at,
+      size: Vector2(
+        kSpiralExplosionWidthPx,
+        kSpiralExplosionWidthPx * kSpiralExplosionAspect,
+      ),
+    );
   }
 
   /// PRD §6.5: freeze after the death frame, then show Round Over. Debug

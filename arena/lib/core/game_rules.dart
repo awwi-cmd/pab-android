@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flame/game.dart' show Vector2;
 
 /// Pure gameplay math with no Flame `Component`/`Game` dependency —
@@ -70,3 +72,10 @@ double enemyStatMultiplier(int playerLevel) {
   assert(playerLevel >= 1);
   return 1 + (playerLevel - 1) * kEnemyScalePerLevel;
 }
+
+/// DECISIONS D-035: "elite" enemies are a visual-only marker for now (a fire
+/// glow, `ArenaGame.spawnEnemy`) — no stat change, unlike `enemyStatMultiplier`
+/// above. Rolled independently per spawn, not tied to player level.
+const double kEliteChance = 0.15;
+
+bool rollIsElite(Random random) => random.nextDouble() < kEliteChance;

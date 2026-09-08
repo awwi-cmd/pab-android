@@ -297,7 +297,17 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
         `core/progression.dart` gate the level-up roll pool by
         `CharacterDef.id`. `flutter analyze` clean, `flutter test` 47/47 (5
         new), `flutter build apk --debug` succeeds.
-      - [ ] Skirmisher — something faster/lighter, fits `dex`-heavy stats
+      - [x] Skirmisher — **Spiral Fire** (DECISIONS D-034): two
+        `SpiralFireProjectileComponent`s launched together, pi radians of
+        orbit phase apart, spiraling around a shared advancing point that
+        converges on the target (yin-yang look); a `sparkles-constelation`
+        flourish plays behind the caster's body at 35% opacity on every
+        cast. Non-lethal hits play `effect_impact`, kills play
+        `effect_explosion2` — on top of, not instead of, the existing shared
+        hit-spark/damage-number feedback. Full per-hit damage on each of the
+        2 shots, not halved — first pass, no tune yet (unlike the knife's
+        two rounds). `flutter analyze` clean, `flutter test` 49/49,
+        `flutter build apk --debug` succeeds.
       - [ ] Warden — something tankier, fits `vit`-heavy stats
       - [ ] On-device verification of the Bruiser's knife — **developer**:
         pierce reads clearly (doesn't look like it stopped at the first
@@ -306,11 +316,35 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
         way off-screen instead of vanishing early, Knife Mastery only shows
         up in the level-up popup when playing the Bruiser, and its 3 levels
         actually look/feel like 1 → 2 → 4 knives
+      - [ ] On-device verification of the Skirmisher's Spiral Fire —
+        **developer**: the spiral/yin-yang motion reads as intentional (not
+        just wobbly), sparkle flourish is visible behind the character at
+        35% opacity, impact vs. explosion picks correctly (explosion only on
+        a kill), overall damage output (2 full-damage shots per cast) feels
+        right vs. the other 2 kits
 - [ ] **8.4** Real unlock-by-progression: lock slots 2-4 again and gate them
       behind a persistent unlock condition (kills/rounds/levels — TBD).
       Needs a persistence story beyond `SharedPreferences` settings (round
       state resets every round by design, CLAUDE.md §4.5 — unlocks can't).
       Ask before picking the unlock condition/mechanism; don't guess.
+- [x] **8.5** Player hit feedback — `effect_blood-impact` plays somewhere on
+      the player's own body (a random spot each time, not a fixed decal)
+      whenever damage actually lands, any character (DECISIONS D-033).
+      `flutter analyze` clean, `flutter test` 49/49, `flutter build apk
+      --debug` succeeds.
+- [x] **8.6** Elite enemies — 15% of spawns (`kEliteChance`,
+      `core/game_rules.dart`) get a persistent `effect_dithered-fire` glow
+      under them, sized to never exceed the enemy's own width (DECISIONS
+      D-035). Visual-only for now — no stat/behavior difference, so this is
+      a first slice of the Backlog's "enemy variety" item, not the whole
+      thing. `flutter analyze` clean, `flutter test` 49/49 (2 new, including
+      a statistical check on the roll rate), `flutter build apk --debug`
+      succeeds.
+- [ ] **8.7** On-device verification of 8.5/8.6 — **developer**: blood
+      splat lands on the body (not off it), position visibly varies hit to
+      hit, roughly 1 in 6-7 enemies shows the fire glow, glow tracks the
+      enemy correctly (including when it dies/despawns) and never reads
+      wider than the enemy sprite itself
 
 **Exit criterion:** 4 distinct playable characters, each unlocked by real
 progression instead of by default, each with its own attack kit.
@@ -327,7 +361,9 @@ Kept here so ideas have somewhere to go that isn't the current sprint.
   attack kits (8.3) and real unlock-by-progression (8.4) still open.
 - Enemy variety with distinct stats: ranged, fast/swarm, tanky, elite (D-022:
   3 skins were wired for visual variety only, one shared `EnemyStats` profile
-  — still true "one enemy type" per PRD §9, so this backlog item stands)
+  — still true "one enemy type" per PRD §9, so this backlog item stands).
+  "Elite" got a first visual-only slice in Phase 8.6 (D-035, a fire glow on
+  ~15% of spawns) — no stat/behavior difference yet, that part is still open.
 - Structured waves and a boss
 - **Enemy scaling to match player progression** — done as of Phase 7.9
   (D-026): HP/contact damage scale linearly with player level. Faster

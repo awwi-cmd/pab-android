@@ -8,6 +8,7 @@ import '../core/stats.dart';
 import 'arena_game.dart';
 import 'components/knife_projectile.dart';
 import 'components/projectile.dart';
+import 'components/spiral_fire_projectile.dart';
 
 /// How a `CharacterDef` attacks (DECISIONS D-024). `ArenaGame` owns the
 /// cooldown timer (round state stays on `ArenaGame`, CLAUDE.md §4.5) and
@@ -164,5 +165,57 @@ class KnifeAttack extends AttackBehavior {
     final cosA = cos(angleRad);
     final sinA = sin(angleRad);
     return Vector2(v.x * cosA - v.y * sinA, v.x * sinA + v.y * cosA);
+  }
+}
+
+/// The Skirmisher's kit (DECISIONS D-034): "Spiral Fire" — two
+/// `SpiralFireProjectileComponent`s launched together at the nearest enemy
+/// in range (pi radians of orbit phase apart, so they spiral around each
+/// other like a yin-yang pair converging on the target), plus a cast
+/// sparkle on the caster's own body (`ArenaGame.spawnCastSparkle`). Same
+/// targeting/cooldown formula as [ProjectileAttack]; unlike it, two shots go
+/// out per cast instead of one — full per-hit damage each, not halved, so
+/// this hits harder than a single bolt in exchange for however that first
+/// on-device pass reads (no tune pass yet, unlike the knife which took two).
+class SpiralFireAttack extends AttackBehavior {
+  const SpiralFireAttack();
+
+  @override
+  double cooldownSeconds(StatBlock stats) => 1 / stats.attacksPerSec;
+
+  @override
+  void perform(ArenaGame game) {
+    final stats = game.character.stats;
+    final player = game.player;
+
+    final positions = [for (final enemy in game.enemies) enemy.position];
+    final index = nearestWithinRange(
+      player.position,
+      positions,
+      stats.attackRangePx,
+    );
+    if (index == -1) return;
+    final target = game.enemies[index];
+
+    if ((target.position - player.position).length2 == 0) {
+      return; // exactly on top of the target
+    }
+
+    final damage = stats.damagePerHit + game.upgrades.bonusDamage;
+    for (final phase in [0.0, pi]) {
+      game.add(
+        SpiralFireProjectileComponent(
+          startPosition: player.position.clone(),
+          targetPoint: target.position.clone(),
+          damage: damage,
+          knockback: stats.knockbackImpulse,
+          speedPxPerS: stats.projSpeedPxPerS,
+          phase: phase,
+          animation: game.pixelFireAnimation,
+        ),
+      );
+    }
+    game.spawnCastSparkle(player);
+    player.playFire();
   }
 }

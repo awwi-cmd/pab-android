@@ -988,6 +988,134 @@ radius/sizing untouched — purely a paint-layer tune on top of D-032's swap.
 
 ---
 
+## D-033 — Player hit feedback: `effect_blood-impact`, randomized on-body position
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer delivered `assets/images/vfx/vfx/effect_blood-impact.png`
+(discovered to be the same 9-cols×7-rows grid convention as D-032's shield —
+60×63 native cell, 48 real frames padded into 63) and asked for it to play
+"on the character's body" whenever any character takes damage (not tied to a
+specific character), sized 25% smaller than a natural first pass, and at a
+different spot each time rather than a fixed decal.
+**Decision:** `ArenaGame.spawnBloodImpact()`, called from
+`PlayerComponent.takeDamage()` right after the guard clauses (god mode,
+i-frames, already dead) so it only fires when damage actually lands. Reuses
+the existing `spawnEffect()` one-shot helper (new — a generalization of what
+`onProjectileHit`'s hit-spark spawn was already doing inline, now shared by
+every one-shot VFX added this session). Position: `player.position` plus a
+random offset within ±30% of the player's width/height on each axis
+(`ArenaGame._random`, already existed). Size: `player.size.x *
+kBloodImpactWidthFactor` (0.45) — landed there directly rather than in two
+tuning passes like the knife: 0.6x width would have been the "natural" first
+guess, developer asked for -25% smaller before it ever shipped, so the
+constant documents that derivation instead of pretending there were two
+separate commits.
+**Because:** Randomizing per-hit rather than a fixed offset was the explicit
+ask ("not always in the same place") — a static position would read as a
+sticker, not a hit reaction. Deriving size from `player.size.x` at call time
+(not a duplicated hardcoded pixel value) means it can't drift out of sync if
+`kCharacterRenderScale` ever changes.
+**Consequences:** Every character shows the same blood-impact regardless of
+its own visual theme (no per-character skin for this VFX) — matches the ask
+("all characters not specific"). Unverified on-device (TASKS 8.7) — same
+caveat as every other placeholder VFX size/position in this project.
+
+## D-034 — Skirmisher kit: Spiral Fire (twin orbiting projectiles + cast/hit/kill VFX)
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** TASKS 8.3's Skirmisher slot was still on the `ProjectileAttack`
+placeholder. Developer specified a full kit in one message: a cast flourish
+(`effect_sparkles-constelation`, on the caster's body, 35% opacity, behind
+the character) as "part of" the skill, with the other part being "2
+effect_pixel-fire projectiles shot together that are spinning like yin and
+yang in a spiral towards their target" — plus `effect_impact` on a non-lethal
+hit and `effect_explosion` (delivered as `effect_explosion2.png`,
+consolidating what were two separate GIFs before D-032's PNG re-delivery) on
+a kill from this skill specifically.
+**Decision:** `SpiralFireAttack` (`game/attack_behavior.dart`) — same
+targeting/cooldown formula as `ProjectileAttack`, but launches two
+`SpiralFireProjectileComponent`s per cast (`game/components/
+spiral_fire_projectile.dart`) at orbit phases 0 and pi (opposite sides of a
+shared advancing center point), plus one call to the new
+`ArenaGame.spawnCastSparkle()`. Each projectile's position each frame is
+`start + direction*(traveled + radius*sin(angle)) +
+perpendicular*(radius*cos(angle))` — a genuine circular orbit around the
+straight-line path to `targetPoint` (captured once at launch, not homing —
+matches D-005), with `radius` shrinking linearly to 0 as `traveled`
+approaches the total distance, so the pair visually converges exactly on
+arrival instead of still circling on impact. Built via the existing
+`_scratch`-vector-reuse pattern (no per-frame `Vector2` allocation, CLAUDE.md
+§4.4) rather than `Vector2`'s `+`/`*` operators, which each allocate.
+Single-target hit per projectile (not piercing, unlike the knife) — on hit,
+`EnemyComponent.isDying` is checked immediately after `takeDamage()` (it's
+set synchronously when hp drops to 0) to pick `spawnExplosionEffect` (kill)
+vs. `spawnImpactEffect` (non-lethal), **in addition to** the existing shared
+`onProjectileHit` call (damage number, damage-dealt bookkeeping, the generic
+hit-spark) — this skill's flourishes are additive on top of that shared
+feedback, not a replacement for it, so damage totals/round bookkeeping stay
+identical across every kit. `TrackingSpriteEffect`
+(`game/components/tracking_effect.dart`) is new shared infrastructure for
+the cast sparkle: a VFX that follows a still-alive component (the caster)
+every frame and self-removes once that component leaves the tree — needed
+because the player isn't movement-locked during a cast (only `hurt` blocks
+movement, `fire` doesn't), so a fixed-position sparkle would drift off the
+body mid-animation.
+**Because:** Two full-price shots is the literal spec ("2 ... projectiles
+... shot together") — not halving each one's damage the way the knife's
+pierce got a compensating nerf, since nobody's asked for that tuning pass on
+this kit yet and guessing a number pre-feedback (rather than shipping the
+straightforward reading and tuning from an actual on-device reaction) is
+exactly the pattern D-029→D-030 showed doesn't save a round trip anyway.
+Orbiting via true circular motion (not just a perpendicular wobble) is what
+actually reads as "spiral"/"yin-yang" instead of a shaky straight line.
+**Consequences:** `SpiralFireAttack` is meaningfully stronger per-cast than
+`ProjectileAttack`/`KnifeAttack` (two full hits vs. one) — expected to need
+a balance pass same as everything else once it's seen in motion (TASKS
+8.3's new on-device item). `ArenaGame` picked up 5 new `SpriteAnimation`
+fields and 4 new small `spawn*` helper methods this session (D-033's
+`spawnBloodImpact`/shared `spawnEffect`, plus this entry's
+`spawnCastSparkle`/`spawnImpactEffect`/`spawnExplosionEffect`) — still all
+one-line wrappers, but worth noting `arena_game.dart` is trending toward
+CLAUDE.md §5's ~300-line guideline; not over it yet, next VFX addition
+should check.
+
+## D-035 — Elite enemies: visual-only fire glow, no stat change yet
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer asked for "some enemies" to be "elite" with an
+`effect_dithered-fire` glow under them, explicitly capped at "not bigger or
+wider than the enemy." The Backlog already lists full elite/enemy-variety
+(distinct stats) as out-of-scope-for-now (D-022) — this ask was visual only,
+no stat/behavior change requested, so it's treated as a first slice of that
+Backlog item rather than the whole thing (CLAUDE.md §6, "ask before scope" —
+here the ask was narrow enough not to need clarifying).
+**Decision:** `rollIsElite(Random)` + `kEliteChance` (0.15, `core/
+game_rules.dart` — pure and unit-tested, including a statistical check over
+20,000 trials) rolled independently per spawn in `ArenaGame.spawnEnemy`. No
+new field on `EnemyComponent` — the roll only decides whether to also attach
+a `TrackingSpriteEffect` (same component D-034 introduced) as a **top-level
+sibling** of the enemy, not a child of it: Flame's `Component.renderTree`
+renders a component's own `render()` first and its children afterward, so a
+child would always paint on top of its parent regardless of the child's own
+`priority` — the opposite of "fire under them." A sibling at
+`ArenaPriority.groundEffects` (5, below `enemy`'s 10) sorts correctly instead,
+with the tracking behavior gluing it to the enemy's position every frame and
+self-removing once the enemy leaves the tree (dies/despawns). Sized to
+`enemy.size.x` exactly (never wider, per the ask), offset down by 30% of the
+enemy's height so it reads as under its feet rather than centered through
+its torso.
+**Because:** Deriving glow width from `enemy.size.x` at spawn time (not a
+duplicated constant) can't drift out of sync with `kCharacterRenderScale`.
+Keeping this visual-only (no `EnemyComponent` changes at all) is the
+narrowest change that satisfies the literal ask without pre-building the
+Backlog's full "distinct stats" feature nobody asked for yet.
+**Consequences:** "Elite" currently means nothing mechanically — it's a
+coin flip on whether an enemy gets a fire glow, full stop. If/when real
+elite stats (tankier, more damage) get built, this is the hook to extend
+(`rollIsElite`'s result already threading through `spawnEnemy` is the
+obvious place), but that's new scope to ask about, not assume. Unverified
+on-device (TASKS 8.7): does 15% read as "some," does the glow's position/
+size actually look like it's under the enemy rather than through it.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

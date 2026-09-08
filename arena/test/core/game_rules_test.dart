@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:arena/core/game_rules.dart';
 import 'package:flame/game.dart' show Vector2;
 import 'package:flutter_test/flutter_test.dart';
@@ -79,6 +81,23 @@ void main() {
     test('grows linearly with level', () {
       expect(enemyStatMultiplier(2), closeTo(1.12, 1e-9));
       expect(enemyStatMultiplier(6), closeTo(1.6, 1e-9));
+    });
+  });
+
+  group('rollIsElite', () {
+    test('is deterministic for a given seed', () {
+      expect(rollIsElite(Random(7)), rollIsElite(Random(7)));
+    });
+
+    test('rolls true roughly kEliteChance of the time over many trials', () {
+      const trials = 20000;
+      var trueCount = 0;
+      final random = Random(1);
+      for (var i = 0; i < trials; i++) {
+        if (rollIsElite(random)) trueCount++;
+      }
+      final rate = trueCount / trials;
+      expect(rate, closeTo(kEliteChance, 0.02)); // generous tolerance
     });
   });
 }
