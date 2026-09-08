@@ -312,7 +312,11 @@ class ArenaGame extends FlameGame {
         cellHeight: bossCellHeight,
         stepTime: 0.12,
         frameCount: 3,
-        amountPerRow: 4,
+        // No amountPerRow here (unlike the other 3 slices) -- walk fits
+        // entirely within row 2, so there's no next row to wrap onto, and
+        // Flame's own SpriteAnimationData asserts amount >= amountPerRow
+        // when it's given (3 frames can't satisfy amountPerRow: 4).
+        // texturePosition alone is enough to select the row.
         texturePosition: Vector2(0, 2 * bossCellHeight),
       ),
       BossAnim.fire: await loadSheetAnimation(
