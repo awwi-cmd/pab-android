@@ -242,12 +242,45 @@ demo's existing flow (Phases 0-6) regressing.
 
 ---
 
+## Phase 8 — Roster expansion
+*Goal: all 4 select-screen slots are real, playable characters, not one demo
+character plus placeholders. Started 2026-09-08 when the developer delivered
+full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
+
+- [x] **8.1** Wire the Bruiser/Skirmisher/Warden slots to their real sprite
+      folders (`second`/`black` prefix, `third`, `fourth`) and unlock all 4
+      characters — no progression gate yet, everything just defaults open
+      (D-028). `flutter analyze` clean, `flutter test` passes (42 tests, no
+      new ones — no new gameplay logic), `flutter build apk --debug`
+      succeeds.
+- [ ] **8.2** On-device verification — **developer**: all 4 tiles show real
+      idle portraits (not padlocks) on Character Select, each is selectable,
+      stat bars/derived readout update correctly per character, each enters
+      the arena and plays/animates/fires correctly
+- [ ] **8.3** Give each of the 3 new characters its own `AttackBehavior`
+      (melee for the Bruiser, something faster/lighter for the Skirmisher,
+      something tankier for the Warden are the obvious fits given their stat
+      spreads) instead of sharing `ProjectileAttack()`. Design the actual
+      kits before building — this is real scope, not a data tweak.
+- [ ] **8.4** Real unlock-by-progression: lock slots 2-4 again and gate them
+      behind a persistent unlock condition (kills/rounds/levels — TBD).
+      Needs a persistence story beyond `SharedPreferences` settings (round
+      state resets every round by design, CLAUDE.md §4.5 — unlocks can't).
+      Ask before picking the unlock condition/mechanism; don't guess.
+
+**Exit criterion:** 4 distinct playable characters, each unlocked by real
+progression instead of by default, each with its own attack kit.
+
+---
+
 ## Backlog (post-demo — do not start)
 
 Kept here so ideas have somewhere to go that isn't the current sprint.
 
 - Skill system using the reserved animation states (teleport, dash, charge, channel, cast)
-- Additional playable characters (slots 2–4) with distinct projectiles
+- ~~Additional playable characters (slots 2–4)~~ — started Phase 8 (D-028):
+  assets wired, all 4 unlocked, sharing one bolt attack. Distinct
+  attack kits (8.3) and real unlock-by-progression (8.4) still open.
 - Enemy variety with distinct stats: ranged, fast/swarm, tanky, elite (D-022:
   3 skins were wired for visual variety only, one shared `EnemyStats` profile
   — still true "one enemy type" per PRD §9, so this backlog item stands)

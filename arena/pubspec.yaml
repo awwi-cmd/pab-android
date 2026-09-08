@@ -63,8 +63,10 @@ flutter:
   assets:
     - assets/images/
     - assets/images/characters/
-    - assets/images/characters/apprentice/
     - assets/images/characters/main/
+    - assets/images/characters/second/
+    - assets/images/characters/third/
+    - assets/images/characters/fourth/
     - assets/images/characters/enemies/
     - assets/images/vfx/projectiles/
     - assets/images/scenes/

@@ -38,9 +38,11 @@ class CharacterDef {
   final bool unlocked;
 }
 
-/// The 4 select-screen slots (PRD §5.2). Only slot 1 is unlocked/playable
-/// for the demo; slots 2-4 are data so the select screen has something to
-/// render behind the padlock (DECISIONS D-003) — they have no sprites.
+/// The 4 select-screen slots (PRD §5.2). All 4 are unlocked and playable as
+/// of TASKS Phase 8 — real unlock-via-progression gating is planned but not
+/// built yet, so every slot defaults open for now. Slots 2-4 all share the
+/// Apprentice's `ProjectileAttack` as a placeholder until each gets its own
+/// `AttackBehavior` (CLAUDE.md §4.12).
 const List<CharacterDef> kCharacters = [
   CharacterDef(
     id: 'apprentice',
@@ -55,33 +57,33 @@ const List<CharacterDef> kCharacters = [
   CharacterDef(
     id: 'bruiser',
     name: 'The Bruiser',
-    descriptor: 'Locked.',
+    descriptor: 'A heavy hitter — bolts for now, a melee kit is planned.',
     stats: StatBlock(str: 8, vit: 7, dex: 3, intellect: 2),
-    spriteFolder: '',
-    spritePrefix: '',
-    // Unused while locked -- ProjectileAttack is a placeholder, not a
-    // design commitment. A melee kit is the obvious real fit here.
+    spriteFolder: 'assets/images/characters/second',
+    spritePrefix: 'black',
+    // Placeholder: same bolt as the Apprentice (TASKS Phase 8) until the
+    // Bruiser gets its own AttackBehavior — melee is the obvious real fit.
     attackBehavior: ProjectileAttack(),
-    unlocked: false,
+    unlocked: true,
   ),
   CharacterDef(
     id: 'skirmisher',
     name: 'The Skirmisher',
-    descriptor: 'Locked.',
+    descriptor: 'Fast and precise — bolts for now, a real kit is planned.',
     stats: StatBlock(str: 4, vit: 3, dex: 9, intellect: 4),
-    spriteFolder: '',
-    spritePrefix: '',
+    spriteFolder: 'assets/images/characters/third',
+    spritePrefix: 'third',
     attackBehavior: ProjectileAttack(),
-    unlocked: false,
+    unlocked: true,
   ),
   CharacterDef(
     id: 'warden',
     name: 'The Warden',
-    descriptor: 'Locked.',
+    descriptor: 'Tough and steady — bolts for now, a real kit is planned.',
     stats: StatBlock(str: 3, vit: 9, dex: 4, intellect: 4),
-    spriteFolder: '',
-    spritePrefix: '',
+    spriteFolder: 'assets/images/characters/fourth',
+    spritePrefix: 'fourth',
     attackBehavior: ProjectileAttack(),
-    unlocked: false,
+    unlocked: true,
   ),
 ];

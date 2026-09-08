@@ -780,6 +780,36 @@ feedback, zero changes to the range check itself.
 
 ---
 
+## D-028 — Slots 2-4 unlocked with real assets, sharing the Apprentice's bolt
+**Date:** 2026-09-08 · **Status:** Accepted
+**Context:** Developer delivered full sprite sheets (`black`/`third`/`fourth`
+prefixes, 10 states each — same set as `main`, plus `dash`/`flash`/`fly`/`warp`
+left unwired same as `main`'s) for the Bruiser, Skirmisher, and Warden slots.
+CLAUDE.md §6 ("ask before scope") applied because unlocking them and giving
+each a distinct kit are two different asks.
+**Decision:** Wire all 3 new slots as fully unlocked (no progression gate
+yet — that's a separate future feature) using their real sprite folders, but
+give every one of them `ProjectileAttack()` — the same bolt the Apprentice
+uses — as a deliberate placeholder. `CharacterDef.unlocked` no longer singles
+out the Apprentice; it's just `true` everywhere until real unlock-by-progress
+is built.
+**Because:** The developer explicitly asked for "same main ability for now,
+we'll change it later" and "unlockable from the beginning ... we'll unlock
+them all with progression later, for now all unlocked" — both are staged,
+not final. `AttackBehavior` (D-024) already supports a per-character kit with
+zero `ArenaGame` changes, so nothing here blocks that follow-up; it's a data
+edit on `CharacterDef.attackBehavior`, tracked as TASKS Phase 8 items.
+**Consequences:** All 4 characters currently play identically except for
+stats/sprite — visual variety without mechanical variety yet. `_idleFrameCount`
+in `character_select_screen.dart`'s portrait widget stays hardcoded at 4
+(confirmed via PNG `IHDR` dims: all four `*-idle.png` sheets are 64×24, i.e.
+4 frames at the shared 16×24 cell) — still needs a manual bump if a future
+character ships an idle sheet with a different frame count. Progression-gated
+unlocking (locking 2-4 again, then re-opening them via in-game milestones) is
+new scope, tracked in TASKS Phase 8, not started.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer
