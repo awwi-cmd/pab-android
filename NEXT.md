@@ -45,7 +45,7 @@ weighted roll, the "view your upgrades" screen and the pause-menu plumbing
 all generalize to N upgrades. D-027's Aura is the second real example and
 it's a genuine skill, not a stat bump — `kUpgradeMaxPicks` (`null` =
 unlimited, an int = cap) is there for exactly that, and a skill that needs
-a live Flame component (like Aura's orbiting ring) follows the same
+a live Flame component (like Aura's shield ring, D-032) follows the same
 pattern: `ArenaGame` owns the component (`_aura`), creates it lazily off
 `upgrades.pickCounts` the first time it's picked (`_syncAura()`), and the
 component reads its own current strength from `pickCounts` every tick

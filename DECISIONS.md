@@ -928,6 +928,56 @@ number in this file.
 
 ---
 
+## D-032 — Aura visual swap: orbiting sparks → `effect_electric-shield.png`
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** D-027 built the Aura's visual from 6 copies of the existing
+`projectile-spark.png` hit-spark placed around a circle and rotated as a
+group, because no dedicated asset existed yet. Developer supplied a real
+shield-ring asset (`assets/images/vfx/vfx/effect_electric-shield.png`) and
+asked for the swap, with two hard constraints: keep the radius/damage logic
+exactly as-is, and don't let the new visual read bigger than the actual
+damage area.
+**Decision:** `effect_electric-shield.png` turned out to be a 2385×1855 grid
+sheet — 265×265 cells, 9 per row × 7 rows, 60 real animation frames padded
+into a 63-cell rectangle (confirmed by checking each cell's alpha channel:
+rows 0-5 are all populated, row 6 has frames 0-5 and blank alpha at 6-8).
+That's a multi-row layout, which `loadSheetAnimation` (`game/anim/
+sheet_loader.dart`, D-015) didn't support — every other sheet in this
+project is a single left-to-right strip. Extended it with optional
+`frameCount`/`amountPerRow` params (both `null` by default, preserving the
+exact old single-row behavior for every existing caller) rather than
+writing a one-off loader just for this asset. `AuraComponent` now adds one
+centered `SpriteAnimationComponent` playing that sheet instead of building
+6 orbiting spark children + a manual per-frame rotation of the whole group
+— the sheet's own frames already animate the spin, so the extra rotation
+code was removed rather than compounded on top. Sized to
+`Vector2.all(_radiusPx * 2)` — the damage diameter exactly, not a pixel
+more; because the source art has its own inset padding around the ring
+inside each frame, the actual visible ring ends up a little *inside* the
+hit circle rather than exactly on its edge, which satisfies "never bigger
+than the damage area" with margin to spare rather than by exact coincidence.
+`_dealDamage()`/`_tickTimer`/the `allWithinRange` radius check are all
+byte-for-byte untouched — this was a rendering-layer swap only.
+**Because:** A generalized sheet loader is the CLAUDE.md §4.3-consistent
+choice — the alternative (a bespoke loader for one asset) would fork the
+"how do I read a sprite sheet" logic in two places for no reason. Exact
+diameter (not e.g. 1.5× or a fudge factor) is the simplest way to guarantee
+the "not bigger" constraint without needing to hand-measure the ring's
+actual radius inside its frame padding.
+**Consequences:** Aura's `SpriteAnimation` field/param name changed
+(`_auraSparkAnimation`→`_auraShieldAnimation`,
+`sparkAnimation`→`shieldAnimation`) — anything referencing the old names
+(NEXT.md's Aura writeup) needs the same update, done alongside this entry.
+`stepTime` (0.03s/frame × 60 frames ≈ 1.8s per full loop) is a first guess
+for how fast the ring should spin, unverified on-device — same caveat as
+every other placeholder timing number in this file. The old
+orbiting-sparks approach (multiple children + manual group rotation) is
+gone, not kept behind a flag — if a future skill wants that "several small
+sprites around a circle" look again, D-027's original `aura.dart` history
+in git is the reference, not dead code left in this file.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

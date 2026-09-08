@@ -107,7 +107,8 @@ ArenaDemo/                    <- repo root, open this in your editor
     │   │   ├── characters/third/      // Skirmisher sheets, third-<state>.png (D-028)
     │   │   ├── characters/fourth/     // Warden sheets, fourth-<state>.png (D-028)
     │   │   ├── characters/enemies/    // 3 skins, enemy-<name>-{run,die}.png (D-022)
-    │   │   ├── vfx/projectiles/       // bolt + hit-spark
+    │   │   ├── vfx/projectiles/       // bolt + hit-spark + Bruiser's knife (D-029)
+    │   │   ├── vfx/vfx/                // Aura's shield-ring sheet (D-032), other unused effect GIFs
     │   │   └── scenes/                // floor tile variants + border tile (D-023)
     │   └── audio/                     // declared, unused (no audio bus yet)
     └── lib/
@@ -142,7 +143,7 @@ ArenaDemo/                    <- repo root, open this in your editor
             │   ├── hp_bar.dart
             │   ├── damage_text.dart
             │   ├── arena_floor.dart
-            │   └── aura.dart                // Aura skill: orbiting sparks, area-tick damage — D-027
+            │   └── aura.dart                // Aura skill: shield-ring visual, area-tick damage — D-027/D-032
             ├── input/
             │   ├── movement_input.dart    // the 3 control schemes, scheme-agnostic Vector2
             │   └── joystick_overlay.dart  // the 3 schemes' actual Flutter touch capture

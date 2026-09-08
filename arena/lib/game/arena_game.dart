@@ -52,7 +52,7 @@ class ArenaGame extends FlameGame {
   late EnemyAnimations _enemyAnimations;
   late SpriteAnimation _boltAnimation;
   late SpriteAnimation _sparkAnimation;
-  late SpriteAnimation _auraSparkAnimation;
+  late SpriteAnimation _auraShieldAnimation;
   late Sprite _knifeCleanSprite;
   late Sprite _knifeBloodySprite;
   final Random _random = Random();
@@ -141,14 +141,17 @@ class ArenaGame extends FlameGame {
       stepTime: 0.05,
       loop: false,
     );
-    // Same sheet as the one-off hit spark above, but looping -- the Aura
-    // skill's ring sparks (DECISIONS D-027) play continuously rather than
-    // once per hit.
-    _auraSparkAnimation = await loadSheetAnimation(
-      'vfx/projectiles/projectile-spark.png',
-      cellWidth: 16,
-      cellHeight: 16,
-      stepTime: 0.05,
+    // Aura's shield ring (DECISIONS D-032) -- a 9x7 grid sheet, 60 real
+    // frames padded out to a 63-cell rectangle (the last 3 cells of the
+    // last row are blank), not a single-row strip like every other sheet
+    // in this project.
+    _auraShieldAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_electric-shield.png',
+      cellWidth: 265,
+      cellHeight: 265,
+      stepTime: 0.03,
+      frameCount: 60,
+      amountPerRow: 9,
     );
     // Single static images, not sheets (DECISIONS D-029) -- Sprite.load, not
     // loadSheetAnimation.
@@ -333,7 +336,7 @@ class ArenaGame extends FlameGame {
   void _syncAura() {
     if (_aura != null) return;
     if ((upgrades.pickCounts[UpgradeKind.aura] ?? 0) <= 0) return;
-    _aura = AuraComponent(sparkAnimation: _auraSparkAnimation);
+    _aura = AuraComponent(shieldAnimation: _auraShieldAnimation);
     add(_aura!);
   }
 

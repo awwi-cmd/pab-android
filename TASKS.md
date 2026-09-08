@@ -228,6 +228,15 @@ built 2026-09-07 — see DECISIONS D-025 for the full design reasoning).*
       — **2026-09-08 update 3: confirmed working.** Coverage was correct
       the whole time; the diagnostic pulse is now removed, aura ships with
       just the orbiting sparks. Merged to main.
+      — **2026-09-09 update 4 (DECISIONS D-032):** visual swapped from the
+      orbiting-sparks placeholder to a real asset,
+      `vfx/vfx/effect_electric-shield.png` (a 9x7 grid sheet, 60 frames —
+      `game/anim/sheet_loader.dart` gained grid-sheet support for this).
+      Sized to the damage diameter exactly so it can't read bigger than the
+      hit area. Radius/damage logic untouched. `flutter analyze` clean,
+      `flutter test` 47/47, `flutter build apk --debug` succeeds. On-device
+      re-verify needed: does the new ring read clearly, does its spin speed
+      (first guess: ~1.8s per loop) feel right.
 
 flutter analyze clean, flutter test passes (32 tests, 12 new), flutter build
 apk --debug succeeds. No automated coverage of the pause/overlay orchestration
