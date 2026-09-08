@@ -1216,6 +1216,42 @@ can render briefly outside the visible screen for a frame or two before its
 final convergence — harmless (nothing draws outside the canvas clip, no
 crash), and correct: it still lands exactly on `targetPoint` on schedule.
 
+## D-039 — Spiral Fire projectiles fly to the screen edge, matching the knife
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer asked for two more things on the same kit: confirm
+that firing again doesn't despawn an already-flying shot (nothing in the
+code ever could — each `SpiralFireProjectileComponent` is a fully
+independent instance with no shared/static state and no cross-references to
+other projectiles; this was almost certainly the same symptom as D-038's
+bug, now fixed), and that projectiles keep flying until they actually leave
+the screen instead of stopping once they reach `targetPoint` — the same
+"don't despawn on its own, only on a hit or leaving the arena" rule D-030
+gave the Bruiser's knife.
+**Decision:** Removed the `_traveled >= _totalDistance` despawn entirely.
+`progress` (which drives the orbit radius shrinking to 0) is now
+`(_traveled / _totalDistance).clamp(0, 1)` instead of an unclamped ratio —
+the spiral still converges to a straight line exactly at `targetPoint`, but
+then *stays* a straight line (radius pinned at 0) for as long as the
+projectile keeps flying past it, rather than the ratio continuing to grow
+past 1 (which the old despawn-at-1 branch never let happen, but the removed
+branch was the only thing stopping it). D-038's `_outOfBounds()` comes back
+as the sole despawn condition (hit-or-leaves-the-arena, same shape as the
+knife) — but this time with a `_boundsMargin` equal to `_orbitRadiusPx`
+padded onto every edge, so the orbit's own sideways wobble can never trip a
+false "it's gone" near the true edge the way the unmargined version did
+before D-038 removed it. Only once the projectile is genuinely past the
+edge by more than the wobble's own amplitude does it actually despawn.
+**Because:** A margin sized to the wobble amplitude is the minimal fix that
+lets the bounds check come back safely — smaller than that risks
+reintroducing D-038's bug, bigger just delays the despawn for no reason.
+**Consequences:** Spiral Fire projectiles now behave exactly like the
+knife's travel rule post-D-030: fly straight through/past their original
+target, hit whatever they touch along the way (still single-target,
+non-piercing — they despawn on the *first* hit same as always), and only
+give up at the arena edge. `_totalDistance` is still computed and still
+drives the orbit-convergence math; it's just no longer a despawn trigger by
+itself.
+
 ---
 
 ## Open questions

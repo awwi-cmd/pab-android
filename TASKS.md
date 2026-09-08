@@ -327,6 +327,17 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
         leftover out-of-bounds check copied from the bolt/knife. Removed —
         `_traveled >= _totalDistance` alone already guarantees exact,
         on-time termination at the target regardless of wobble.
+        — **2026-09-09 second bugfix (DECISIONS D-039):** developer asked
+        for confirmation firing again doesn't despawn an in-flight shot
+        (it never could — no shared state between projectile instances,
+        almost certainly the same symptom as the above bug) and for
+        projectiles to keep flying past their target until they actually
+        leave the screen, same "no despawn on its own" rule the knife got
+        in D-030. The distance-based despawn is gone; `_outOfBounds()` is
+        back as the only exit condition, this time with a margin (equal to
+        the orbit's own wobble radius) so it can't falsely trigger near an
+        edge the way the pre-D-038 version did. **This closes out the
+        Skirmisher's main attack** — no further changes requested.
       - [ ] Warden — something tankier, fits `vit`-heavy stats
       - [ ] On-device verification of the Bruiser's knife — **developer**:
         pierce reads clearly (doesn't look like it stopped at the first

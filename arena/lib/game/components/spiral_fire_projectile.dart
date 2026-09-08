@@ -7,12 +7,14 @@ import '../../core/constants.dart';
 import '../arena_game.dart';
 import 'enemy.dart';
 
-/// One half of the Skirmisher's Spiral Fire skill (DECISIONS D-034): two of
-/// these are always launched together, [phase] apart by pi radians, so they
-/// orbit a shared advancing center point on opposite sides of it — a
-/// yin-yang pair rather than two independent shots. The orbit radius shrinks
-/// to 0 as the projectile nears [targetPoint], so the pair visually converges
-/// right as it arrives instead of still circling on impact.
+/// One half of the Skirmisher's Spiral Fire skill (DECISIONS D-034/D-039):
+/// two of these are always launched together, [phase] apart by pi radians,
+/// so they orbit a shared advancing center point on opposite sides of it —
+/// a yin-yang pair rather than two independent shots. The orbit radius
+/// shrinks to 0 right as the projectile reaches [targetPoint] (converging
+/// instead of still circling), then it keeps flying dead straight — like
+/// the Bruiser's knife (D-030), it never despawns on its own; the only exit
+/// is hitting an enemy or leaving the arena.
 ///
 /// Aimed at [targetPoint] once at launch, not homing (matches
 /// [ProjectileComponent]'s "no leading/homing" rule, DECISIONS D-005) —
@@ -70,22 +72,18 @@ class SpiralFireProjectileComponent extends SpriteAnimationComponent
     _traveled += speedPxPerS * dt;
     _angle += _spinSpeedRadPerSec * dt;
 
-    // No out-of-bounds check here (unlike ProjectileComponent/
-    // KnifeProjectileComponent, which travel indefinitely-ish and need one
-    // as a backstop) -- _traveled is already a hard, exact cap tied to the
-    // real distance to targetPoint, so this always terminates on schedule
-    // regardless of on-screen position. Bounds-checking `position` directly
-    // was a real bug: the orbit wobble (+/- _orbitRadiusPx sideways) could
-    // briefly push it past a screen edge near the end of a long-range shot,
-    // despawning it before it ever reached the target.
-    if (_traveled >= _totalDistance) {
+    if (_outOfBounds()) {
       removeFromParent();
       return;
     }
 
     // Orbit radius shrinks to 0 right as the projectile reaches its target
-    // point -- the spiral converges instead of still circling on arrival.
-    final progress = (_totalDistance == 0) ? 1.0 : _traveled / _totalDistance;
+    // point, then stays 0 (progress clamped at 1) for the rest of the
+    // flight -- the spiral converges once, then it's just a straight shot
+    // continuing on toward the screen edge (DECISIONS D-039).
+    final progress = (_totalDistance == 0)
+        ? 1.0
+        : (_traveled / _totalDistance).clamp(0.0, 1.0);
     final radius = _orbitRadiusPx * (1 - progress);
 
     // position = start + direction*(traveled + radius*sin(angle)) +
@@ -130,5 +128,20 @@ class SpiralFireProjectileComponent extends SpriteAnimationComponent
       }
       removeFromParent();
     }
+  }
+
+  /// Margin past the true world edge before this counts as "gone" — sized
+  /// to the orbit's own sideways wobble (D-034/D-039) so that wobble alone
+  /// can never trip an early despawn near the target/edge (the exact bug
+  /// D-038 fixed a different way, before this component grew its own
+  /// out-of-bounds check back for the "fly to the edge" requirement).
+  static const _boundsMargin = _orbitRadiusPx;
+
+  bool _outOfBounds() {
+    final worldSize = game.size;
+    return position.x < -_boundsMargin ||
+        position.y < -_boundsMargin ||
+        position.x > worldSize.x + _boundsMargin ||
+        position.y > worldSize.y + _boundsMargin;
   }
 }
