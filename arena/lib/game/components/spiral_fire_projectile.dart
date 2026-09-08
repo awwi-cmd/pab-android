@@ -130,18 +130,19 @@ class SpiralFireProjectileComponent extends SpriteAnimationComponent
     }
   }
 
-  /// Margin past the true world edge before this counts as "gone" — sized
-  /// to the orbit's own sideways wobble (D-034/D-039) so that wobble alone
-  /// can never trip an early despawn near the target/edge (the exact bug
-  /// D-038 fixed a different way, before this component grew its own
-  /// out-of-bounds check back for the "fly to the edge" requirement).
+  /// Margin past the true edge of what's visible before this counts as
+  /// "gone" — sized to the orbit's own sideways wobble (D-034/D-039) so
+  /// that wobble alone can never trip an early despawn near the
+  /// target/edge (the exact bug D-038 fixed a different way, before this
+  /// component grew its own out-of-bounds check back for the "fly to the
+  /// edge" requirement).
   static const _boundsMargin = _orbitRadiusPx;
 
+  /// Off the camera's current view, not a fixed `0..game.size` rect
+  /// (DECISIONS D-040 — see the identical note on
+  /// `ProjectileComponent._outOfBounds`).
   bool _outOfBounds() {
-    final worldSize = game.size;
-    return position.x < -_boundsMargin ||
-        position.y < -_boundsMargin ||
-        position.x > worldSize.x + _boundsMargin ||
-        position.y > worldSize.y + _boundsMargin;
+    final visible = game.camera.visibleWorldRect.inflate(_boundsMargin);
+    return !visible.contains(position.toOffset());
   }
 }

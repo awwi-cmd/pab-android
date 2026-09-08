@@ -388,6 +388,63 @@ progression instead of by default, each with its own attack kit.
 
 ---
 
+## Phase 9 — Roaming world (Vampire-Survivors-style camera + movement)
+*Goal: no bounds, camera follows the player through an effectively infinite
+world, matching the genre this project is actually becoming (developer's
+direction). Explicitly scoped and sequenced before starting — this is the
+Backlog's "Camera larger than the screen, with scroll" item, built one
+slice at a time per the developer's own chosen order, not all at once
+(DECISIONS D-040).*
+
+- [x] **9.1** Camera + free movement (DECISIONS D-040): `ArenaGame` now
+      actually uses `FlameGame`'s `world`/`camera` (previously unused —
+      everything was added as a sibling of them, bypassing the camera
+      transform entirely, which is what let `game.size` silently double as
+      "world bounds" under the old fixed-camera design). New
+      `addToWorld`/`addToHud` split replaces every `add(...)` call site;
+      `camera.follow(player, snap: true)` in `resetRound`. Bounds clamp
+      (`PlayerComponent._clampToSafeArea`, `ArenaGame.safeAreaBounds`) is
+      gone outright. **Required bug fix, not optional scope:** every
+      projectile's `_outOfBounds()` (bolt, knife, Spiral Fire) checked
+      against a fixed `0..game.size` rect, which would have made every
+      ranged attack stop working within seconds of the player walking away
+      from spawn — fixed to check `camera.visibleWorldRect` instead.
+      `flutter analyze` clean, `flutter test` 49/49, `flutter build apk
+      --debug` succeeds.
+      - **Known, deliberately deferred gaps (not bugs — next 2 slices):**
+        `ArenaFloor` still only tiles one `game.size` patch at the world
+        origin — walking past its edge reveals the plain background
+        colour. `Spawner` still spawns enemies around that same origin
+        rect, not around the player — enemies stop appearing once the
+        player wanders far enough away. Both flagged in-code.
+- [ ] **9.2** On-device verification of 9.1 — **developer**: movement feels
+      free/unbounded in all 4 directions, camera tracks the player smoothly
+      (no jitter/lag), HP bar and FPS counter stay fixed on screen while
+      the world scrolls under them, all 3 attack kits (bolt/knife/Spiral
+      Fire) still land hits at various distances from spawn — **known
+      limitation to expect, not a bug to report:** walking away from the
+      start reveals empty background where the floor ends, and enemies
+      stop spawning nearby since they still spawn at the original spot
+- [ ] **9.3** Endless floor tiling — `ArenaFloor` needs to tile outward
+      from wherever the camera currently is, not just the original
+      `game.size` patch at the origin.
+- [ ] **9.4** Re-center enemy spawning on the player — `Spawner.
+      _randomPerimeterPoint` needs to spawn in a ring around the player's
+      *current* world position, not a fixed rect at the origin. Likely also
+      needs a "despawn/cull enemies too far behind the player" rule so the
+      live-enemy list doesn't accumulate stragglers forever in an infinite
+      world (ask before adding that if it's not obviously implied).
+- [ ] **9.5** Revisit anything that assumed a fixed/bounded arena once 9.3/
+      9.4 land: `EnemyComponent`'s movement-toward-player logic, any future
+      minimap/HUD element, whether 60-live-enemy cap still makes sense at
+      this scale.
+
+**Exit criterion:** the player can walk indefinitely in any direction, the
+world keeps generating around them (floor + enemies), and every existing
+attack kit still works at any distance from the start point.
+
+---
+
 ## Backlog (post-demo — do not start)
 
 Kept here so ideas have somewhere to go that isn't the current sprint.
@@ -409,7 +466,9 @@ Kept here so ideas have somewhere to go that isn't the current sprint.
   curve far enough.
 - Real audio: SFX bank + music, wired to the existing volume sliders
 - Multiple arenas and backgrounds
-- Camera larger than the screen, with scroll
+- ~~Camera larger than the screen, with scroll~~ — started Phase 9 (D-040):
+  camera + free movement land in 9.1, endless floor/re-centered spawning
+  still open (9.3/9.4).
 - Enemy separation/steering so they stop stacking
 - Object pooling if the perf budget gets tight
 - Haptics on hit and death

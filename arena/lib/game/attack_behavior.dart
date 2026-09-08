@@ -71,7 +71,7 @@ class ProjectileAttack extends AttackBehavior {
     if (direction.length2 == 0) return; // exactly on top of the target
     direction.normalize();
 
-    game.add(
+    game.addToWorld(
       ProjectileComponent(
         startPosition: player.position.clone(),
         direction: direction,
@@ -146,7 +146,7 @@ class KnifeAttack extends AttackBehavior {
         (knifeLevel >= 1 ? UpgradeAmounts.knifeMasteryTier1DamageMultiplier : 1);
 
     for (final angleOffset in _throwAngleOffsets(knifeLevel)) {
-      game.add(
+      game.addToWorld(
         KnifeProjectileComponent(
           startPosition: player.position.clone(),
           direction: _rotated(direction, angleOffset),
@@ -209,7 +209,7 @@ class SpiralFireAttack extends AttackBehavior {
     // the Skirmisher actually fires.
     final player = game.player;
     final width = player.size.x * kSparkleWidthFactor;
-    game.add(
+    game.addToWorld(
       TrackingSpriteEffect(
         target: player,
         animation: game.sparkleAnimation,
@@ -243,7 +243,7 @@ class SpiralFireAttack extends AttackBehavior {
     final damage =
         (stats.damagePerHit + game.upgrades.bonusDamage) * _damageMultiplier;
     for (final phase in [0.0, pi]) {
-      game.add(
+      game.addToWorld(
         SpiralFireProjectileComponent(
           startPosition: player.position.clone(),
           targetPoint: target.position.clone(),

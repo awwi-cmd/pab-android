@@ -9,6 +9,14 @@ import '../arena_game.dart';
 /// shrinks 4% every 10s, floored at 0.25s, hard cap of 60 live enemies.
 /// These are spawn-cadence numbers, not combat numbers — kept here rather
 /// than `core/stats.dart` (CLAUDE.md §4.3 is about damage/speed/HP values).
+///
+/// [_randomPerimeterPoint] still spawns around the world-origin rect
+/// (`0..game.size`), a leftover of D-007's fixed camera — same known,
+/// not-yet-built follow-up as `ArenaFloor`'s tiling (DECISIONS D-040):
+/// once the player wanders away from the start, enemies keep spawning back
+/// at the original spot instead of around the player. Re-centering this on
+/// the player's current position is the next piece of the camera work, not
+/// done here.
 class Spawner extends Component with HasGameReference<ArenaGame> {
   static const _startingIntervalSec = 1.5;
   static const _minIntervalSec = 0.25;

@@ -20,10 +20,15 @@ clone of the plan folder: follow [§8 Project bootstrap](#8-project-bootstrap).
 
 ## 1. What this project is
 
-A top-down arena survival game for Android, built in Flutter with the Flame game
-engine. The player picks a character and moves it around a walled arena; the
-character auto-attacks the nearest enemy while enemies stream in from off-screen.
-Round ends on death.
+A top-down survival game for Android, built in Flutter with the Flame game
+engine. The player picks a character and moves it around; the character
+auto-attacks the nearest enemy while enemies stream in from off-screen.
+Round ends on death. Originally a walled, fixed-camera arena (the demo, PRD.md) —
+**Phase 9 (started) is converting this to a Vampire-Survivors-style roaming
+world**: no bounds, camera follows the player through an effectively
+infinite space (DECISIONS D-040). Built incrementally, one slice at a time
+(developer's explicit call) — see TASKS.md Phase 9 for what's landed vs.
+still a known gap.
 
 **The demo (TASKS Phases 0-6) was called done 2026-09-07.** `PRD.md` describes
 that demo and is frozen as a record of it — `§9 Explicitly out of scope` there
@@ -31,7 +36,8 @@ was binding *for the demo* and mostly still is, but the project has moved past
 it: **Phase 7 (in-round leveling, upgrade choices, pause menu, enemy scaling,
 and the Aura skill) is built** — see DECISIONS D-025/D-026/D-027. **Phase 8
 (roster expansion — all 4 characters unlocked and playable) is started** —
-see D-028. This is real, ongoing post-demo work now, not speculative scope;
+see D-028. **Phase 9 (roaming world: camera + free movement) is started** —
+see D-040. This is real, ongoing post-demo work now, not speculative scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
 The Backlog is still binding for what hasn't been explicitly asked for — keep
@@ -83,7 +89,7 @@ batch files. Always `set FLUTTER=C:\src\flutter\bin\flutter.bat`.
 
 ## 3. Repository layout
 
-Kept current as of Phase 8.6 tune pass (2026-09-09) — update this tree when you add a
+Kept current as of Phase 9.1 (2026-09-09) — update this tree when you add a
 file that will confuse the next person if it's missing here, same discipline
 as `TASKS.md`.
 
@@ -133,19 +139,19 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   │   └── arena_screen.dart      // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu)
         │   └── widgets/                   // buttons, stat bars, shared chrome
         └── game/
-            ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling
+            ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling; addToWorld/addToHud split — D-040
             ├── attack_behavior.dart       // AttackBehavior (+ onEquipped hook) + ProjectileAttack + KnifeAttack + SpiralFireAttack — D-024/D-029/D-034/D-036
             ├── components/
-            │   ├── player.dart              // takeDamage spawns blood-impact VFX — D-033
+            │   ├── player.dart              // takeDamage spawns blood-impact VFX (D-033); free movement, no bounds clamp (D-040)
             │   ├── enemy.dart              // hp/contactDamage scaled by level at spawn — D-026
-            │   ├── projectile.dart
+            │   ├── projectile.dart          // _outOfBounds is camera.visibleWorldRect-relative — D-040
             │   ├── knife_projectile.dart    // Bruiser kit: pierces, clean->bloody sprite swap — D-029
             │   ├── spiral_fire_projectile.dart // Skirmisher kit: orbiting yin-yang pair — D-034
             │   ├── tracking_effect.dart      // VFX glued to a moving target, optional fade-out — D-034/D-035/D-036
-            │   ├── spawner.dart
-            │   ├── hp_bar.dart
+            │   ├── spawner.dart              // still spawns around the world origin, not the player — known gap, D-040
+            │   ├── hp_bar.dart               // now on camera.viewport (HUD), not world — D-040
             │   ├── damage_text.dart
-            │   ├── arena_floor.dart
+            │   ├── arena_floor.dart          // still one game.size patch at the origin, not endless — known gap, D-040
             │   └── aura.dart                // Aura skill: shield-ring visual, area-tick damage — D-027/D-032
             ├── input/
             │   ├── movement_input.dart    // the 3 control schemes, scheme-agnostic Vector2

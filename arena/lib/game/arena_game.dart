@@ -39,9 +39,10 @@ class ArenaGame extends FlameGame {
 
   /// Captured once at arena entry (device notch / gesture-bar insets).
   /// The app is portrait-locked, so this doesn't need to track rotation.
+  /// Currently unused — was only ever consumed by the safe-area clamp D-040
+  /// removed. Kept (not deleted) since HUD elements placed in `camera.
+  /// viewport` may want it for real notch-avoidance later.
   final EdgeInsets systemInsets;
-
-  static const double kSafeAreaInset = 24;
 
   /// Read at arena entry, never live-switched mid-round (DECISIONS D-006).
   final MovementInput input = MovementInput();
@@ -123,14 +124,16 @@ class ArenaGame extends FlameGame {
   @override
   Color backgroundColor() => ArenaColors.background;
 
-  /// Screen inset by 24px on all sides plus system safe-area insets
-  /// (PRD §6.1). Enemies are not clamped to this — only the player.
-  Rect get safeAreaBounds => Rect.fromLTRB(
-        kSafeAreaInset + systemInsets.left,
-        kSafeAreaInset + systemInsets.top,
-        size.x - kSafeAreaInset - systemInsets.right,
-        size.y - kSafeAreaInset - systemInsets.bottom,
-      );
+  /// All gameplay content (floor, player, enemies, projectiles, VFX) lives
+  /// in `world`, never added directly to the game (DECISIONS D-040 —
+  /// superseded D-007's fixed camera/world-equals-screen assumption).
+  /// `camera` follows the player through it (`resetRound`) instead of the
+  /// old safe-area clamp keeping the player inside a fixed rect.
+  void addToWorld(Component c) => world.add(c);
+
+  /// Screen-fixed HUD (HP bar, FPS counter) — added to the camera's
+  /// viewport instead of `world`, so it never scrolls with the camera.
+  void addToHud(Component c) => camera.viewport.add(c);
 
   @override
   Future<void> onLoad() async {
@@ -244,7 +247,12 @@ class ArenaGame extends FlameGame {
   void resetRound() {
     roundOver.value = false;
     input.clear();
-    removeAll(children.toList());
+    // `world`/`camera` themselves are permanent (FlameGame owns them for
+    // its whole lifetime) -- only their *contents* reset every round.
+    // Clearing `children` directly (the old D-007-era code) would also
+    // try to remove `world`/`camera` themselves.
+    world.removeAll(world.children.toList());
+    camera.viewport.removeAll(camera.viewport.children.toList());
     enemies.clear();
     // Not touching `overlays` here: this only ever runs from onLoad(),
     // before GameWidget has finished mounting and registered its overlay
@@ -270,13 +278,21 @@ class ArenaGame extends FlameGame {
     menuOpen.value = false;
     _aura = null; // the old instance was already removed via removeAll above
 
-    add(ArenaFloor());
+    addToWorld(ArenaFloor());
     player = PlayerComponent(
       character: character,
       input: input,
       animations: _animations,
+      // `ArenaFloor` still only tiles the original size.x/size.y patch
+      // (endless floor tiling is a separate follow-up, DECISIONS D-040) --
+      // spawning dead center of that patch, same as the old fixed-camera
+      // layout, means the round doesn't open with the floor's edge already
+      // visible.
     )..position = size / 2;
-    add(player);
+    addToWorld(player);
+    // snap: true -- jump straight to the player, don't pan in from wherever
+    // the (recycled) camera/viewfinder happened to be left after last round.
+    camera.follow(player, snap: true);
     // Hook for any persistent per-kit visual/setup that isn't tied to a
     // single perform() call (DECISIONS D-036) -- SpiralFireAttack's
     // always-on cast sparkle is the only override so far. Default no-op,
@@ -284,12 +300,12 @@ class ArenaGame extends FlameGame {
     // character-specific behavior is a strategy object, not an `if` in
     // ArenaGame).
     character.attackBehavior.onEquipped(this);
-    add(HpBarComponent());
-    add(Spawner());
+    addToHud(HpBarComponent());
+    addToWorld(Spawner());
 
     if (settings.showFps) {
       // Below the HP bar (top-left, 24,24 + 14 tall) so they don't overlap.
-      add(FpsTextComponent(position: Vector2(24, 46)));
+      addToHud(FpsTextComponent(position: Vector2(24, 46)));
     }
 
     resumeEngine();
@@ -332,7 +348,7 @@ class ArenaGame extends FlameGame {
       statMultiplier: enemyStatMultiplier(level),
     );
     enemies.add(enemy);
-    add(enemy);
+    addToWorld(enemy);
 
     // Elite marker (DECISIONS D-035/D-036) -- visual only, no stat change. A
     // separate top-level sibling rather than a child of `enemy`: a
@@ -346,7 +362,7 @@ class ArenaGame extends FlameGame {
     // the whole death animation and then vanishing on removal.
     if (rollIsElite(_random)) {
       final width = enemy.size.x; // never wider than the enemy, per the ask
-      add(
+      addToWorld(
         TrackingSpriteEffect(
           target: enemy,
           offset: Vector2(0, enemy.size.y * 0.3), // toward the feet, not center
@@ -449,7 +465,7 @@ class ArenaGame extends FlameGame {
     if (_aura != null) return;
     if ((upgrades.pickCounts[UpgradeKind.aura] ?? 0) <= 0) return;
     _aura = AuraComponent(shieldAnimation: _auraShieldAnimation);
-    add(_aura!);
+    addToWorld(_aura!);
   }
 
   void onEnemyContact(EnemyComponent enemy) {
@@ -458,7 +474,7 @@ class ArenaGame extends FlameGame {
 
   void onProjectileHit(Vector2 at, double damage) {
     damageDealt += damage;
-    add(
+    addToWorld(
       SpriteAnimationComponent(
         animation: _sparkAnimation,
         position: at,
@@ -468,7 +484,7 @@ class ArenaGame extends FlameGame {
         priority: ArenaPriority.hitEffects,
       ),
     );
-    add(DamageTextComponent(position: at.clone(), amount: damage));
+    addToWorld(DamageTextComponent(position: at.clone(), amount: damage));
   }
 
   /// A one-shot VFX at a fixed point that removes itself once its animation
@@ -482,7 +498,7 @@ class ArenaGame extends FlameGame {
     double opacity = 1,
     int priority = ArenaPriority.hitEffects,
   }) {
-    add(
+    addToWorld(
       SpriteAnimationComponent(
         animation: animation,
         position: at,

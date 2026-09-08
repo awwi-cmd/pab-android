@@ -6,8 +6,12 @@ import 'package:flame/flame.dart';
 
 import '../../core/constants.dart';
 
-/// Tiled floor + border (PRD §6.1 — world size equals screen size, no
-/// camera scroll, DECISIONS D-007). Real tile art:
+/// Tiled floor + border. Still sized to exactly one `game.size` patch
+/// starting at the world origin — a leftover of D-007's "world size equals
+/// screen size" assumption, which D-040 superseded for the player/camera
+/// but not this yet (endless floor tiling to match is a separate,
+/// not-yet-built follow-up — walking past this patch's edge currently just
+/// reveals the plain background colour). Real tile art:
 /// `assets/images/scenes/arena_floor_tiles.png` (3 variants, 32×32 each,
 /// laid out left-to-right — same "uniform cell" convention as the
 /// character sheets, D-015) and `arena_border_tile.png` (32×32, tiled

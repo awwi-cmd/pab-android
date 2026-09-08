@@ -122,7 +122,10 @@ handling a control change while the player is being chased.
 ---
 
 ## D-007 — Fixed camera, world size equals screen size
-**Date:** 2026-09-06 · **Status:** Accepted
+**Date:** 2026-09-06 · **Status:** Superseded by D-040 (2026-09-09, Phase 9 —
+roaming world, camera follows the player, no bounds). Record of the demo's
+original design, kept for history — was correct and binding through
+Phase 8.
 **Context:** The brief specifies a fixed area the player cannot leave, sized to the
 screen.
 **Decision:** No camera scrolling. The arena is exactly the screen. The player is
@@ -1251,6 +1254,70 @@ non-piercing — they despawn on the *first* hit same as always), and only
 give up at the arena edge. `_totalDistance` is still computed and still
 drives the orbit-convergence math; it's just no longer a despawn trigger by
 itself.
+
+---
+
+## D-040 — Roaming world, Phase 9: camera follows the player, no bounds
+**Date:** 2026-09-09 · **Status:** Accepted (Phase 9 started, not complete)
+**Context:** Developer wants to move the game from a fixed-camera walled
+arena (D-007, the whole demo through Phase 8) toward a Vampire-Survivors-
+style roaming world: no bounds, the player can walk any direction
+indefinitely, camera follows them ("kind of like parallax"). Given the size
+of this change — it touches the camera, floor rendering, enemy spawning,
+and the safe-area clamp all at once — asked the developer two things before
+starting (CLAUDE.md §6, "ask before scope," this being explicitly a Backlog
+item: "Camera larger than the screen, with scroll"): world size, and build
+order. Answers: **effectively infinite** world (not a large-but-finite
+map), built **one slice at a time** rather than all at once. This entry
+covers slice 1 only: the camera and free movement. Two known, deliberately
+deferred follow-ups are called out below and in TASKS.md Phase 9 — endless
+floor tiling and re-centering enemy spawns on the player, not the world
+origin.
+**Decision:** `FlameGame` (which `ArenaGame` already extends) ships a
+`World`/`CameraComponent` pair by default — before this, `ArenaGame` never
+actually used them: every `add(x)` call added `x` as a **sibling** of the
+default camera/world (both auto-added in `FlameGame`'s own constructor),
+not a child of `world`, so nothing was ever subject to the camera's
+transform at all. That's what let `game.size` (== `camera.viewport.
+virtualSize`) silently double as "the world's bounds" throughout the
+codebase (D-007) — screen space and world space were the same space by
+accident, not by any explicit design. Two new `ArenaGame` methods,
+`addToWorld(Component)`/`addToHud(Component)`, replace every direct
+`add(...)`/`game.add(...)` call site across the codebase (floor, player,
+enemies, projectiles, VFX, the Aura ring → `addToWorld`; the HP bar and FPS
+counter, the only two components that must stay screen-fixed → `addToHud`,
+i.e. `camera.viewport`, which is screen-space by construction). `resetRound`
+now clears `world.children`/`camera.viewport.children` instead of `children`
+(which would also try to remove `world`/`camera` themselves — they're
+permanent, only their contents reset per round) and calls `camera.
+follow(player, snap: true)` right after creating the new player each round
+(`snap` so the camera jumps straight to them instead of panning in from
+wherever it was left). `PlayerComponent._clampToSafeArea` and `ArenaGame.
+safeAreaBounds`/`kSafeAreaInset` are gone outright — no bounds means nothing
+left to clamp against.
+**Because this forced a real bug fix, not just new scope:** every
+projectile's `_outOfBounds()` (`ProjectileComponent`, `KnifeProjectileComponent`,
+`SpiralFireProjectileComponent`) checked `position` against a literal
+`0..game.size` rectangle — i.e. "the original screen-sized patch at the
+world origin," which was indistinguishable from "off camera" only because
+the camera never moved (D-007). The instant the camera can be anywhere,
+that check means "more than one screen-width from world (0,0)" — true for
+almost any shot fired after the player has walked away from spawn, which
+would have made every ranged attack stop working within seconds of moving.
+Fixed by checking against `game.camera.visibleWorldRect` (the camera's
+actual current view) instead — a correctness fix this change *required*,
+not an optional add-on, so it's included here rather than deferred.
+**Consequences (the two known, deliberately deferred gaps — not bugs,
+not forgotten):** `ArenaFloor` still only tiles the original `game.size`
+patch at the world origin — walking past its edge currently reveals the
+plain background colour instead of more floor. `Spawner._randomPerimeterPoint`
+still spawns around that same origin rect, not around the player's current
+position — enemies stop appearing once the player wanders far enough away.
+Both are flagged in-code and in TASKS.md Phase 9 as the next two slices,
+per the developer's own chosen build order; fixing either now would have
+been scope beyond what was asked for this pass. `HpBarComponent`/
+`ArenaFloor`'s doc comments updated to drop the D-007 assumption they were
+written against.
 
 ---
 

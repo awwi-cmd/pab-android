@@ -87,11 +87,13 @@ class KnifeProjectileComponent extends SpriteComponent
     }
   }
 
+  /// Off the camera's current view, not a fixed `0..game.size` rect
+  /// (DECISIONS D-040 — the world/camera can move now; see the identical
+  /// note on `ProjectileComponent._outOfBounds`). This one matters more
+  /// than the bolt's: since D-030 this is the knife's *only* despawn
+  /// condition, so getting it wrong means every knife thrown more than a
+  /// screen's width from the world origin would vanish on its first frame.
   bool _outOfBounds() {
-    final worldSize = game.size;
-    return position.x < 0 ||
-        position.y < 0 ||
-        position.x > worldSize.x ||
-        position.y > worldSize.y;
+    return !game.camera.visibleWorldRect.contains(position.toOffset());
   }
 }

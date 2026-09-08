@@ -8,6 +8,31 @@ this before starting the real game on top of the demo.
 
 ## The extension points that already exist
 
+**`ArenaGame.addToWorld`/`addToHud` (DECISIONS D-040, Phase 9).** As of the
+roaming-world work, `ArenaGame` actually uses `FlameGame`'s built-in
+`world`/`camera` split — before this it never did (everything was a sibling
+of them, not a child of `world`, so nothing was ever subject to the
+camera's transform). **Any new component you add to the arena must go
+through one of these two methods, never a bare `add(...)`/`game.add(...)`:**
+`addToWorld` for anything that exists in the game world and should scroll
+with the camera (enemies, projectiles, VFX, the floor, the player itself);
+`addToHud` for the two things that must stay screen-fixed regardless of
+where the camera is (the HP bar, the FPS counter) — it adds to `camera.
+viewport`, which is screen-space by construction. Getting this wrong is an
+easy, quiet bug: a component added the old way still renders, just without
+ever moving relative to the camera, which reads as "this thing is following
+the player like a HUD element" even though it's meant to sit in the world.
+
+**Two known, deliberately deferred gaps from Phase 9.1 (TASKS 9.3/9.4,
+D-040)** — not bugs, the next two slices of the same feature, in the
+developer's own chosen build order: `ArenaFloor` still only tiles one
+`game.size` patch at the world origin (no endless tiling yet — walking past
+its edge reveals the plain background colour); `Spawner.
+_randomPerimeterPoint` still spawns around that same origin rect instead of
+around the player's current position (enemies stop appearing once the
+player wanders far enough away). Both are flagged in-code at the exact spot
+that needs to change.
+
 **`AnimState` (`game/anim/anim_state.dart`)** lists every state on the
 reference sheet, not just the six the demo wires (DECISIONS D-012). Adding
 a skill that needs `dash`/`charge`/`channelStaff`/etc. is: drop the sprite

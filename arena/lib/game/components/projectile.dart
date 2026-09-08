@@ -76,11 +76,12 @@ class ProjectileComponent extends SpriteAnimationComponent
     }
   }
 
+  /// Off the camera's current view (DECISIONS D-040) — not a fixed
+  /// `0..game.size` rect, which only ever meant "off screen" back when the
+  /// camera was pinned to the world origin (D-007). Since the camera now
+  /// follows the player anywhere in the world, "on screen" has to be
+  /// computed relative to wherever the camera actually is right now.
   bool _outOfBounds() {
-    final worldSize = game.size;
-    return position.x < 0 ||
-        position.y < 0 ||
-        position.x > worldSize.x ||
-        position.y > worldSize.y;
+    return !game.camera.visibleWorldRect.contains(position.toOffset());
   }
 }
