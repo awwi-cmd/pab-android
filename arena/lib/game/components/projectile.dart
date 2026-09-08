@@ -21,6 +21,7 @@ class ProjectileComponent extends SpriteAnimationComponent
     required this.maxRangePx,
     required SpriteAnimation animation,
     Color? tint,
+    this.excludeSelf,
   }) : _direction = direction.normalized(),
        super(
          animation: animation,
@@ -40,6 +41,14 @@ class ProjectileComponent extends SpriteAnimationComponent
   final double speedPxPerS;
   final double maxRangePx;
   final Vector2 _direction;
+  // The boss fires this same component at itself, position-wise, at spawn
+  // (`BossComponent._fire` starts the bolt at `position.clone()`, and the
+  // boss is itself in `game.damageableTargets`) -- without this, the very
+  // first update() call after spawn found the boss "touching" its own bolt
+  // at distance 0 and destroyed it before it ever traveled anywhere,
+  // reported on-device as "boss does the animation but I never see a
+  // projectile" (2026-09-09).
+  final Damageable? excludeSelf;
 
   double _traveled = 0;
   final Vector2 _scratch = Vector2.zero(); // reused every frame
@@ -64,6 +73,7 @@ class ProjectileComponent extends SpriteAnimationComponent
     Damageable? hit;
     for (var i = 0; i < targets.length; i++) {
       final target = targets[i];
+      if (identical(target, excludeSelf)) continue;
       if (target.isDying) continue; // already dead, let the shot pass through
       final touching = position.distanceTo(target.position) <
           (size.x / 2 + target.size.x / 2);

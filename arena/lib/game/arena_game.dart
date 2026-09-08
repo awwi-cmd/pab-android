@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:math';
 import 'dart:ui';
 
@@ -10,8 +11,10 @@ import 'package:flutter/widgets.dart' show EdgeInsets;
 import '../core/constants.dart';
 import '../core/economy.dart';
 import '../core/game_rules.dart';
+import '../core/meta_progression.dart';
 import '../core/progression.dart';
 import '../core/settings.dart';
+import '../core/stats.dart';
 import '../data/characters.dart';
 import 'anim/character_animations.dart';
 import 'anim/enemy_animations.dart';
@@ -38,11 +41,31 @@ class ArenaGame extends FlameGame {
   ArenaGame({
     required this.character,
     required this.settings,
+    required this.meta,
     this.systemInsets = EdgeInsets.zero,
   });
 
   final CharacterDef character;
   final Settings settings;
+
+  /// Loaded once at arena entry (`ArenaScreen._load`, same as [settings]) —
+  /// the Upgrades shop's purchases as of right now (DECISIONS D-047). Not
+  /// re-read mid-round: a purchase made from character-select before this
+  /// round started is reflected; the shop itself is unreachable mid-round.
+  final MetaProgression meta;
+
+  /// [character]'s base `StatBlock` plus whatever's been bought in the
+  /// Upgrades shop — STR/VIT/DEX/INT purchases there are +1 attribute point
+  /// per level on `StatBlock`'s own integer scale (DECISIONS D-047), so
+  /// they flow through every derived-stat formula in `core/stats.dart` for
+  /// free. Read this everywhere combat code used to read `character.stats`
+  /// directly (CLAUDE.md §4.3 — still the one place these get combined).
+  StatBlock get effectiveStats => StatBlock(
+        str: character.stats.str + meta.bonusStr,
+        vit: character.stats.vit + meta.bonusVit,
+        dex: character.stats.dex + meta.bonusDex,
+        intellect: character.stats.intellect + meta.bonusIntellect,
+      );
 
   /// Captured once at arena entry (device notch / gesture-bar insets).
   /// The app is portrait-locked, so this doesn't need to track rotation.
@@ -412,6 +435,7 @@ class ArenaGame extends FlameGame {
     addToWorld(ArenaFloor());
     player = PlayerComponent(
       character: character,
+      stats: effectiveStats,
       input: input,
       animations: _animations,
       // `ArenaFloor` still only tiles the original size.x/size.y patch
@@ -463,7 +487,7 @@ class ArenaGame extends FlameGame {
     if (_fireCooldown <= 0) {
       // Cooldown always resets on schedule, whether or not perform()
       // actually found a target -- matches the pre-D-024 behavior exactly.
-      _fireCooldown = character.attackBehavior.cooldownSeconds(character.stats);
+      _fireCooldown = character.attackBehavior.cooldownSeconds(effectiveStats);
       character.attackBehavior.perform(this);
     }
   }
@@ -476,8 +500,10 @@ class ArenaGame extends FlameGame {
       deathAnimation: _enemyAnimations.deathFor(skin),
       // DECISIONS D-026: baked in at spawn, not re-applied later — an
       // enemy that spawned at level 3 keeps level-3 stats even if the
-      // player is level 5 by the time it dies.
-      statMultiplier: enemyStatMultiplier(level),
+      // player is level 5 by the time it dies. Corruption (D-047) layers on
+      // top of the level scaling, not instead of it.
+      statMultiplier:
+          enemyStatMultiplier(level) * corruptionEnemyStatMultiplier(meta.corruptionLevel),
     );
     enemies.add(enemy);
     addToWorld(enemy);
@@ -528,7 +554,15 @@ class ArenaGame extends FlameGame {
         ),
       );
     }
-    coinsEarned += rollCoinValue(_random);
+    coinsEarned += _rollCoins();
+  }
+
+  /// A single coin roll, scaled by Corruption's reward bonus (DECISIONS
+  /// D-047) — shared by grunt and boss kills so the multiplier can't drift
+  /// between the two call sites.
+  int _rollCoins() {
+    return (rollCoinValue(_random) * corruptionRewardMultiplier(meta.corruptionLevel))
+        .round();
   }
 
   /// The boss (DECISIONS D-042) — same shape as [onEnemyKilled] but no gem
@@ -540,7 +574,7 @@ class ArenaGame extends FlameGame {
     _boss = null;
     kills++;
     grantXp(kBossXpReward);
-    coinsEarned += rollCoinValue(_random) * kBossCoinMultiplier;
+    coinsEarned += _rollCoins() * kBossCoinMultiplier;
     _maybeSpawnBoss(); // in case another spawn was queued while this one was up
   }
 
@@ -822,5 +856,11 @@ class ArenaGame extends FlameGame {
     roundOver.value = true;
     overlays.add('RoundOver');
     pauseEngine();
+    // The round's coin haul crosses over into the persistent Upgrades-shop
+    // wallet exactly once, here (DECISIONS D-047) — `coinsEarned` itself
+    // stays the round-scoped display value the RoundOver overlay reads,
+    // untouched by this. Fire-and-forget: nothing on screen is waiting on
+    // this write landing.
+    unawaited(MetaProgressionRepository().addCoins(coinsEarned));
   }
 }

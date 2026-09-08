@@ -55,17 +55,18 @@ class ProjectileAttack extends AttackBehavior {
 
   @override
   void perform(ArenaGame game) {
-    final stats = game.character.stats;
+    final stats = game.effectiveStats;
     final player = game.player;
 
-    final positions = [for (final enemy in game.enemies) enemy.position];
+    final targets = game.damageableTargets;
+    final positions = [for (final t in targets) t.position];
     final index = nearestWithinRange(
       player.position,
       positions,
       stats.attackRangePx,
     );
     if (index == -1) return;
-    final target = game.enemies[index];
+    final target = targets[index];
 
     final direction = target.position - player.position;
     if (direction.length2 == 0) return; // exactly on top of the target
@@ -124,17 +125,18 @@ class KnifeAttack extends AttackBehavior {
 
   @override
   void perform(ArenaGame game) {
-    final stats = game.character.stats;
+    final stats = game.effectiveStats;
     final player = game.player;
 
-    final positions = [for (final enemy in game.enemies) enemy.position];
+    final targets = game.damageableTargets;
+    final positions = [for (final t in targets) t.position];
     final index = nearestWithinRange(
       player.position,
       positions,
       stats.attackRangePx * _rangeMultiplier,
     );
     if (index == -1) return;
-    final target = game.enemies[index];
+    final target = targets[index];
 
     final direction = target.position - player.position;
     if (direction.length2 == 0) return; // exactly on top of the target
@@ -224,17 +226,18 @@ class SpiralFireAttack extends AttackBehavior {
 
   @override
   void perform(ArenaGame game) {
-    final stats = game.character.stats;
+    final stats = game.effectiveStats;
     final player = game.player;
 
-    final positions = [for (final enemy in game.enemies) enemy.position];
+    final targets = game.damageableTargets;
+    final positions = [for (final t in targets) t.position];
     final index = nearestWithinRange(
       player.position,
       positions,
       stats.attackRangePx * _rangeMultiplier,
     );
     if (index == -1) return;
-    final target = game.enemies[index];
+    final target = targets[index];
 
     if ((target.position - player.position).length2 == 0) {
       return; // exactly on top of the target

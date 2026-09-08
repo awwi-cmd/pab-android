@@ -507,15 +507,16 @@ Developer delivered `boss_map1.png`, `audio/core/`, and
       nothing right as they arrive, per the developer's detailed spec.
       `flutter analyze` clean, `flutter test` 62/62, `flutter build apk
       --debug` succeeds.
-- [ ] **10.6** On-device verification — **developer**: boss actually
-      spawns at levels 3/6/9 and feels tougher each time, its bolt reads
-      as bright green, it teleports away convincingly when approached
-      (with both anima flashes visible, neither one lingering), every hit
-      shows the impact flash, the kill explosion sound plays and isn't
-      jarring; the death SFX plays on a real death but not the debug-die
-      button; gems visibly drop and get picked up; potions are visible,
-      float, and heal; the round-over coin count-up/flying-coins animation
-      reads as intended and the number matches what was actually earned.
+- [x] **10.6** On-device verification (first pass) — **developer** played a
+      real round and reported two real bugs (DECISIONS D-046), both fixed:
+      the boss's own bolt was self-colliding at spawn (never visibly
+      traveled), and every player attack's targeting was still built from
+      `game.enemies` directly, so the boss could never be shot at. Also cut
+      gem drop rate 80% (was spawning gems on top of each other). `flutter
+      analyze` clean, `flutter test` 71/71, `flutter build apk --debug`
+      succeeds. Remaining on-device verification (bolt color, teleport
+      flashes, SFX feel, potion float, coin animation accuracy) still open
+      — re-check after this pass.
 - [ ] **10.7** `arena_game.dart` split (DECISIONS D-045) — now ~820 lines,
       well past CLAUDE.md §5's ~300-line guideline. Extract the ~20
       `SpriteAnimation`/`Sprite` fields and their entire `onLoad()` loading
@@ -527,6 +528,45 @@ Developer delivered `boss_map1.png`, `audio/core/`, and
 **Exit criterion:** a full round can include a boss encounter with working
 audio feedback, gems/potions appearing and being collected in the world,
 and an accurate, well-presented coin total at round-over.
+
+---
+
+## Phase 11 — Persistent meta-progression (SHOP + UPGRADES)
+*Goal: character select gets a real reason to visit between rounds.
+Developer specced this directly (DECISIONS D-047).*
+
+- [x] **11.1** `core/meta_progression.dart` — `MetaStat` (str/vit/dex/
+      intellect/corruption), `MetaProgression` (wallet + 5 levels, 0-10
+      each, `.buy()`), `metaUpgradeCost` (exponential per level),
+      `MetaProgressionRepository` (`SharedPreferences`, same shape as
+      `SettingsRepository`). Corruption's 3 multiplier functions live in
+      `game_rules.dart` instead (gameplay math, not shop data).
+- [x] **11.2** Wired into a real round: `ArenaGame.effectiveStats` (base +
+      shop bonuses) replaces every direct `character.stats`/`game.
+      character.stats` read in combat code; `PlayerComponent` takes a
+      resolved `StatBlock` instead of reaching into `character` itself;
+      `Spawner`/`spawnEnemy`/coin rolls all read the corruption
+      multipliers. `ArenaGame._endRound` credits `coinsEarned` into the
+      persistent wallet exactly once.
+- [x] **11.3** `UpgradesScreen` — wallet readout, one row per `MetaStat`
+      (level bar, description, cost, buy button, maxed state).
+      `ShopScreen` — literal empty placeholder ("nothing yet, empty, just
+      a back button") per the developer's explicit spec. Both routed from
+      two new buttons + a wallet readout on `CharacterSelectScreen`,
+      reloaded on return from either screen.
+- [ ] **11.4** On-device verification — **developer**: a purchased STR/
+      VIT/DEX/INT level is actually felt in the next round (check the
+      derived-stat readout on character select before/after a purchase);
+      Corruption actually spawns enemies faster / tougher and pays out
+      more coins at increasing levels; the wallet display and cost numbers
+      update correctly after each purchase and survive an app restart.
+- [ ] **11.5** Real balance pass on `metaUpgradeCost` and the corruption
+      multipliers once 11.4 gives a feel for the numbers — everything
+      shipped in 11.1-11.3 is a first-guess placeholder, same as every
+      other tuning value in this project.
+
+**Exit criterion:** coins earned finishing a round are spendable from
+character select on a permanent, felt improvement to the next run.
 
 ---
 

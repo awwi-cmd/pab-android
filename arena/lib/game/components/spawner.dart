@@ -70,7 +70,11 @@ class Spawner extends Component with HasGameReference<ArenaGame> {
 
     _timeUntilNextSpawn -= dt;
     if (_timeUntilNextSpawn <= 0) {
-      _timeUntilNextSpawn = _interval;
+      // Corruption (DECISIONS D-047) shortens the scheduled gap, not the
+      // decaying `_interval` itself, so it stacks with the normal ramp
+      // instead of racing it.
+      _timeUntilNextSpawn =
+          _interval * corruptionSpawnIntervalMultiplier(game.meta.corruptionLevel);
       if (game.enemies.length < _maxLiveEnemies) {
         game.spawnEnemy(
           randomPerimeterPoint(

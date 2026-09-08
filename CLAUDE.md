@@ -38,7 +38,9 @@ and the Aura skill) is built** — see DECISIONS D-025/D-026/D-027. **Phase 8
 (roster expansion — all 4 characters unlocked and playable) is started** —
 see D-028. **Phase 9 (roaming world: camera + free movement) is started** —
 see D-040. **Phase 10 (boss fight, SFX, loot economy) is built** — see
-D-042/D-043/D-044. This is real, ongoing post-demo work now, not speculative scope;
+D-042/D-043/D-044. **Phase 11 (persistent meta-progression: SHOP + UPGRADES
+from character select) is built** — see D-047. This is real, ongoing
+post-demo work now, not speculative scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
 The Backlog is still binding for what hasn't been explicitly asked for — keep
@@ -90,7 +92,7 @@ batch files. Always `set FLUTTER=C:\src\flutter\bin\flutter.bat`.
 
 ## 3. Repository layout
 
-Kept current as of Phase 10.5 (2026-09-09) — update this tree when you add a
+Kept current as of Phase 11.3 (2026-09-09) — update this tree when you add a
 file that will confuse the next person if it's missing here, same discipline
 as `TASKS.md`.
 
@@ -132,7 +134,8 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   ├── game_rules.dart    // pure gameplay math (targeting, spawn decay, knockback,
         │   │                      //   enemy/boss level-scaling D-026/D-042, randomPerimeterPoint D-041)
         │   ├── progression.dart   // XP curve, UpgradeKind (incl. Aura), PlayerUpgrades — D-025/D-027
-        │   └── economy.dart       // ItemRarity + gem/coin/potion value tables — D-043
+        │   ├── economy.dart       // ItemRarity + gem/coin/potion value tables — D-043
+        │   └── meta_progression.dart // MetaStat (STR/VIT/DEX/INT/CORRUPTION), wallet + SharedPreferences I/O — D-047
         ├── data/
         │   └── characters.dart    // CharacterDef list (4 slots, all unlocked, D-028)
         ├── ui/
@@ -140,7 +143,9 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   │   ├── main_menu_screen.dart
         │   │   ├── settings_screen.dart        // + debug section when opened from pause (D-025)
         │   │   ├── credits_screen.dart
-        │   │   ├── character_select_screen.dart // grid tile IS the idle-animation portrait
+        │   │   ├── character_select_screen.dart // grid tile IS the idle-animation portrait; wallet + SHOP/UPGRADES buttons — D-047
+        │   │   ├── shop_screen.dart       // empty placeholder, back button only — D-047
+        │   │   ├── upgrades_screen.dart   // 5 MetaStat rows, buy buttons — D-047
         │   │   └── arena_screen.dart      // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu)
         │   └── widgets/                   // buttons, stat bars, shared chrome
         └── game/
