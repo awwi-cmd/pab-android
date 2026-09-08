@@ -1187,6 +1187,35 @@ per-cast damage than a single `ProjectileAttack`/`KnifeAttack` hit at 1x
 since two-projectiles-that-can-both-connect is the kit's whole identity;
 further tuning is expected same as everywhere else in this file.
 
+## D-038 — Fixed real bug: Spiral Fire projectiles despawning short of their target
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer reported the projectiles' effective range read shorter
+than the targeting range that picked them a target, and that they sometimes
+despawned before visibly reaching it — worse after D-037's +40% range put
+targets further out, closer to the arena edges.
+**Decision:** `SpiralFireProjectileComponent._outOfBounds()` (a straight
+`0 <= position <= game.size` check, copied from `ProjectileComponent`/
+`KnifeProjectileComponent`) is removed. `_traveled >= _totalDistance` is now
+the only despawn condition.
+**Because:** The bug was the orbit itself: actual on-screen `position` each
+frame is the straight-line path point *plus* a sideways wobble of up to
+`_orbitRadiusPx` (24px) that only shrinks to 0 near the very end of the
+flight (D-034's convergence design). Near a screen edge, that wobble could
+push `position` outside `game.size` while `_traveled` was still well short
+of `_totalDistance` — an early, wrong despawn. `ProjectileComponent`/
+`KnifeProjectileComponent` need an out-of-bounds backstop because they don't
+have a tight, exact natural endpoint (the bolt has a generous `maxRangePx`
+multiplier; the knife has none at all after D-030). `SpiralFireProjectileComponent`
+already has one — `_totalDistance` is computed directly from the real
+distance to `targetPoint` at launch, so `_traveled` alone guarantees
+termination in finite time at exactly the right place, regardless of what
+the wobble does to on-screen position along the way. The bounds check was
+redundant at best and actively wrong near an edge.
+**Consequences:** A shot aimed at the extreme edge of the (now +40%) range
+can render briefly outside the visible screen for a frame or two before its
+final convergence — harmless (nothing draws outside the canvas clip, no
+crash), and correct: it still lands exactly on `targetPoint` on schedule.
+
 ---
 
 ## Open questions

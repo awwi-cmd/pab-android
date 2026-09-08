@@ -70,7 +70,15 @@ class SpiralFireProjectileComponent extends SpriteAnimationComponent
     _traveled += speedPxPerS * dt;
     _angle += _spinSpeedRadPerSec * dt;
 
-    if (_traveled >= _totalDistance || _outOfBounds()) {
+    // No out-of-bounds check here (unlike ProjectileComponent/
+    // KnifeProjectileComponent, which travel indefinitely-ish and need one
+    // as a backstop) -- _traveled is already a hard, exact cap tied to the
+    // real distance to targetPoint, so this always terminates on schedule
+    // regardless of on-screen position. Bounds-checking `position` directly
+    // was a real bug: the orbit wobble (+/- _orbitRadiusPx sideways) could
+    // briefly push it past a screen edge near the end of a long-range shot,
+    // despawning it before it ever reached the target.
+    if (_traveled >= _totalDistance) {
       removeFromParent();
       return;
     }
@@ -122,13 +130,5 @@ class SpiralFireProjectileComponent extends SpriteAnimationComponent
       }
       removeFromParent();
     }
-  }
-
-  bool _outOfBounds() {
-    final worldSize = game.size;
-    return position.x < 0 ||
-        position.y < 0 ||
-        position.x > worldSize.x ||
-        position.y > worldSize.y;
   }
 }

@@ -318,6 +318,15 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
         (`SpiralFireAttack._damageMultiplier`) — two shots at 0.6x each is
         still more total damage than a single-shot kit, deliberately not
         brought to parity.
+        — **2026-09-09 bugfix (DECISIONS D-038):** fixed a real bug —
+        projectiles sometimes despawned before reaching their target,
+        effective range reading shorter than the targeting range that
+        picked that target. Cause: the orbit wobble could push on-screen
+        `position` outside the world bounds near a screen edge while
+        `_traveled` was still short of `_totalDistance`, triggering a
+        leftover out-of-bounds check copied from the bolt/knife. Removed —
+        `_traveled >= _totalDistance` alone already guarantees exact,
+        on-time termination at the target regardless of wobble.
       - [ ] Warden — something tankier, fits `vit`-heavy stats
       - [ ] On-device verification of the Bruiser's knife — **developer**:
         pierce reads clearly (doesn't look like it stopped at the first
