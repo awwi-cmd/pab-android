@@ -41,7 +41,8 @@ class KnifeProjectileComponent extends SpriteComponent
   final Sprite bloodySprite;
   final Vector2 _direction;
 
-  static const _rotationSpeedRadPerSec = 14.0; // cosmetic spin, not a stat
+  // Cosmetic spin, not a stat. 14.0 base +10% tune (2026-09-08).
+  static const _rotationSpeedRadPerSec = 15.4;
 
   double _traveled = 0;
   final Vector2 _scratch = Vector2.zero(); // reused every frame

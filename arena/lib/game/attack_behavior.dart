@@ -72,10 +72,16 @@ class ProjectileAttack extends AttackBehavior {
 /// nearest enemy in range, same targeting as [ProjectileAttack] but it
 /// pierces through every enemy in its path instead of stopping at the
 /// first one, and its sprite turns bloody the moment it draws blood. Reuses
-/// [ProjectileAttack]'s exact cooldown/damage/range formulas for now —
-/// pierce is the whole differentiator until a real balance pass retunes it.
+/// [ProjectileAttack]'s cooldown/range formulas as-is; damage is knocked
+/// down from that shared formula (see [_damageMultiplier]) since pierce
+/// already lets one throw hit several enemies for full knockback each —
+/// first tuning pass, not a final number.
 class KnifeAttack extends AttackBehavior {
   const KnifeAttack();
+
+  /// 2026-09-08 tune: -30% vs. the shared per-hit formula, to offset
+  /// pierce hitting multiple enemies per throw.
+  static const _damageMultiplier = 0.7;
 
   @override
   double cooldownSeconds(StatBlock stats) => 1 / stats.attacksPerSec;
@@ -102,7 +108,9 @@ class KnifeAttack extends AttackBehavior {
       KnifeProjectileComponent(
         startPosition: player.position.clone(),
         direction: direction,
-        damage: stats.damagePerHit + game.upgrades.bonusDamage,
+        damage:
+            (stats.damagePerHit + game.upgrades.bonusDamage) *
+            _damageMultiplier,
         knockback: stats.knockbackImpulse,
         speedPxPerS: stats.projSpeedPxPerS,
         maxRangePx: stats.attackRangePx * 1.5,

@@ -265,6 +265,11 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
         no new gameplay math, pierce is component-level, not `game_rules.dart`
         material), `flutter build apk --debug` succeeds. On-device feel is
         part of 8.3's on-device pass below.
+        — **2026-09-08 first tune (developer's call, pre-on-device):** knife
+        +25% size (`kKnifeRenderScale`), spin +10% (`_rotationSpeedRadPerSec`
+        in `knife_projectile.dart`), damage -30% vs. the shared per-hit
+        formula (`KnifeAttack._damageMultiplier`) to offset pierce hitting
+        several enemies per throw.
       - [ ] Skirmisher — something faster/lighter, fits `dex`-heavy stats
       - [ ] Warden — something tankier, fits `vit`-heavy stats
       - [ ] On-device verification of the Bruiser's knife — **developer**:
