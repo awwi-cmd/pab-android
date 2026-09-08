@@ -297,7 +297,47 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
         `core/progression.dart` gate the level-up roll pool by
         `CharacterDef.id`. `flutter analyze` clean, `flutter test` 47/47 (5
         new), `flutter build apk --debug` succeeds.
-      - [ ] Skirmisher — something faster/lighter, fits `dex`-heavy stats
+      - [x] Skirmisher — **Spiral Fire** (DECISIONS D-034): two
+        `SpiralFireProjectileComponent`s launched together, pi radians of
+        orbit phase apart, spiraling around a shared advancing point that
+        converges on the target (yin-yang look); a `sparkles-constelation`
+        flourish plays behind the caster's body. Non-lethal hits play
+        `effect_impact`, kills play `effect_explosion2` — on top of, not
+        instead of, the existing shared hit-spark/damage-number feedback.
+        `flutter analyze` clean, `flutter test` 49/49, `flutter build apk
+        --debug` succeeds.
+        — **2026-09-09 tune (DECISIONS D-036/D-037):** fixed a real bug —
+        the cast sparkle was a one-shot per cast, developer wants it
+        visible at all times; it's now spawned once per round
+        (`AttackBehavior.onEquipped`, a new lifecycle hook) as a permanent
+        looping effect on the caster instead. Also: sparkle opacity 35% →
+        50% ("a little more visible"), +40% targeting range
+        (`SpiralFireAttack._rangeMultiplier`), -30% orbit spin speed
+        (`SpiralFireProjectileComponent._spinSpeedRadPerSec`, the wobble,
+        not the forward travel speed), -40% damage per hit
+        (`SpiralFireAttack._damageMultiplier`) — two shots at 0.6x each is
+        still more total damage than a single-shot kit, deliberately not
+        brought to parity.
+        — **2026-09-09 bugfix (DECISIONS D-038):** fixed a real bug —
+        projectiles sometimes despawned before reaching their target,
+        effective range reading shorter than the targeting range that
+        picked that target. Cause: the orbit wobble could push on-screen
+        `position` outside the world bounds near a screen edge while
+        `_traveled` was still short of `_totalDistance`, triggering a
+        leftover out-of-bounds check copied from the bolt/knife. Removed —
+        `_traveled >= _totalDistance` alone already guarantees exact,
+        on-time termination at the target regardless of wobble.
+        — **2026-09-09 second bugfix (DECISIONS D-039):** developer asked
+        for confirmation firing again doesn't despawn an in-flight shot
+        (it never could — no shared state between projectile instances,
+        almost certainly the same symptom as the above bug) and for
+        projectiles to keep flying past their target until they actually
+        leave the screen, same "no despawn on its own" rule the knife got
+        in D-030. The distance-based despawn is gone; `_outOfBounds()` is
+        back as the only exit condition, this time with a margin (equal to
+        the orbit's own wobble radius) so it can't falsely trigger near an
+        edge the way the pre-D-038 version did. **This closes out the
+        Skirmisher's main attack** — no further changes requested.
       - [ ] Warden — something tankier, fits `vit`-heavy stats
       - [ ] On-device verification of the Bruiser's knife — **developer**:
         pierce reads clearly (doesn't look like it stopped at the first
@@ -306,14 +346,187 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
         way off-screen instead of vanishing early, Knife Mastery only shows
         up in the level-up popup when playing the Bruiser, and its 3 levels
         actually look/feel like 1 → 2 → 4 knives
+      - [ ] On-device verification of the Skirmisher's Spiral Fire —
+        **developer**: the spiral/yin-yang motion reads as intentional (not
+        just wobbly) at the slower spin speed, sparkle is visible on the
+        caster's body at all times (not just mid-cast) at 50% opacity,
+        impact vs. explosion picks correctly (explosion only on a kill),
+        overall damage output feels right vs. the other 2 kits
 - [ ] **8.4** Real unlock-by-progression: lock slots 2-4 again and gate them
       behind a persistent unlock condition (kills/rounds/levels — TBD).
       Needs a persistence story beyond `SharedPreferences` settings (round
       state resets every round by design, CLAUDE.md §4.5 — unlocks can't).
       Ask before picking the unlock condition/mechanism; don't guess.
+- [x] **8.5** Player hit feedback — `effect_blood-impact` plays somewhere on
+      the player's own body (a random spot each time, not a fixed decal)
+      whenever damage actually lands, any character (DECISIONS D-033).
+      `flutter analyze` clean, `flutter test` 49/49, `flutter build apk
+      --debug` succeeds.
+- [x] **8.6** Elite enemies — 15% of spawns (`kEliteChance`,
+      `core/game_rules.dart`) get a persistent `effect_dithered-fire` glow,
+      sized to never exceed the enemy's own width (DECISIONS D-035).
+      Visual-only for now — no stat/behavior difference, so this is a first
+      slice of the Backlog's "enemy variety" item, not the whole thing.
+      `flutter analyze` clean, `flutter test` 49/49 (2 new, including a
+      statistical check on the roll rate), `flutter build apk --debug`
+      succeeds.
+      — **2026-09-09 update (DECISIONS D-036):** developer feedback — glow
+      now renders on top of the enemy (new `ArenaPriority.enemyOverlay`,
+      was `groundEffects`/behind), and fades out over 0.4s
+      (`kEliteFireFadeOutSec`) starting the instant the enemy starts dying
+      (`EnemyComponent.isDying`) instead of staying at full brightness
+      through the whole death animation and then vanishing on removal.
+- [ ] **8.7** On-device verification of 8.5/8.6 — **developer**: blood
+      splat lands on the body (not off it), position visibly varies hit to
+      hit, roughly 1 in 6-7 enemies shows the fire glow on top of them
+      (not behind), it visibly fades out as soon as that enemy dies rather
+      than cutting off abruptly, and it never reads wider than the enemy
+      sprite itself
 
 **Exit criterion:** 4 distinct playable characters, each unlocked by real
 progression instead of by default, each with its own attack kit.
+
+---
+
+## Phase 9 — Roaming world (Vampire-Survivors-style camera + movement)
+*Goal: no bounds, camera follows the player through an effectively infinite
+world, matching the genre this project is actually becoming (developer's
+direction). Explicitly scoped and sequenced before starting — this is the
+Backlog's "Camera larger than the screen, with scroll" item, built one
+slice at a time per the developer's own chosen order, not all at once
+(DECISIONS D-040).*
+
+- [x] **9.1** Camera + free movement (DECISIONS D-040): `ArenaGame` now
+      actually uses `FlameGame`'s `world`/`camera` (previously unused —
+      everything was added as a sibling of them, bypassing the camera
+      transform entirely, which is what let `game.size` silently double as
+      "world bounds" under the old fixed-camera design). New
+      `addToWorld`/`addToHud` split replaces every `add(...)` call site;
+      `camera.follow(player, snap: true)` in `resetRound`. Bounds clamp
+      (`PlayerComponent._clampToSafeArea`, `ArenaGame.safeAreaBounds`) is
+      gone outright. **Required bug fix, not optional scope:** every
+      projectile's `_outOfBounds()` (bolt, knife, Spiral Fire) checked
+      against a fixed `0..game.size` rect, which would have made every
+      ranged attack stop working within seconds of the player walking away
+      from spawn — fixed to check `camera.visibleWorldRect` instead.
+      `flutter analyze` clean, `flutter test` 49/49, `flutter build apk
+      --debug` succeeds.
+      - **2026-09-09 on-device pass found 4 issues** (screenshotted),
+        closed by 9.3/9.4 below: the border was still visible (a stray
+        line where the old bounded patch's edge used to be), the floor
+        genuinely didn't extend past that patch, enemies could spawn
+        inside the visible view, and spawning stopped entirely far enough
+        from the start.
+- [x] **9.3** Endless floor tiling + border removal (DECISIONS D-041):
+      `ArenaFloor` rewritten to render from `game.camera.visibleWorldRect`
+      every frame instead of a fixed pattern baked into one `game.size`
+      patch — tile variant per cell is a deterministic hash of `(col, row)`
+      + a per-round seed, not `Random()` per frame, so revisiting a cell
+      shows the same tile. Border tiles removed outright — an infinite
+      world has no edge to draw one on, which is what fixed the
+      still-visible-border bug for free.
+- [x] **9.4** Camera-relative spawning + straggler culling (DECISIONS
+      D-041): `Spawner._randomPerimeterPoint` now builds its ring from
+      `visibleWorldRect` inflated 15% (`_visibleMarginFactor`, the
+      developer's literal ask) instead of a fixed rect at the origin.
+      Turned out (3) and (4) shared one root cause: enemies (70px/s) are
+      slower than every character (120+px/s), so one that spawns behind a
+      player moving mostly one direction can fall behind forever in an
+      unbounded world — previously impossible under the old fixed arena.
+      Unculled, those permanently ate into the 60-live-enemy cap until
+      nothing new could spawn — the actual mechanism behind (4). Fixed
+      with `Spawner._cullStragglers` (ticks once/sec, removes anything
+      >3x the visible view's larger dimension from the player via new
+      `ArenaGame.cullEnemy` — same as a kill, minus kill count/XP).
+      `flutter analyze` clean, `flutter test` 49/49, `flutter build apk
+      --debug` succeeds.
+- [ ] **9.2** On-device verification of 9.1/9.3/9.4 together —
+      **developer**: movement feels free/unbounded, camera tracks
+      smoothly, HP bar/FPS counter stay fixed while the world scrolls,
+      floor now tiles endlessly in every direction with no visible border
+      anywhere, enemies only ever spawn just outside what's visible (never
+      pop in on-screen), spawning keeps working no matter how far from the
+      start point, all 3 attack kits still land hits at any distance
+- [ ] **9.5** Revisit anything that assumed a fixed/bounded arena now that
+      9.3/9.4 are in: `EnemyComponent`'s movement-toward-player logic, any
+      future minimap/HUD element, whether 60-live-enemy cap still makes
+      sense at this scale.
+
+**Exit criterion:** the player can walk indefinitely in any direction, the
+world keeps generating around them (floor + enemies), and every existing
+attack kit still works at any distance from the start point.
+
+---
+
+## Phase 10 — Boss fight, SFX, loot economy
+*Goal: a real milestone fight (the boss), the first working audio, and a
+loot loop (gems/potions in the world, money revealed at round-over).
+Developer delivered `boss_map1.png`, `audio/core/`, and
+`consumables/{gems,money,potions}.png` and specced all three directly.*
+
+- [x] **10.1** The boss (DECISIONS D-042) — `boss_map1.png` sliced into
+      idle(6)/walk(3)/fire(5)/death(10) frames (found by inspecting actual
+      non-blank cells, not the visual thumbnail, which is misleading on
+      this asset). Spawns at levels 3/6/9 via a real threshold check on
+      every level-up (real or debug), ~20% stronger each spawn
+      (`bossStatMultiplier`, compounding). Ranged: holds range and fires a
+      green-tinted bolt (`ProjectileComponent`'s new `tint` param — same
+      sprite/animation as the Apprentice's bolt) on a cooldown, walks
+      closer when out of range, teleports to the mirror point across the
+      player (`effect_anima` at both ends) the instant the player closes
+      to melee. New `Damageable` interface (`game/components/
+      damageable.dart`) lets the boss and every grunt share the exact same
+      attack hit-detection code (`ArenaGame.damageableTargets`) without
+      either knowing the other exists. Every hit plays `effect_impact`,
+      the kill plays `effect_explosion2` (+ its SFX, 10.2). `flutter
+      analyze` clean, `flutter test` 62/62 (6 new), `flutter build apk
+      --debug` succeeds.
+- [x] **10.2** SFX (DECISIONS D-044) — first real audio in the project.
+      `sfx-explosion.wav` on any explosion effect (Spiral Fire kill *or*
+      boss kill, one hook) and `sfx-you-died.wav` on a real player death
+      (not the debug-die button). Volume derives from the existing
+      `Settings.sfxVolume` slider, capped low on top per the developer's
+      "not that loud" ask.
+- [x] **10.3** Gems (DECISIONS D-043) — drop from kills at
+      `gemDropChance(level)` (80% base, +1%/level, capped at 100%), one of
+      5 rarity tiers (`gems.png` columns, weighted `rollRarity`), sit in
+      the world as `GemComponent` until the player walks within
+      `kItemPickupRadiusPx`. Round-over shows a total count.
+- [x] **10.4** Potions (DECISIONS D-043) — `PotionSpawner` drops one
+      randomly in a generous area around the camera's current view every
+      15s (capped at 5 live), floats up/down in place
+      (`kPotionFloatAmplitudePx`/`Sec`) on top of its own looping
+      animation, heals a flat tier-based amount on touch. "We will add
+      more logic later" per the developer — healing is the whole mechanic
+      for now.
+- [x] **10.5** Money (DECISIONS D-043) — never a world object: every kill
+      rolls a coin value (same rarity roll as gems) into a silent running
+      total, revealed only at round-over via a new animated `_CoinCounter`
+      widget — a number counting 0→total next to `ui/currency-counter.png`
+      while up to 10 small coins fly in from off-widget and shrink to
+      nothing right as they arrive, per the developer's detailed spec.
+      `flutter analyze` clean, `flutter test` 62/62, `flutter build apk
+      --debug` succeeds.
+- [ ] **10.6** On-device verification — **developer**: boss actually
+      spawns at levels 3/6/9 and feels tougher each time, its bolt reads
+      as bright green, it teleports away convincingly when approached
+      (with both anima flashes visible, neither one lingering), every hit
+      shows the impact flash, the kill explosion sound plays and isn't
+      jarring; the death SFX plays on a real death but not the debug-die
+      button; gems visibly drop and get picked up; potions are visible,
+      float, and heal; the round-over coin count-up/flying-coins animation
+      reads as intended and the number matches what was actually earned.
+- [ ] **10.7** `arena_game.dart` split (DECISIONS D-045) — now ~820 lines,
+      well past CLAUDE.md §5's ~300-line guideline. Extract the ~20
+      `SpriteAnimation`/`Sprite` fields and their entire `onLoad()` loading
+      block into a separate `VfxLibrary`/`AssetLibrary` class; `ArenaGame`
+      keeps round state, spawn/kill bookkeeping, `addToWorld`/`addToHud`.
+      Do this **before** the next feature that touches `ArenaGame`
+      significantly.
+
+**Exit criterion:** a full round can include a boss encounter with working
+audio feedback, gems/potions appearing and being collected in the world,
+and an accurate, well-presented coin total at round-over.
 
 ---
 
@@ -327,7 +540,9 @@ Kept here so ideas have somewhere to go that isn't the current sprint.
   attack kits (8.3) and real unlock-by-progression (8.4) still open.
 - Enemy variety with distinct stats: ranged, fast/swarm, tanky, elite (D-022:
   3 skins were wired for visual variety only, one shared `EnemyStats` profile
-  — still true "one enemy type" per PRD §9, so this backlog item stands)
+  — still true "one enemy type" per PRD §9, so this backlog item stands).
+  "Elite" got a first visual-only slice in Phase 8.6 (D-035, a fire glow on
+  ~15% of spawns) — no stat/behavior difference yet, that part is still open.
 - Structured waves and a boss
 - **Enemy scaling to match player progression** — done as of Phase 7.9
   (D-026): HP/contact damage scale linearly with player level. Faster
@@ -336,7 +551,9 @@ Kept here so ideas have somewhere to go that isn't the current sprint.
   curve far enough.
 - Real audio: SFX bank + music, wired to the existing volume sliders
 - Multiple arenas and backgrounds
-- Camera larger than the screen, with scroll
+- ~~Camera larger than the screen, with scroll~~ — started Phase 9 (D-040):
+  camera + free movement (9.1), endless floor + camera-relative spawning
+  with straggler culling (9.3/9.4) all land — D-040/D-041.
 - Enemy separation/steering so they stop stacking
 - Object pooling if the perf budget gets tight
 - Haptics on hit and death

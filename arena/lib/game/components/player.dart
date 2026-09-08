@@ -92,7 +92,9 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
         scale.x = input.direction.x < 0 ? -1 : 1;
       }
     }
-    _clampToSafeArea();
+    // No bounds clamp (DECISIONS D-040 — the arena is no longer a fixed
+    // rect; the camera follows the player anywhere in the world instead of
+    // keeping the player inside a fixed viewport-sized area).
 
     if (current == AnimState.hurt || current == AnimState.fire) {
       if (animationTicker?.done() ?? true) {
@@ -102,18 +104,6 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
     }
 
     current = moving ? AnimState.run : AnimState.idle;
-  }
-
-  /// Screen inset by 24px + system safe-area insets (PRD §6.1). Clamping
-  /// each axis independently — rather than the whole vector — is what
-  /// makes the player slide along the boundary instead of sticking when
-  /// moving diagonally into it.
-  void _clampToSafeArea() {
-    final bounds = game.safeAreaBounds;
-    final halfW = size.x / 2;
-    final halfH = size.y / 2;
-    position.x = position.x.clamp(bounds.left + halfW, bounds.right - halfW);
-    position.y = position.y.clamp(bounds.top + halfH, bounds.bottom - halfH);
   }
 
   void playFire() {
@@ -129,6 +119,8 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
     if (_invulnTimer > 0 || current == AnimState.death) return;
     hp = (hp - amount).clamp(0, effectiveMaxHp);
     _invulnTimer = _invulnDurationSec;
+    game.spawnBloodImpact(); // DECISIONS D-033: only on damage that lands
+
     if (hp <= 0) {
       current = AnimState.death;
       game.onPlayerDied();
@@ -143,5 +135,11 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
   void grantUpgrade(UpgradeKind kind) {
     final healed = game.upgrades.apply(kind);
     hp = min(effectiveMaxHp, hp + healed);
+  }
+
+  /// A potion pickup (DECISIONS D-043) — clamped the same way every other
+  /// heal in this file is, never past [effectiveMaxHp].
+  void heal(double amount) {
+    hp = min(effectiveMaxHp, hp + amount);
   }
 }

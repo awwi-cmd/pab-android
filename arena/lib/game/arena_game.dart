@@ -3,10 +3,12 @@ import 'dart:ui';
 
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
+import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter/widgets.dart' show EdgeInsets;
 
 import '../core/constants.dart';
+import '../core/economy.dart';
 import '../core/game_rules.dart';
 import '../core/progression.dart';
 import '../core/settings.dart';
@@ -16,11 +18,17 @@ import 'anim/enemy_animations.dart';
 import 'anim/sheet_loader.dart';
 import 'components/arena_floor.dart';
 import 'components/aura.dart';
+import 'components/boss.dart';
+import 'components/damageable.dart';
 import 'components/damage_text.dart';
 import 'components/enemy.dart';
+import 'components/gem.dart';
 import 'components/hp_bar.dart';
 import 'components/player.dart';
+import 'components/potion.dart';
+import 'components/potion_spawner.dart';
 import 'components/spawner.dart';
+import 'components/tracking_effect.dart';
 import 'input/movement_input.dart';
 
 /// Owns round state end to end (CLAUDE.md §4.5): elapsed time, kills,
@@ -38,9 +46,10 @@ class ArenaGame extends FlameGame {
 
   /// Captured once at arena entry (device notch / gesture-bar insets).
   /// The app is portrait-locked, so this doesn't need to track rotation.
+  /// Currently unused — was only ever consumed by the safe-area clamp D-040
+  /// removed. Kept (not deleted) since HUD elements placed in `camera.
+  /// viewport` may want it for real notch-avoidance later.
   final EdgeInsets systemInsets;
-
-  static const double kSafeAreaInset = 24;
 
   /// Read at arena entry, never live-switched mid-round (DECISIONS D-006).
   final MovementInput input = MovementInput();
@@ -55,12 +64,46 @@ class ArenaGame extends FlameGame {
   late SpriteAnimation _auraShieldAnimation;
   late Sprite _knifeCleanSprite;
   late Sprite _knifeBloodySprite;
+  late SpriteAnimation _bloodImpactAnimation;
+  late SpriteAnimation _eliteFireAnimation;
+  late SpriteAnimation _pixelFireAnimation;
+  late SpriteAnimation _sparkleAnimation;
+  late SpriteAnimation _impactAnimation;
+  late SpriteAnimation _explosionAnimation;
+  late SpriteAnimation _animaAnimation;
+  late Map<BossAnim, SpriteAnimation> _bossAnimations;
+  late List<SpriteAnimation> _gemAnimations; // indexed by ItemRarity
+  late List<SpriteAnimation> _potionAnimations; // indexed by ItemRarity
   final Random _random = Random();
 
   /// The Aura skill's orbiting-ring component (DECISIONS D-027) — null
   /// until the first Aura pick, created once and left in place afterwards;
   /// later picks just raise the stack count it reads each tick.
   AuraComponent? _aura;
+
+  /// The boss (DECISIONS D-042) — null when not currently fought. At most
+  /// one alive at a time; a spawn queued while one is already up
+  /// (`_pendingBossSpawns`) waits for [onBossKilled] instead of stacking a
+  /// second one.
+  BossComponent? _boss;
+  static const _bossSpawnLevels = [3, 6, 9];
+  static const _bossSpawnMarginFactor = 0.15; // same as Spawner's enemy ring
+  int _nextBossSpawnIndex = 0;
+  int _pendingBossSpawns = 0;
+  int _bossSpawnsCreated = 0;
+
+  /// Everything a player attack can hit (DECISIONS D-042) — grunts plus the
+  /// boss, if one is currently up. Every attack's hit-detection loop reads
+  /// this instead of [enemies] directly.
+  List<Damageable> get damageableTargets => [
+        ...enemies,
+        ?_boss,
+      ];
+
+  // Economy (DECISIONS D-043) -- resets every round like everything else.
+  int gemsCollected = 0;
+  int coinsEarned = 0;
+  int potionCount = 0;
 
   /// Exposed for [AttackBehavior]s (`attack_behavior.dart`) to build
   /// projectiles from — the animation itself isn't per-character yet, but
@@ -72,6 +115,15 @@ class ArenaGame extends FlameGame {
   /// static sprites itself once it draws blood.
   Sprite get knifeCleanSprite => _knifeCleanSprite;
   Sprite get knifeBloodySprite => _knifeBloodySprite;
+
+  /// Exposed for [SpiralFireAttack] (DECISIONS D-034) the same way
+  /// [boltAnimation]/[knifeCleanSprite] are for the other kits.
+  SpriteAnimation get pixelFireAnimation => _pixelFireAnimation;
+  SpriteAnimation get sparkleAnimation => _sparkleAnimation;
+
+  /// Exposed for [BossComponent] (DECISIONS D-042) the same way the above
+  /// are for the playable kits.
+  SpriteAnimation get animaAnimation => _animaAnimation;
 
   /// Flutter-observable mirror of round-over state, so the movement-input
   /// overlay (a Flutter widget, not a Flame overlay) knows to stop
@@ -111,14 +163,16 @@ class ArenaGame extends FlameGame {
   @override
   Color backgroundColor() => ArenaColors.background;
 
-  /// Screen inset by 24px on all sides plus system safe-area insets
-  /// (PRD §6.1). Enemies are not clamped to this — only the player.
-  Rect get safeAreaBounds => Rect.fromLTRB(
-        kSafeAreaInset + systemInsets.left,
-        kSafeAreaInset + systemInsets.top,
-        size.x - kSafeAreaInset - systemInsets.right,
-        size.y - kSafeAreaInset - systemInsets.bottom,
-      );
+  /// All gameplay content (floor, player, enemies, projectiles, VFX) lives
+  /// in `world`, never added directly to the game (DECISIONS D-040 —
+  /// superseded D-007's fixed camera/world-equals-screen assumption).
+  /// `camera` follows the player through it (`resetRound`) instead of the
+  /// old safe-area clamp keeping the player inside a fixed rect.
+  void addToWorld(Component c) => world.add(c);
+
+  /// Screen-fixed HUD (HP bar, FPS counter) — added to the camera's
+  /// viewport instead of `world`, so it never scrolls with the camera.
+  void addToHud(Component c) => camera.viewport.add(c);
 
   @override
   Future<void> onLoad() async {
@@ -157,6 +211,158 @@ class ArenaGame extends FlameGame {
     // loadSheetAnimation.
     _knifeCleanSprite = await Sprite.load('vfx/projectiles/knife_clean.png');
     _knifeBloodySprite = await Sprite.load('vfx/projectiles/knife_bloody.png');
+    // Player hit-splat (DECISIONS D-033) -- one-shot, doesn't loop.
+    _bloodImpactAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_blood-impact.png',
+      cellWidth: 60,
+      cellHeight: 63,
+      stepTime: 0.012,
+      frameCount: 48,
+      amountPerRow: 9,
+      loop: false,
+    );
+    // Elite enemy marker (DECISIONS D-035) -- persistent looping glow, lives
+    // as long as the enemy it's tracking does.
+    _eliteFireAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_dithered-fire.png',
+      cellWidth: 517,
+      cellHeight: 246,
+      stepTime: 0.05,
+      frameCount: 60,
+      amountPerRow: 9,
+    );
+    // Skirmisher's Spiral Fire skill (DECISIONS D-034) -- three sheets:
+    // the projectile itself (loops for however long it's in flight), the
+    // cast sparkle on the caster's body (one-shot), the hit/kill flourishes
+    // (one-shot each, picked by whether that hit was lethal).
+    _pixelFireAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_pixel-fire.png',
+      cellWidth: 173,
+      cellHeight: 197,
+      stepTime: 0.03,
+      frameCount: 60,
+      amountPerRow: 9,
+    );
+    // Looping (DECISIONS D-036): the Skirmisher's cast sparkle is now an
+    // always-on visual for the whole round, not a one-shot per cast, so it
+    // needs to keep animating indefinitely rather than freeze on its last
+    // frame.
+    _sparkleAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_sparkles-constelation.png',
+      cellWidth: 309,
+      cellHeight: 313,
+      stepTime: 0.008,
+      frameCount: 60,
+      amountPerRow: 9,
+    );
+    // First real cell is index 1, not 0 -- effect_impact.png's (0,0) cell is
+    // blank on this sheet. Included as frame 0 anyway (one invisible ~12ms
+    // frame at the very start of a one-shot flash is imperceptible) rather
+    // than adding texturePosition-offset support to the loader for it.
+    _impactAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_impact.png',
+      cellWidth: 305,
+      cellHeight: 383,
+      stepTime: 0.012,
+      frameCount: 29,
+      amountPerRow: 9,
+      loop: false,
+    );
+    // Same leading-blank-cell situation as effect_impact.png above.
+    _explosionAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_explosion2.png',
+      cellWidth: 355,
+      cellHeight: 365,
+      stepTime: 0.011,
+      frameCount: 53,
+      amountPerRow: 9,
+      loop: false,
+    );
+    // The boss's teleport flourish (DECISIONS D-042) -- plays once at both
+    // the departure and arrival points.
+    _animaAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_anima.png',
+      cellWidth: 429,
+      cellHeight: 437,
+      stepTime: 0.02,
+      frameCount: 60,
+      amountPerRow: 9,
+      loop: false,
+    );
+    // The boss (DECISIONS D-042) -- one 4-cols x 8-rows sheet holding
+    // idle/walk/fire/death back to back, in that reading order (not one
+    // image per state like every character sheet before it). Frame ranges
+    // found by inspecting the sheet's actual non-blank cells: idle is 6
+    // frames (rows 0-1), walk 3 (row 2), fire 5 (rows 3-4), death 10
+    // (rows 5-7).
+    const bossCellWidth = 256.0;
+    const bossCellHeight = 192.0;
+    _bossAnimations = {
+      BossAnim.idle: await loadSheetAnimation(
+        'characters/enemies/boss_map1.png',
+        cellWidth: bossCellWidth,
+        cellHeight: bossCellHeight,
+        stepTime: 0.15,
+        frameCount: 6,
+        amountPerRow: 4,
+      ),
+      BossAnim.walk: await loadSheetAnimation(
+        'characters/enemies/boss_map1.png',
+        cellWidth: bossCellWidth,
+        cellHeight: bossCellHeight,
+        stepTime: 0.12,
+        frameCount: 3,
+        // No amountPerRow here (unlike the other 3 slices) -- walk fits
+        // entirely within row 2, so there's no next row to wrap onto, and
+        // Flame's own SpriteAnimationData asserts amount >= amountPerRow
+        // when it's given (3 frames can't satisfy amountPerRow: 4).
+        // texturePosition alone is enough to select the row.
+        texturePosition: Vector2(0, 2 * bossCellHeight),
+      ),
+      BossAnim.fire: await loadSheetAnimation(
+        'characters/enemies/boss_map1.png',
+        cellWidth: bossCellWidth,
+        cellHeight: bossCellHeight,
+        stepTime: 0.08,
+        frameCount: 5,
+        amountPerRow: 4,
+        texturePosition: Vector2(0, 3 * bossCellHeight),
+        loop: false,
+      ),
+      BossAnim.death: await loadSheetAnimation(
+        'characters/enemies/boss_map1.png',
+        cellWidth: bossCellWidth,
+        cellHeight: bossCellHeight,
+        stepTime: 0.15,
+        frameCount: 10,
+        amountPerRow: 4,
+        texturePosition: Vector2(0, 5 * bossCellHeight),
+        loop: false,
+      ),
+    };
+    // Gems/potions (DECISIONS D-043) -- 5 rarity tiers, left to right, each
+    // its own vertical animation strip (loadColumnAnimation, not the
+    // row-major loadSheetAnimation every other sheet uses).
+    _gemAnimations = [
+      for (var tier = 0; tier < ItemRarity.values.length; tier++)
+        await loadColumnAnimation(
+          'consumables/gems.png',
+          cellSize: 16,
+          column: tier,
+          rows: 9,
+          stepTime: 0.1,
+        ),
+    ];
+    _potionAnimations = [
+      for (var tier = 0; tier < ItemRarity.values.length; tier++)
+        await loadColumnAnimation(
+          'consumables/potions.png',
+          cellSize: 16,
+          column: tier,
+          rows: 8,
+          stepTime: 0.12,
+        ),
+    ];
     resetRound();
   }
 
@@ -165,7 +371,12 @@ class ArenaGame extends FlameGame {
   void resetRound() {
     roundOver.value = false;
     input.clear();
-    removeAll(children.toList());
+    // `world`/`camera` themselves are permanent (FlameGame owns them for
+    // its whole lifetime) -- only their *contents* reset every round.
+    // Clearing `children` directly (the old D-007-era code) would also
+    // try to remove `world`/`camera` themselves.
+    world.removeAll(world.children.toList());
+    camera.viewport.removeAll(camera.viewport.children.toList());
     enemies.clear();
     // Not touching `overlays` here: this only ever runs from onLoad(),
     // before GameWidget has finished mounting and registered its overlay
@@ -190,20 +401,43 @@ class ArenaGame extends FlameGame {
     debugGodMode = false;
     menuOpen.value = false;
     _aura = null; // the old instance was already removed via removeAll above
+    _boss = null;
+    _nextBossSpawnIndex = 0;
+    _pendingBossSpawns = 0;
+    _bossSpawnsCreated = 0;
+    gemsCollected = 0;
+    coinsEarned = 0;
+    potionCount = 0;
 
-    add(ArenaFloor());
+    addToWorld(ArenaFloor());
     player = PlayerComponent(
       character: character,
       input: input,
       animations: _animations,
+      // `ArenaFloor` still only tiles the original size.x/size.y patch
+      // (endless floor tiling is a separate follow-up, DECISIONS D-040) --
+      // spawning dead center of that patch, same as the old fixed-camera
+      // layout, means the round doesn't open with the floor's edge already
+      // visible.
     )..position = size / 2;
-    add(player);
-    add(HpBarComponent());
-    add(Spawner());
+    addToWorld(player);
+    // snap: true -- jump straight to the player, don't pan in from wherever
+    // the (recycled) camera/viewfinder happened to be left after last round.
+    camera.follow(player, snap: true);
+    // Hook for any persistent per-kit visual/setup that isn't tied to a
+    // single perform() call (DECISIONS D-036) -- SpiralFireAttack's
+    // always-on cast sparkle is the only override so far. Default no-op,
+    // called here rather than branched on `character.id` (CLAUDE.md §4.12:
+    // character-specific behavior is a strategy object, not an `if` in
+    // ArenaGame).
+    character.attackBehavior.onEquipped(this);
+    addToHud(HpBarComponent());
+    addToWorld(Spawner());
+    addToWorld(PotionSpawner());
 
     if (settings.showFps) {
       // Below the HP bar (top-left, 24,24 + 14 tall) so they don't overlap.
-      add(FpsTextComponent(position: Vector2(24, 46)));
+      addToHud(FpsTextComponent(position: Vector2(24, 46)));
     }
 
     resumeEngine();
@@ -246,14 +480,79 @@ class ArenaGame extends FlameGame {
       statMultiplier: enemyStatMultiplier(level),
     );
     enemies.add(enemy);
-    add(enemy);
+    addToWorld(enemy);
+
+    // Elite marker (DECISIONS D-035/D-036) -- visual only, no stat change. A
+    // separate top-level sibling rather than a child of `enemy`: a
+    // component's own children render on top of it (Flame renders self then
+    // children) regardless of the child's own priority, so a child could
+    // never be tucked *behind* `enemy` -- irrelevant now since D-036 wants
+    // it on top anyway, but it's still a sibling (not a child) so its
+    // `enemyOverlay` priority is actually respected against other
+    // top-level components. Fades out (not a hard cut) the instant the
+    // enemy starts dying, rather than staying at full brightness through
+    // the whole death animation and then vanishing on removal.
+    if (rollIsElite(_random)) {
+      final width = enemy.size.x; // never wider than the enemy, per the ask
+      addToWorld(
+        TrackingSpriteEffect(
+          target: enemy,
+          offset: Vector2(0, enemy.size.y * 0.3), // toward the feet, not center
+          animation: _eliteFireAnimation,
+          size: Vector2(width, width * kEliteFireAspect),
+          priority: ArenaPriority.enemyOverlay,
+          removeOnFinish: false, // persists for the enemy's whole lifetime
+          fadeOutWhen: () => enemy.isDying,
+          fadeOutDurationSec: kEliteFireFadeOutSec,
+        ),
+      );
+    }
   }
 
   void onEnemyKilled(EnemyComponent enemy) {
+    final deathPosition = enemy.position.clone();
     enemies.remove(enemy);
     enemy.removeFromParent();
     kills++;
     grantXp(kXpPerKill);
+
+    // Economy (DECISIONS D-043) -- gems drop in the world, coins are a
+    // silent running total shown only at round-over.
+    if (rollGemDrop(_random, level)) {
+      final rarity = rollRarity(_random);
+      addToWorld(
+        GemComponent(
+          startPosition: deathPosition,
+          rarity: rarity,
+          animation: _gemAnimations[rarity.index],
+        ),
+      );
+    }
+    coinsEarned += rollCoinValue(_random);
+  }
+
+  /// The boss (DECISIONS D-042) — same shape as [onEnemyKilled] but no gem
+  /// drop (not designed yet what a boss should drop beyond currency/XP) and
+  /// a flat bonus on both the coins and XP it grants, since it's meant to
+  /// feel like a real milestone.
+  void onBossKilled(BossComponent boss) {
+    boss.removeFromParent();
+    _boss = null;
+    kills++;
+    grantXp(kBossXpReward);
+    coinsEarned += rollCoinValue(_random) * kBossCoinMultiplier;
+    _maybeSpawnBoss(); // in case another spawn was queued while this one was up
+  }
+
+  /// Silently removes an enemy that's fallen too far behind the player to
+  /// ever catch up (DECISIONS D-041, `Spawner._cullStragglers`) — no kill
+  /// count, no XP, unlike [onEnemyKilled]. Any of the enemy's own
+  /// components that key off it leaving the tree (e.g. an elite's
+  /// `TrackingSpriteEffect` fire glow) clean themselves up the same way
+  /// they would on a normal death.
+  void cullEnemy(EnemyComponent enemy) {
+    enemies.remove(enemy);
+    enemy.removeFromParent();
   }
 
   /// Kills grant XP directly — no drops (developer's spec). Loops in case
@@ -266,6 +565,7 @@ class ArenaGame extends FlameGame {
       level++;
       _xpToNextLevel = xpThresholdForLevel(level);
       _pendingLevelUps++;
+      _checkBossSpawnThreshold();
     }
     _maybeShowNextLevelUp();
   }
@@ -276,7 +576,43 @@ class ArenaGame extends FlameGame {
   void debugGrantLevelUp() {
     level++;
     _pendingLevelUps++;
+    _checkBossSpawnThreshold();
     _maybeShowNextLevelUp();
+  }
+
+  /// The boss spawns at levels 3/6/9 (DECISIONS D-042), "right when you
+  /// level up" — checked every time [level] actually increases (both real
+  /// XP and the debug grant), not just once, so a jump across more than one
+  /// threshold in a single call (e.g. debug-granting several levels at
+  /// once) queues all of them rather than only the first.
+  void _checkBossSpawnThreshold() {
+    while (_nextBossSpawnIndex < _bossSpawnLevels.length &&
+        level >= _bossSpawnLevels[_nextBossSpawnIndex]) {
+      _pendingBossSpawns++;
+      _nextBossSpawnIndex++;
+    }
+    _maybeSpawnBoss();
+  }
+
+  /// Only one boss at a time — a spawn queued while one is already up waits
+  /// here until [onBossKilled] calls this again, rather than stacking a
+  /// second one.
+  void _maybeSpawnBoss() {
+    if (_boss != null || _pendingBossSpawns <= 0) return;
+    _pendingBossSpawns--;
+    final spawnPoint = randomPerimeterPoint(
+      _random,
+      camera.visibleWorldRect,
+      marginFactor: _bossSpawnMarginFactor,
+    );
+    final boss = BossComponent(
+      startPosition: spawnPoint,
+      animations: _bossAnimations,
+      statMultiplier: bossStatMultiplier(_bossSpawnsCreated),
+    );
+    _bossSpawnsCreated++;
+    _boss = boss;
+    addToWorld(boss);
   }
 
   void _maybeShowNextLevelUp() {
@@ -337,7 +673,7 @@ class ArenaGame extends FlameGame {
     if (_aura != null) return;
     if ((upgrades.pickCounts[UpgradeKind.aura] ?? 0) <= 0) return;
     _aura = AuraComponent(shieldAnimation: _auraShieldAnimation);
-    add(_aura!);
+    addToWorld(_aura!);
   }
 
   void onEnemyContact(EnemyComponent enemy) {
@@ -346,7 +682,7 @@ class ArenaGame extends FlameGame {
 
   void onProjectileHit(Vector2 at, double damage) {
     damageDealt += damage;
-    add(
+    addToWorld(
       SpriteAnimationComponent(
         animation: _sparkAnimation,
         position: at,
@@ -356,12 +692,121 @@ class ArenaGame extends FlameGame {
         priority: ArenaPriority.hitEffects,
       ),
     );
-    add(DamageTextComponent(position: at.clone(), amount: damage));
+    addToWorld(DamageTextComponent(position: at.clone(), amount: damage));
+  }
+
+  /// A one-shot VFX at a fixed point that removes itself once its animation
+  /// finishes — for effects tied to a moment (a hit, a kill), not to a
+  /// still-living target's body (that's `TrackingSpriteEffect`, DECISIONS
+  /// D-033/D-034/D-035). [opacity] defaults to fully opaque.
+  void spawnEffect(
+    SpriteAnimation animation,
+    Vector2 at, {
+    required Vector2 size,
+    double opacity = 1,
+    int priority = ArenaPriority.hitEffects,
+  }) {
+    addToWorld(
+      SpriteAnimationComponent(
+        animation: animation,
+        position: at,
+        size: size,
+        anchor: Anchor.center,
+        removeOnFinish: true,
+        priority: priority,
+        paint: Paint()
+          ..filterQuality = FilterQuality.none // D-011
+          ..color = Color.fromRGBO(255, 255, 255, opacity),
+      ),
+    );
+  }
+
+  /// Player hit feedback (DECISIONS D-033) — a blood splat somewhere on the
+  /// player's own body, a different spot each time so it doesn't read as a
+  /// static decal. Called from `PlayerComponent.takeDamage` only when
+  /// damage actually lands (not during i-frames/god mode).
+  void spawnBloodImpact() {
+    final width = player.size.x * kBloodImpactWidthFactor;
+    final maxOffsetX = player.size.x * 0.3;
+    final maxOffsetY = player.size.y * 0.3;
+    final at = player.position +
+        Vector2(
+          (_random.nextDouble() * 2 - 1) * maxOffsetX,
+          (_random.nextDouble() * 2 - 1) * maxOffsetY,
+        );
+    spawnEffect(
+      _bloodImpactAnimation,
+      at,
+      size: Vector2(width, width * kBloodImpactAspect),
+    );
+  }
+
+  /// Non-lethal hit from the Skirmisher's Spiral Fire (DECISIONS D-034) —
+  /// [spawnExplosionEffect] plays instead when that hit was the kill.
+  void spawnImpactEffect(Vector2 at) {
+    spawnEffect(
+      _impactAnimation,
+      at,
+      size: Vector2(kSpiralImpactWidthPx, kSpiralImpactWidthPx * kSpiralImpactAspect),
+    );
+  }
+
+  void spawnExplosionEffect(Vector2 at) {
+    spawnEffect(
+      _explosionAnimation,
+      at,
+      size: Vector2(
+        kSpiralExplosionWidthPx,
+        kSpiralExplosionWidthPx * kSpiralExplosionAspect,
+      ),
+    );
+    // DECISIONS D-044: "when we kill boss, when any explosion effect is
+    // played" -- one hook covers both, since a boss kill also calls this.
+    _playSfx('core/sfx-explosion.wav');
+  }
+
+  /// DECISIONS D-043 — called by [GemComponent] when the player walks close
+  /// enough to one.
+  void collectGem(ItemRarity rarity) {
+    gemsCollected++;
+  }
+
+  /// DECISIONS D-043 — called by [PotionComponent] when the player walks
+  /// close enough to one. "We will add more logic later" per the developer
+  /// — a flat heal by tier is the whole mechanic for now.
+  void collectPotion(ItemRarity rarity) {
+    potionCount--;
+    player.heal(potionHealAmount(rarity));
+  }
+
+  /// Called by [PotionSpawner] on its own timer.
+  void spawnPotion(Vector2 at) {
+    final rarity = rollRarity(_random);
+    potionCount++;
+    addToWorld(
+      PotionComponent(
+        startPosition: at,
+        rarity: rarity,
+        animation: _potionAnimations[rarity.index],
+      ),
+    );
+  }
+
+  /// One-shot SFX at a volume derived from the player's own SFX slider
+  /// (`Settings.sfxVolume`, 0-100), capped low regardless — "make sure they
+  /// are not that loud" (DECISIONS D-044).
+  void _playSfx(String file) {
+    final volume = (settings.sfxVolume / 100) * kSfxVolumeCap;
+    if (volume <= 0) return;
+    FlameAudio.play(file, volume: volume);
   }
 
   /// PRD §6.5: freeze after the death frame, then show Round Over. Debug
-  /// stand-in `debugDie()` shares this same path.
+  /// stand-in `debugDie()` shares this same path -- but skips the SFX
+  /// (`_roundEndDelay == null` guards it to once), since a debug kill isn't
+  /// a real death.
   void onPlayerDied() {
+    if (_roundEndDelay == null) _playSfx('core/sfx-you-died.wav');
     _roundEndDelay ??= _roundEndDelaySec;
   }
 

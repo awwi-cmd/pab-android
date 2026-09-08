@@ -6,9 +6,11 @@ import '../../core/constants.dart';
 import '../arena_game.dart';
 
 /// Fixed bar at the top of the screen (DECISIONS D-020 — not floating above
-/// the player). World size equals screen size with no camera scroll
-/// (D-007), so a fixed world position is already a fixed screen position;
-/// no separate HUD/viewport plumbing needed.
+/// the player). Added to `camera.viewport`, not `world` (DECISIONS D-040 —
+/// superseded D-007's "world size equals screen size" assumption, since the
+/// camera now follows the player through a world bigger than the screen) —
+/// the viewport is screen-space by construction, so this stays fixed
+/// on-screen regardless of where the camera pans.
 class HpBarComponent extends PositionComponent
     with HasGameReference<ArenaGame> {
   HpBarComponent()

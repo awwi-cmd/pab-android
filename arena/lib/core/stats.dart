@@ -45,3 +45,27 @@ class EnemyStats {
   static const double contactCooldownSec = 1.0;
   static const double radiusPx = 12;
 }
+
+/// The boss (`boss_map1.png`, DECISIONS D-042) — spawns at levels 3/6/9,
+/// scaled per spawn by `bossStatMultiplier` (`core/game_rules.dart`), not
+/// by player level directly like grunts (`enemyStatMultiplier`). Flat
+/// constants, same reasoning as [EnemyStats]. First-guess placeholder
+/// numbers, not tuned on-device yet.
+class BossStats {
+  BossStats._();
+
+  static const double maxHp = 400;
+  static const double moveSpeedPxPerS = 55; // slower than a grunt -- lumbering, not a threat to outrun
+  static const double contactDamage = 15;
+  static const double contactCooldownSec = 1.0;
+
+  static const double fireRangePx = 260;
+  static const double fireCooldownSec = 2.2;
+  static const double boltDamage = 12;
+  static const double boltSpeedPxPerS = 220;
+  static const double boltKnockback = 40;
+
+  /// How close the player has to get before the boss teleports away
+  /// (DECISIONS D-042).
+  static const double teleportTriggerDistancePx = 90;
+}

@@ -1,3 +1,6 @@
+import 'dart:math';
+import 'dart:ui' show Rect;
+
 import 'package:flame/game.dart' show Vector2;
 
 /// Pure gameplay math with no Flame `Component`/`Game` dependency —
@@ -69,4 +72,50 @@ const double kEnemyScalePerLevel = 0.12;
 double enemyStatMultiplier(int playerLevel) {
   assert(playerLevel >= 1);
   return 1 + (playerLevel - 1) * kEnemyScalePerLevel;
+}
+
+/// DECISIONS D-035: "elite" enemies are a visual-only marker for now (a fire
+/// glow, `ArenaGame.spawnEnemy`) — no stat change, unlike `enemyStatMultiplier`
+/// above. Rolled independently per spawn, not tied to player level.
+const double kEliteChance = 0.15;
+
+bool rollIsElite(Random random) => random.nextDouble() < kEliteChance;
+
+/// DECISIONS D-042: the boss gets ~20% stronger each time it spawns
+/// (levels 3, 6, 9 — `spawnIndex` 0/1/2), compounding rather than flat, so
+/// the 3rd fight is noticeably tougher than "just" +40% over the 1st.
+const double kBossScalePerSpawn = 0.2;
+
+double bossStatMultiplier(int spawnIndex) {
+  assert(spawnIndex >= 0);
+  return pow(1 + kBossScalePerSpawn, spawnIndex).toDouble();
+}
+
+/// A random point just outside [visible], by [marginFactor] of its own
+/// width/height (DECISIONS D-041/D-042) — shared by `Spawner` (enemies) and
+/// the boss's spawn point, so both land just off whatever the player can
+/// currently see, wherever that is.
+Vector2 randomPerimeterPoint(
+  Random random,
+  Rect visible, {
+  required double marginFactor,
+}) {
+  final marginX = visible.width * marginFactor;
+  final marginY = visible.height * marginFactor;
+  final left = visible.left - marginX;
+  final right = visible.right + marginX;
+  final top = visible.top - marginY;
+  final bottom = visible.bottom + marginY;
+
+  final side = random.nextInt(4);
+  switch (side) {
+    case 0: // top
+      return Vector2(left + random.nextDouble() * (right - left), top);
+    case 1: // bottom
+      return Vector2(left + random.nextDouble() * (right - left), bottom);
+    case 2: // left
+      return Vector2(left, top + random.nextDouble() * (bottom - top));
+    default: // right
+      return Vector2(right, top + random.nextDouble() * (bottom - top));
+  }
 }

@@ -6,7 +6,70 @@ this before starting the real game on top of the demo.
 
 ---
 
+## Read this first: `arena_game.dart` needs to be split (DECISIONS D-045)
+
+It's ~820 lines, well past CLAUDE.md §5's ~300-line guideline, after Phase
+10 (boss/SFX/economy) piled onto Phase 9 (camera) without pausing to fix
+it — a deliberate, logged trade-off (D-045), not an oversight, but it means
+**the very next non-trivial change to this file should be the split, not
+another feature on top of it.** The shape is already visible: pull the ~20
+`SpriteAnimation`/`Sprite` fields and the whole loading block out of
+`onLoad()` into a `VfxLibrary`/`AssetLibrary` class `ArenaGame` just holds
+an instance of. TASKS 10.7 tracks this.
+
 ## The extension points that already exist
+
+**`Damageable` (`game/components/damageable.dart`, DECISIONS D-042).** Any
+future thing a player attack should be able to hit — a destructible object,
+a second boss, a turret — implements this small interface (`isDying`/
+`position`/`size`/`applyKnockback`/`takeDamage`) and adds itself to
+`ArenaGame.damageableTargets` (currently `[...enemies, ?_boss]`) rather
+than teaching every attack file about a new concrete type. `BossComponent`
+is the existing second example alongside `EnemyComponent` — worth reading
+if the next thing needs its own state machine (idle/walk/fire/death) that
+doesn't fit `EnemyComponent`'s simpler always-chase behavior.
+
+**The economy's shared rarity model (`core/economy.dart`, DECISIONS D-043).**
+`ItemRarity` + `rollRarity` + `kRarityWeights` is one roll shared by gems,
+money, and potions — a fourth resource should roll the same way (add a
+value table keyed by `ItemRarity`, don't invent a new probability scheme).
+`loadColumnAnimation` (`sheet_loader.dart`) is the loader for any future
+sheet arranged as side-by-side item-type columns rather than the row-major
+layout every character/VFX sheet uses — check which layout a new sheet
+actually is before assuming `loadSheetAnimation` fits.
+
+**`ArenaGame.addToWorld`/`addToHud` (DECISIONS D-040, Phase 9).** As of the
+roaming-world work, `ArenaGame` actually uses `FlameGame`'s built-in
+`world`/`camera` split — before this it never did (everything was a sibling
+of them, not a child of `world`, so nothing was ever subject to the
+camera's transform). **Any new component you add to the arena must go
+through one of these two methods, never a bare `add(...)`/`game.add(...)`:**
+`addToWorld` for anything that exists in the game world and should scroll
+with the camera (enemies, projectiles, VFX, the floor, the player itself);
+`addToHud` for the two things that must stay screen-fixed regardless of
+where the camera is (the HP bar, the FPS counter) — it adds to `camera.
+viewport`, which is screen-space by construction. Getting this wrong is an
+easy, quiet bug: a component added the old way still renders, just without
+ever moving relative to the camera, which reads as "this thing is following
+the player like a HUD element" even though it's meant to sit in the world.
+
+**Endless world rendering pattern (DECISIONS D-041, Phase 9.3/9.4).**
+`ArenaFloor` and `Spawner` both derive everything from
+`game.camera.visibleWorldRect` fresh each frame/tick rather than any cached
+notion of "where the world is" — that's the pattern to follow for any
+future component that needs to cover or react to the area around the
+player in an unbounded world (a minimap, a fog-of-war effect, a boss that
+should always spawn just off-screen). `ArenaFloor`'s per-cell tile pick is
+a deterministic hash of `(col, row)` plus a per-round seed, not
+`Random()` per frame — anything else that needs "this world location always
+looks/behaves the same way" should use the same trick rather than caching a
+grown-on-demand data structure. `Spawner._cullStragglers` is the other half
+worth knowing: in an unbounded world, anything slower than the player
+(enemies at 70px/s vs. 120+px/s for every character) can fall behind
+forever, so any future spawned-and-chasing entity needs its own answer to
+"what happens if it never catches up" — silent removal via a
+kill-stat-free method (`ArenaGame.cullEnemy`) is the existing answer for
+enemies specifically.
 
 **`AnimState` (`game/anim/anim_state.dart`)** lists every state on the
 reference sheet, not just the six the demo wires (DECISIONS D-012). Adding
@@ -24,7 +87,23 @@ targeting/cooldown/damage math and only differs in what the projectile
 component itself does (keeps flying and hitting instead of despawning on the
 first hit, swaps its own sprite mid-flight). That split — new behavior class
 + new projectile component, `ArenaGame`/`PlayerComponent` untouched — is the
-pattern to repeat for the Skirmisher/Warden kits still open in TASKS 8.3.
+pattern to repeat for the Warden kit still open in TASKS 8.3. `SpiralFireAttack`
+(D-034, the Skirmisher) is the third example and the first built around real
+VFX beyond a sprite swap — two projectiles orbiting a shared advancing point,
+plus a persistent cast-sparkle visual and a hit/kill flourish each.
+`TrackingSpriteEffect` (`game/components/tracking_effect.dart`,
+D-034/D-035/D-036) is the new shared piece worth knowing: a VFX glued to any
+still-alive `PositionComponent` (follows it every frame, self-removes once
+that component leaves the tree, or fades out first if a `fadeOutWhen` poll
+closure is given — elite enemies' fire glow fades the instant
+`enemy.isDying` flips, D-036) — reused as-is for the Skirmisher's
+always-on cast sparkle and elite enemies' fire glow, and the thing to reach
+for whenever a future skill needs a visual that has to track a moving
+character rather than sit at a fixed point. `AttackBehavior.onEquipped(game)`
+(D-036) is the companion hook for a kit's persistent, not-per-cast, visual —
+called once from `ArenaGame.resetRound()` right after the player is created;
+default no-op, override only if the kit needs one (a branch on
+`character.id` inside `ArenaGame` for this would violate CLAUDE.md §4.12).
 This is also where a skill system's "active ability" hook would attach: an
 `AttackBehavior` doesn't have to be the *auto*-attack specifically, it's
 just "what happens when this timer fires" — a second timer/behavior pair

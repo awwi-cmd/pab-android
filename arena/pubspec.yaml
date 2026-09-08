@@ -71,7 +71,10 @@ flutter:
     - assets/images/vfx/projectiles/
     - assets/images/vfx/vfx/
     - assets/images/scenes/
+    - assets/images/consumables/
+    - assets/images/ui/
     - assets/audio/
+    - assets/audio/core/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
