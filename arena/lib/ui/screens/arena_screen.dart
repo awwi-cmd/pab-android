@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/bgm_controller.dart';
 import '../../core/constants.dart';
 import '../../core/economy.dart';
 import '../../core/meta_progression.dart';
@@ -213,8 +214,15 @@ class _RoundOverOverlay extends StatelessWidget {
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: ArenaColors.accent),
                   ),
-                  onPressed: () =>
-                      Navigator.of(context).popUntil((route) => route.isFirst),
+                  onPressed: () {
+                    // DECISIONS D-062: idempotent with _endRound's own
+                    // died()/leaveArena() call -- this just guarantees the
+                    // BGM stack is back down to the base layer by the time
+                    // a menu screen is actually showing, however we got
+                    // here.
+                    BgmController.instance.leaveArena();
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                  },
                   child: const Text(
                     'MAIN MENU',
                     style: TextStyle(color: ArenaColors.accent),
@@ -674,15 +682,17 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
     ),
   ]).animate(_landController);
 
-  /// DECISIONS D-061 ("throw some confetti from outside the screen, from
-  /// left and right, landing in front and in the back of the card when we
-  /// land it") — fires alongside [_landController] the instant the spin
-  /// lands. Built from scratch with a `CustomPainter` rather than a
-  /// confetti package (CLAUDE.md §4.9: no new dependencies) — plain
-  /// rotated rects are enough for a short burst, no image asset exists for
-  /// this either.
+  /// DECISIONS D-061/D-063 ("throw some confetti from outside the screen,
+  /// from left and right, landing in front and in the back of the card
+  /// when we land it"; follow-up: "shoot the confetti pieces
+  /// independently, and make them fall more outside of the screen, because
+  /// they stop in the middle now") — fires alongside [_landController] the
+  /// instant the spin lands. Built from scratch with a `CustomPainter`
+  /// rather than a confetti package (CLAUDE.md §4.9: no new dependencies)
+  /// — plain rotated rects are enough for a burst, no image asset exists
+  /// for this either.
   static const _confettiCount = 26;
-  static const _confettiDurationMs = 950;
+  static const _confettiDurationMs = 1400;
   static const _confettiColors = [
     Color(0xFFE0526C), // ArenaColors.danger
     Color(0xFFF5C542), // amber
@@ -702,6 +712,18 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
   /// "from outside the screen" needs); independently, half are [front]
   /// (painted on top of the card) and half aren't (painted behind it) —
   /// "landing in front and in the back of the card."
+  ///
+  /// DECISIONS D-063 bugfix: [endAlign] used to sit close to the card
+  /// (±0.4-ish) — every piece visibly stopped and hung there once it
+  /// "landed," reported as "they stop in the middle now." Real confetti
+  /// doesn't stop mid-air: it keeps falling and drifting outward past the
+  /// screen edges, so [endAlign] now lands well outside the visible box on
+  /// both axes (`dy` past `1.0` is already below the bottom edge) — a
+  /// piece finishes this animation by actually leaving the screen, not by
+  /// coming to rest inside it. [startDelayFraction] independently staggers
+  /// when each piece's own flight actually begins, so the burst reads as
+  /// individual pieces shooting out over time rather than the whole set
+  /// launching and arriving in lockstep.
   List<_ConfettiParticle> _buildConfetti() {
     return [
       for (var i = 0; i < _confettiCount; i++)
@@ -711,9 +733,10 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
             -0.4 + _random.nextDouble() * 0.8,
           ),
           endAlign: Alignment(
-            -0.4 + _random.nextDouble() * 0.8,
-            -0.2 + _random.nextDouble() * 0.6,
+            (_random.nextBool() ? -1 : 1) * (0.4 + _random.nextDouble() * 1.6),
+            1.2 + _random.nextDouble() * 1.2,
           ),
+          startDelayFraction: _random.nextDouble() * 0.35,
           color: _confettiColors[_random.nextInt(_confettiColors.length)],
           size: 7 + _random.nextDouble() * 6,
           rotationTurns: 1 + _random.nextDouble() * 2.5,
@@ -931,6 +954,7 @@ class _ConfettiParticle {
     required this.rotationTurns,
     required this.arcHeight,
     required this.front,
+    required this.startDelayFraction,
   });
 
   final Alignment startAlign;
@@ -940,6 +964,13 @@ class _ConfettiParticle {
   final double rotationTurns;
   final double arcHeight;
   final bool front;
+
+  /// DECISIONS D-063 ("shoot the confetti pieces independently"): each
+  /// particle's own flight only actually starts once the shared controller
+  /// clears this fraction of its total run, so the burst reads as pieces
+  /// launching individually over time rather than the whole set moving in
+  /// perfect lockstep.
+  final double startDelayFraction;
 }
 
 /// One side of the chest reveal's confetti burst (DECISIONS D-061) — [front]
@@ -987,30 +1018,37 @@ class _ConfettiPainter extends CustomPainter {
   final double t;
   final bool front;
 
-  /// The flight itself finishes by 60% of the way through the controller
-  /// (`Curves.easeOut`, so it decelerates into arrival) -- the remaining
-  /// 40% is the particles sitting at rest before [_fadeStart] starts
-  /// fading them out, rather than the burst just cutting off abruptly.
-  static const _flightFraction = 0.6;
-  static const _fadeStart = 0.7;
+  /// DECISIONS D-063: each particle now runs its own local timeline —
+  /// `[p.startDelayFraction, 1]` of the shared controller mapped to
+  /// `[0, 1]` for that piece alone — rather than every particle sharing
+  /// one global flight fraction. `Curves.easeIn` reads as gravity actually
+  /// pulling it down and out, unlike the old `Curves.easeOut` (which
+  /// decelerated into a stop -- exactly the "stop in the middle" the
+  /// developer flagged).
+  static const _fadeStart = 0.85; // fraction of *local* time fading starts at
 
   @override
   void paint(Canvas canvas, Size size) {
-    final flightT = Curves.easeOut.transform(
-      (t / _flightFraction).clamp(0.0, 1.0),
-    );
-    final opacity = t < _fadeStart
-        ? 1.0
-        : (1 - (t - _fadeStart) / (1 - _fadeStart)).clamp(0.0, 1.0);
-    if (opacity <= 0) return;
-
     for (final p in particles) {
       if (p.front != front) continue;
+      if (t < p.startDelayFraction) continue; // hasn't launched yet
+
+      final localT =
+          ((t - p.startDelayFraction) / (1 - p.startDelayFraction)).clamp(
+            0.0,
+            1.0,
+          );
+      final eased = Curves.easeIn.transform(localT);
+      final opacity = localT < _fadeStart
+          ? 1.0
+          : (1 - (localT - _fadeStart) / (1 - _fadeStart)).clamp(0.0, 1.0);
+      if (opacity <= 0) continue;
+
       final start = _toOffset(p.startAlign, size);
       final end = _toOffset(p.endAlign, size);
-      final pos = Offset.lerp(start, end, flightT)!;
-      final arc = p.arcHeight * size.height * sin(pi * flightT);
-      final rotation = p.rotationTurns * 2 * pi * flightT;
+      final pos = Offset.lerp(start, end, eased)!;
+      final arc = p.arcHeight * size.height * sin(pi * eased);
+      final rotation = p.rotationTurns * 2 * pi * localT;
 
       canvas.save();
       canvas.translate(pos.dx, pos.dy - arc);
@@ -1114,8 +1152,12 @@ class _PauseMenuOverlay extends StatelessWidget {
               _menuButton(
                 context,
                 label: 'MAIN MENU',
-                onPressed: () =>
-                    Navigator.of(context).popUntil((route) => route.isFirst),
+                // DECISIONS D-062: the one real "leave core" path _endRound
+                // never sees -- quitting mid-round via the Pause Menu.
+                onPressed: () {
+                  BgmController.instance.leaveArena();
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+                },
               ),
             ],
           ),
