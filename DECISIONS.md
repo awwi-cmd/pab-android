@@ -1672,6 +1672,290 @@ in this project.
 
 ---
 
+## D-048 — `arena_game.dart` split: `GameAssets` holds every loaded asset
+**Date:** 2026-09-09 · **Status:** Accepted · Closes D-045/TASKS 10.7
+**Context:** D-045 flagged `arena_game.dart` at ~820 lines, well past
+CLAUDE.md §5's ~300-line guideline, and NEXT.md/TASKS 10.7 both said the
+next non-trivial touch to this file should be the split, not another
+feature on top. The 4 new skills (D-049, same session) were exactly that
+next touch, so the split came first.
+**Decision:** New `game/game_assets.dart`, a `GameAssets` class holding
+every `SpriteAnimation`/`Sprite` field (~20 of them) plus a `static
+Future<GameAssets> load(CharacterDef character)` that's the verbatim body
+of the old `ArenaGame.onLoad()` loading block. `ArenaGame.onLoad()` is now
+three lines: `await super.onLoad(); gameAssets = await
+GameAssets.load(character); resetRound();`. The field on `ArenaGame` is
+named `gameAssets`, not `assets` — `Game` (Flame's own base class) already
+declares a member called `assets` (an `AssetsCache`), so the obvious name
+was already taken and `flutter analyze` caught it immediately as an invalid
+override. `ArenaGame` keeps its existing public getters
+(`boltAnimation`/`knifeCleanSprite`/`pixelFireAnimation`/etc.) exactly as
+they were, just delegating to `gameAssets.X` instead of a bare field — every
+external call site (`AttackBehavior`s in `attack_behavior.dart`,
+`BossComponent`, `AuraComponent`) needed zero changes.
+**Because:** Matches NEXT.md's own plan exactly (pull the fields + loading
+block into a class `ArenaGame` holds an instance of) — the getter-delegation
+trick was the one addition, chosen specifically to make this a pure
+extraction with no ripple into every file that reads `game.boltAnimation`
+today. `ArenaGame` itself dropped from ~820 lines to a few hundred; round
+state, spawn/kill bookkeeping, and `addToWorld`/`addToHud` are what's left,
+matching CLAUDE.md §4.5's "ArenaGame owns round state" scoped down to
+actually fit the file-size guideline in §5.
+**Consequences:** A future asset (a 5th skill, a new enemy skin) is now a
+new field + load call in `game_assets.dart`, not another few lines inline
+in `ArenaGame.onLoad()` — keeps the split from silently regressing the same
+way it grew the first time. `assets` as a field name is now permanently
+off-limits on any `FlameGame` subclass in this codebase — worth remembering
+before reaching for the "obvious" name again.
+
+---
+
+## D-049 — Four new powers: Ultimate Mirror, Projectile Ray, Projectile Thunder, Defence Crystal
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer delivered 4 new VFX sheets
+(`vfx/projectiles/{ultimate-mirror,projectile-ray-beam,projectile-thunder,
+defence-crystal}.png`) and specced 4 new level-up skills directly:
+1. **Ultimate Mirror** — spawns away from the player, animated, shoots
+   bolts from both sides at a fast pace; levels increase how many mirrors
+   can be up at once; mirrors only spawn on screen, where the player can
+   see them.
+2. **Projectile Ray** — fires once every 3 seconds, pierces, high damage;
+   levels increase attack speed.
+3. **Projectile Thunder** — strikes down on random enemies the player can
+   see, damage, must render on top of the enemy sprite, not behind; levels
+   increase damage and how many enemies get hit at once; cooldown decreases
+   from 4 seconds down to 1.
+4. **Defence Crystal** — orbits the player in a figure-8 shape; picking it
+   grants higher damage resistance and a low HP regen.
+None of the 4 were specced with exact numbers (damage, cooldowns, stack
+caps) — every number below is a first-guess placeholder, the same
+established pattern as Aura (D-027) and every other tuning value in this
+project, not a literal developer spec.
+**Decision, grid dimensions first:** Each sheet's actual layout was
+confirmed by decoding its PNG rows/columns for content bands (same method
+D-042's boss sheet used, not the visual thumbnail) rather than guessed:
+- `ultimate-mirror.png` — single **column** of 5 frames, 128×128 each.
+- `projectile-ray-beam.png` — single **column** of 6 real frames (a 7th
+  grid row is blank), 256×64 each — a wide, short beam texture, stretched
+  to the shot's actual range at the call site rather than being a fixed
+  size.
+- `projectile-thunder.png` — single **row** of 4 frames, 128×256 each.
+- `defence-crystal.png` — single **row** of 6 frames, 128×128 each.
+
+**Decision, per skill:**
+1. **Ultimate Mirror** (`UpgradeKind.ultimateMirror`,
+   `game/components/mirror.dart`'s `MirrorComponent`) — a stationary turret,
+   not a companion: doesn't move or track the player past its spawn point.
+   Spawn point comes from a new pure function, `randomVisiblePoint`
+   (`core/game_rules.dart`) — a point *inside* `camera.visibleWorldRect`,
+   inset by a margin, the literal opposite of `randomPerimeterPoint`
+   (enemies/the boss spawn just *outside* what's visible; this spawns
+   *inside* it, per the "only on screen" ask). Fires a bolt directly left
+   and directly right every 0.5s (fixed, not aimed at a target — the one
+   attack in this project that doesn't target anything, matching "both
+   sides" literally) using the existing bolt sprite/`ProjectileComponent`.
+   Capped at 3 stacks; `ArenaGame._syncMirrors` adds the difference on each
+   new pick and never removes one — a stack count can't decrease mid-round.
+   A single mirror's own damage/pace never scales; only the count does,
+   matching the spec's "levels increase number of mirrors" and nothing
+   else.
+2. **Projectile Ray** (`UpgradeKind.projectileRay`) — a second,
+   independently-cooling attack owned directly by `ArenaGame` (its own
+   `_rayActive`/`_rayCooldownTimer` fields, ticked in `update()` next to the
+   existing `character.attackBehavior` cooldown), not a `CharacterDef.
+   attackBehavior` — every character can pick this regardless of kit, unlike
+   `knifeMastery` (D-031). A new pure function, `alongLineWithinRange`
+   (`core/game_rules.dart`), finds every target within a half-width of the
+   line from the player toward the nearest target in range (not just the
+   nearest one — "pierces"), so a full row of enemies standing in the beam's
+   path all take damage in one shot. `ArenaGame._syncRay` starts the timer
+   on the first pick only (`_rayActive`), same "sync once, read the current
+   stack count live on every trigger" shape as Aura's `_syncAura`/`_aura`.
+   Base cooldown 3s, capped at 3 stacks; both cooldown (shrinks) and damage
+   (grows) are tier tables keyed by stack count
+   (`UpgradeAmounts.rayCooldownSec`/`rayDamage`) — the spec only asked for
+   faster attack speed per level, but a faster ray dealing the *same*
+   per-hit damage as a slower one would make higher levels strictly better
+   with no tradeoff, so damage rises too rather than staying flat.
+   Visual: `game/components/ray_beam.dart`'s `RayBeamEffectComponent` —
+   pure decoration, no hit-test of its own (that already happened in
+   `ArenaGame._fireRayBeam` before this spawns) — stretched to the shot's
+   actual range and rotated to face it via `Anchor.centerLeft` + `angle:
+   atan2(direction.y, direction.x)`.
+3. **Projectile Thunder** (`UpgradeKind.projectileThunder`) — same
+   sync-once-timer shape as Projectile Ray
+   (`ArenaGame._syncThunder`/`_thunderActive`/`_thunderCooldownTimer`).
+   Strikes `UpgradeAmounts.thunderTargetCount(stacks)` random living targets
+   (grunts or the boss, via `damageableTargets`) per trigger, each with
+   `spawnEffect` at `ArenaPriority.hitEffects` — deliberately *not*
+   `ArenaPriority.enemy`/`enemyOverlay`, since `hitEffects` (25) is already
+   well above `enemy` (10), which is what actually answers "make sure the
+   lightning appears on top of the enemies asset not behind" (every other
+   one-shot hit VFX in this project — sparks, impact, explosion — already
+   uses this same priority for the same reason). Capped at **4** stacks,
+   not the usual 3 — the one deliberate exception, because the spec gives 4
+   literal cooldown values (4s → 3s → 2s → 1s, "reaching 1"), so 4 tiers is
+   the number the spec actually specified, not a guess. Damage and target
+   count both rise across the same 4 tiers.
+4. **Defence Crystal** (`UpgradeKind.defenceCrystal`,
+   `game/components/defence_crystal.dart`'s `DefenceCrystalComponent`) —
+   the one skill capped at **1** stack, not 3: the spec never says "levels
+   increase" anything for this one ("if the user picks this power, he has
+   higher damage resistance and low hp regen" — a single flat effect, not a
+   scaling one), so it's modeled as a single-pick passive rather than
+   extrapolating a tier table the developer never asked for. The visual
+   orbits the player on a lemniscate (figure-8) path — `x = sin(t)`,
+   `y = sin(2t)/2` — the literal "orbits ... in a kind of 8 shape" ask,
+   picked over a true parametric lemniscate for how much simpler it is to
+   tune independently on each axis (`defenceCrystalOrbitRadiusXPx`/`Y`). The
+   actual resistance/regen bonus is **not** read live off the component the
+   way the 3 skills above read their stack count — it's a flat additive pair
+   on `PlayerUpgrades` (`damageResistance`, `bonusHpRegenPerSec`), applied
+   once in `PlayerUpgrades.apply()` the same way vit/dex/str/intellect
+   already are (D-025 #2's "direct additive stat bonuses, not `StatBlock`
+   re-derivation" pattern, extended to a multiplier and a second regen
+   source rather than just HP/speed/damage). `PlayerComponent.takeDamage`
+   multiplies incoming damage by `(1 - damageResistance).clamp(0, 1)` before
+   applying it (the clamp guards against a future stacking bug ever
+   inverting it into bonus damage); the regen line adds
+   `bonusHpRegenPerSec` next to the existing `stats.hpRegenPerSec`.
+
+**Because:** Every mechanism reuses an existing pattern rather than
+inventing a new one — Aura's "sync once, read the current stack count
+live" shape covers 3 of the 4 skills directly (a live component for Mirror,
+a bare timer for Ray/Thunder, since there's nothing to render between
+triggers); Defence Crystal reuses D-025's original flat-bonus layer instead,
+since its own spec is a flat effect, not a live-scaling one. The 2 new pure
+functions in `core/game_rules.dart` (`randomVisiblePoint`,
+`alongLineWithinRange`) follow the file's own rule (CLAUDE.md rule 3/11):
+targeting/placement math with no `Component`/`Game` dependency, unit-tested
+directly rather than only verifiable on-device.
+**Consequences:** All 4 numbers (damage, cooldowns, stack caps, orbit
+radii) are first-guess placeholders like every other tuning value in this
+project — a real balance pass is a later, separate step once they've been
+seen on-device. `flutter analyze` clean, `flutter test` 85/85 (14 new: 7 in
+`game_rules_test.dart` for the 2 new pure functions, 7 in
+`progression_test.dart` for the new tier tables/`PlayerUpgrades` fields),
+`flutter build apk --debug` succeeds, and the debug APK installs and
+launches on the emulator without a crash (the highest-risk part —
+`GameAssets.load()` loading all 4 new sheets with the grid dimensions
+above, since a wrong `amount`/`amountPerRow` pairing throws an assertion at
+load time the same way D-042's boss sheet once did). Full on-device play
+(seeing each skill actually fire/render, TASKS 12.7) wasn't completed this
+session — the emulator got stuck in a repeating "System UI isn't
+responding" loop on every touch, an environment/host-performance issue
+unrelated to this change, not a code defect.
+
+---
+
+## D-050 — Four powers, first on-device-facing tune pass (pre-verification)
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer asked for 4 specific tweaks to D-049's skills before
+committing, ahead of TASKS 12.7's on-device pass (the emulator session that
+would have driven that check got derailed — see D-049's closing note — and
+the developer asked to stop testing on the device and do it themselves;
+CLAUDE.md §2 gained an explicit "never drive the emulator to test" rule as
+a result). All 4 are asked-for numbers, not guesses:
+1. **Projectile Thunder +40% size, +20% brightness.** `kThunderWidthPx`
+   48→48×1.4 (`core/constants.dart`). Brightness needed a new capability —
+   `spawnEffect` (`ArenaGame`) gained an optional `brightness` param, a
+   pure-multiply color matrix (`_brightnessMatrix`, no translate term,
+   unlike `AuraComponent`'s existing contrast matrix which pulls toward
+   grey) layered onto the same `Paint` the existing `opacity` tint already
+   uses — one shared method instead of a thunder-only copy, since a future
+   VFX wanting the same treatment now has the knob. `_strikeThunder` passes
+   `brightness: 1.2`.
+2. **Ultimate Mirror: cycle instead of a permanent turret.** The original
+   D-049 mirror never went away once spawned — developer's framing ("Mirror
+   never de-spawns") flagged that as the thing to fix, not confirm.
+   `MirrorComponent` now runs a 2-phase timer: active (visible, firing
+   both ways every 0.5s) for `UpgradeAmounts.mirrorActiveDurationSec` (3s),
+   then hidden (invisible via `opacity = 0`, doesn't fire) for
+   `mirrorCooldownDurationSec` (3s) — "that's the cooldown," developer's
+   exact words, so the two numbers are named and equal rather than one
+   cooldown constant algebraically implying the other. Toggling opacity
+   rather than removing/re-adding the component keeps `ArenaGame._mirrors`
+   bookkeeping untouched — the component still lives for the whole round,
+   only its visibility/firing flips. Every time it goes active again it
+   also re-picks its position (`randomVisiblePoint`, same function D-049
+   already added) — "make it come" read as a fresh appearance each cycle,
+   not a fade-in at the same spot.
+3. **Defence Crystal: bigger figure-8, front/behind depth cycling.**
+   `defenceCrystalOrbitRadiusXPx`/`Y` 50/30 → 80/48 (+60%, "make the 8 ...
+   bigger" — no exact target given, same first-guess-tune convention as
+   every other number in this project). The depth effect reuses the orbit
+   math already being computed rather than adding a second curve: the
+   figure-8's own `x = sin(t)` term already tells the two lobes apart (it
+   crosses zero exactly at the crossing point in the middle), so
+   `DefenceCrystalComponent.priority` just flips between
+   `ArenaPriority.player - 1` (behind) and `player + 1` (front) on that
+   same sign — Flame's `Component.priority` setter re-sorts siblings on
+   change (confirmed in `flame-1.38.2`'s `component.dart`, cheap here since
+   it only actually re-enqueues on the two sign flips per loop, not every
+   frame).
+4. **Projectile Ray beam +40% thickness.** `kRayBeamThicknessPx` 28→28×1.4
+   — visual only, deliberately not touching `rayHalfWidthPx` (the hit-test
+   half-width): the ask was "too thin" to look at, not that it's missing
+   hits, and the two were already close enough (28 vs. a 36px hit-width)
+   that changing only the render size doesn't create a visible mismatch.
+**Because:** Each fix reuses an existing mechanism rather than adding a new
+one — brightness rides the same `Paint`/color-matrix path opacity and
+`AuraComponent`'s contrast tune already use; the mirror's cycle is a timer
+state machine, the same shape as every other D-049 skill's cooldown timer,
+just with a visibility flag added; the crystal's depth swap reads a value
+already being computed every frame instead of introducing a parallel one.
+**Consequences:** All 4 are still first-pass numbers (the mirror's 3s/3s
+split, the crystal's 60% orbit bump, the two 40% size bumps) — genuine
+on-device feel is still TASKS 12.7, now explicitly the developer's to run,
+not something a future session should try to drive itself.
+
+---
+
+## D-051 — Fixed: boss bolt never damaged the player
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer reported the boss's projectile does the fire
+animation and travels but never damages the player. Real bug, not a
+misconfigured number: `ProjectileComponent`'s hit-test loop only ever
+checks `game.damageableTargets` — "everything a *player* attack can hit"
+(grunts + the boss, DECISIONS D-042's own doc comment on that getter). The
+player was never in that list, because it was never meant to answer "what
+can an enemy attack hit" — nothing needed that question before the boss
+existed. So the boss's own bolt (`BossComponent._fire`, also built from
+`ProjectileComponent`) was scanning a target list that structurally could
+never contain the thing it was actually supposed to hit. This is a
+different bug from D-046 (the boss self-hitting its own bolt at spawn,
+already fixed) — that one was about the *wrong entry* being in the list
+this loop checks; this one is about the *wrong list* being checked at all,
+and had been there since the boss shipped (D-042), silently never caught
+because on-device passes noticed the bolt visually firing and travelling
+and read that as "it's working."
+**Decision:** `ProjectileComponent` gained a `targetsPlayer` param (default
+`false`, matching every existing player-owned use — `ProjectileAttack`,
+Ultimate Mirror). `true` skips `game.damageableTargets` entirely and checks
+`game.player` instead, calling `player.takeDamage(damage)` directly with no
+knockback (`PlayerComponent` isn't `Damageable` and nothing in this project
+knocks the player back — enemy contact damage doesn't either,
+`ArenaGame.onEnemyContact` calls `player.takeDamage` the same bare way).
+`BossComponent._fire` now passes `targetsPlayer: true` instead of
+`excludeSelf: this` — the self-hit guard is dead code now (it only ever
+mattered for the `damageableTargets` loop this bolt no longer runs; the
+field stays on `ProjectileComponent` for any future player-owned projectile
+that might need it, just unused today).
+**Because:** A second, parallel branch (`_checkPlayerHit` next to the
+renamed `_checkDamageableHit`) rather than trying to unify the player and
+`Damageable` under one interface — `PlayerComponent` has real differences
+(no knockback, a different alive-check, i-frames handled inside
+`takeDamage` itself) that would make a forced-fit interface more confusing
+than two short, clearly-named methods on the one component that already
+knows how to travel and range-check itself.
+**Consequences:** Any *future* enemy-side projectile (a second boss, a
+ranged grunt) reuses `targetsPlayer: true` for free. `flutter analyze`
+clean, `flutter test` 85/85, `flutter build apk --debug` succeeds — the
+actual hit lands only visible on-device (TASKS 10.8), not something this
+session drove itself (developer's standing instruction, D-050).
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

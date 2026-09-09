@@ -117,6 +117,36 @@ const double kItemRenderScale = 2.5;
 /// How close the player has to walk to a gem/potion to collect it.
 const double kItemPickupRadiusPx = 28;
 
+/// The 4 new skill VFX (DECISIONS D-049) — same "width here, height derived
+/// from the sheet's own native cell aspect ratio" convention as the D-033/
+/// D-034/D-035 block above. Damage/cooldown/count numbers for these live in
+/// `core/progression.dart`'s `UpgradeAmounts` (gameplay balance), not here
+/// (CLAUDE.md §4.3) — this file only ever holds render sizing.
+
+/// Ultimate Mirror (`ultimate-mirror.png`, native cell 128x128, single
+/// column of 5 frames).
+const double kMirrorWidthPx = 40;
+const double kMirrorAspect = 1;
+
+/// Projectile Ray's beam visual (`projectile-ray-beam.png`, native cell
+/// 256x64, single column of 6 frames) — stretched to the shot's actual
+/// range at the call site, so only its on-screen thickness is fixed here.
+/// 2026-09-09 tune (developer's call: "too thin"): +40% (was 28).
+const double kRayBeamThicknessPx = 28 * 1.4;
+
+/// Projectile Thunder (`projectile-thunder.png`, native cell 128x256,
+/// single row of 4 frames).
+/// 2026-09-09 tune (developer's call): +40% size (was 48) — brightness is a
+/// render-time boost, not a size constant, see `ArenaGame._strikeThunder`'s
+/// `brightness` param on `spawnEffect`.
+const double kThunderWidthPx = 48 * 1.4;
+const double kThunderAspect = 256 / 128;
+
+/// Defence Crystal (`defence-crystal.png`, native cell 128x128, single row
+/// of 6 frames).
+const double kDefenceCrystalWidthPx = 32;
+const double kDefenceCrystalAspect = 1;
+
 /// Potions float up and down in place while sitting on the ground
 /// (developer's explicit ask) — a simple sine offset on top of their own
 /// looping sprite animation, not a second spritesheet.

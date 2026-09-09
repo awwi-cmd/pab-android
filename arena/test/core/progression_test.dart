@@ -135,6 +135,66 @@ void main() {
     });
   });
 
+  group('UpgradeAmounts tier tables (DECISIONS D-049)', () {
+    test('rayCooldownSec shrinks with stacks, clamped to rayMaxStacks', () {
+      final tiers = [
+        for (var s = 1; s <= UpgradeAmounts.rayMaxStacks; s++) UpgradeAmounts.rayCooldownSec(s),
+      ];
+      for (var i = 1; i < tiers.length; i++) {
+        expect(tiers[i], lessThan(tiers[i - 1]));
+      }
+      expect(
+        UpgradeAmounts.rayCooldownSec(UpgradeAmounts.rayMaxStacks + 5),
+        UpgradeAmounts.rayCooldownSec(UpgradeAmounts.rayMaxStacks),
+      );
+    });
+
+    test('rayDamage grows with stacks', () {
+      final tiers = [
+        for (var s = 1; s <= UpgradeAmounts.rayMaxStacks; s++) UpgradeAmounts.rayDamage(s),
+      ];
+      for (var i = 1; i < tiers.length; i++) {
+        expect(tiers[i], greaterThan(tiers[i - 1]));
+      }
+    });
+
+    test('thunder cooldown runs 4s down to 1s over its 4 levels', () {
+      expect(UpgradeAmounts.thunderCooldownSec(1), 4.0);
+      expect(UpgradeAmounts.thunderCooldownSec(UpgradeAmounts.thunderMaxStacks), 1.0);
+      final tiers = [
+        for (var s = 1; s <= UpgradeAmounts.thunderMaxStacks; s++)
+          UpgradeAmounts.thunderCooldownSec(s),
+      ];
+      for (var i = 1; i < tiers.length; i++) {
+        expect(tiers[i], lessThan(tiers[i - 1]));
+      }
+    });
+
+    test('thunder damage and target count both grow with stacks', () {
+      final damageTiers = [
+        for (var s = 1; s <= UpgradeAmounts.thunderMaxStacks; s++)
+          UpgradeAmounts.thunderDamage(s),
+      ];
+      final countTiers = [
+        for (var s = 1; s <= UpgradeAmounts.thunderMaxStacks; s++)
+          UpgradeAmounts.thunderTargetCount(s),
+      ];
+      for (var i = 1; i < damageTiers.length; i++) {
+        expect(damageTiers[i], greaterThan(damageTiers[i - 1]));
+        expect(countTiers[i], greaterThan(countTiers[i - 1]));
+      }
+    });
+  });
+
+  group('kUpgradeMaxPicks (DECISIONS D-049)', () {
+    test('the 4 new skills all have a cap -- none stacks unlimited', () {
+      expect(kUpgradeMaxPicks[UpgradeKind.ultimateMirror], UpgradeAmounts.mirrorMaxStacks);
+      expect(kUpgradeMaxPicks[UpgradeKind.projectileRay], UpgradeAmounts.rayMaxStacks);
+      expect(kUpgradeMaxPicks[UpgradeKind.projectileThunder], UpgradeAmounts.thunderMaxStacks);
+      expect(kUpgradeMaxPicks[UpgradeKind.defenceCrystal], 1);
+    });
+  });
+
   group('PlayerUpgrades', () {
     test('vit adds max HP and reports the delta for healing', () {
       final upgrades = PlayerUpgrades();
@@ -193,14 +253,46 @@ void main() {
       expect(upgrades.pickCounts[UpgradeKind.knifeMastery], 1);
     });
 
+    test('the 3 new timer/count skills add no stat bonus, only pick counts', () {
+      for (final kind in [
+        UpgradeKind.ultimateMirror,
+        UpgradeKind.projectileRay,
+        UpgradeKind.projectileThunder,
+      ]) {
+        final upgrades = PlayerUpgrades();
+        final healed = upgrades.apply(kind);
+        expect(healed, 0);
+        expect(upgrades.bonusMaxHp, 0);
+        expect(upgrades.bonusMoveSpeed, 0);
+        expect(upgrades.bonusDamage, 0);
+        expect(upgrades.damageResistance, 0);
+        expect(upgrades.bonusHpRegenPerSec, 0);
+        expect(upgrades.pickCounts[kind], 1);
+      }
+    });
+
+    test('defenceCrystal adds damage resistance and hp regen directly', () {
+      final upgrades = PlayerUpgrades();
+      final healed = upgrades.apply(UpgradeKind.defenceCrystal);
+      expect(healed, 0);
+      expect(upgrades.damageResistance, UpgradeAmounts.defenceCrystalDamageResistance);
+      expect(upgrades.bonusHpRegenPerSec, UpgradeAmounts.defenceCrystalBonusHpRegenPerSec);
+      expect(upgrades.bonusMaxHp, 0);
+      expect(upgrades.bonusMoveSpeed, 0);
+      expect(upgrades.bonusDamage, 0);
+    });
+
     test('reset clears bonuses and pick counts', () {
       final upgrades = PlayerUpgrades();
       upgrades.apply(UpgradeKind.vit);
       upgrades.apply(UpgradeKind.intellect);
+      upgrades.apply(UpgradeKind.defenceCrystal);
       upgrades.reset();
       expect(upgrades.bonusMaxHp, 0);
       expect(upgrades.bonusMoveSpeed, 0);
       expect(upgrades.bonusDamage, 0);
+      expect(upgrades.damageResistance, 0);
+      expect(upgrades.bonusHpRegenPerSec, 0);
       expect(upgrades.pickCounts.values.every((c) => c == 0), isTrue);
     });
   });

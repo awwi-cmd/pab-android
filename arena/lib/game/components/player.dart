@@ -79,7 +79,12 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
       }
     }
 
-    hp = min(effectiveMaxHp, hp + stats.hpRegenPerSec * dt);
+    // Defence Crystal (DECISIONS D-049) adds a flat regen bonus, same
+    // additive-layer pattern as effectiveMaxHp/effectiveMoveSpeed above.
+    hp = min(
+      effectiveMaxHp,
+      hp + (stats.hpRegenPerSec + game.upgrades.bonusHpRegenPerSec) * dt,
+    );
 
     if (_invulnTimer > 0) {
       _invulnTimer -= dt;
@@ -125,7 +130,12 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
   void takeDamage(double amount) {
     if (game.debugGodMode) return;
     if (_invulnTimer > 0 || current == AnimState.death) return;
-    hp = (hp - amount).clamp(0, effectiveMaxHp);
+    // Defence Crystal (DECISIONS D-049) — a flat damage-resistance
+    // multiplier, clamped so a future bug/overstack can't invert it into
+    // bonus damage.
+    final resistanceMultiplier =
+        (1 - game.upgrades.damageResistance).clamp(0.0, 1.0);
+    hp = (hp - amount * resistanceMultiplier).clamp(0, effectiveMaxHp);
     _invulnTimer = _invulnDurationSec;
     game.spawnBloodImpact(); // DECISIONS D-033: only on damage that lands
 
