@@ -53,7 +53,10 @@ gem-rarity group are built, on-device verification pending** — see D-057.
 **Chest reveal polish (overflow fix, card-back shuffle lead-in, jump/land
 bounce) plus main-menu-reachable currency debug tools and a batch of
 gem-drop/gem-float/boss-anima/Aura/Ultimate-Mirror tunes are built,
-on-device verification pending** — see D-058/D-059. This is real, ongoing
+on-device verification pending** — see D-058/D-059. **The chest reveal's
+real overflow fix, and a reworked boss teleport (destination telegraph,
+0.5s delay, arrival size-down/up pop, longer distance) are built,
+on-device verification pending** — see D-060. This is real, ongoing
 post-demo work now, not speculative scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
@@ -183,7 +186,7 @@ ArenaDemo/                    <- repo root, open this in your editor
             │   ├── player.dart              // takeDamage applies Defence Crystal resistance + blood-impact VFX (D-033/D-049); heal() for potions (D-043); free movement, no bounds clamp (D-040)
             │   ├── enemy.dart              // hp/contactDamage scaled by level at spawn (D-026); implements Damageable (D-042)
             │   ├── damageable.dart          // shared hit-detection interface, enemy + boss — D-042
-            │   ├── boss.dart                // idle/walk/fire/death state machine, teleport-on-approach — D-042
+            │   ├── boss.dart                // idle/walk/fire/death state machine; teleport is telegraph->0.5s delay->pop-in, longer distance — D-042/D-060
             │   ├── projectile.dart          // _outOfBounds is camera.visibleWorldRect-relative (D-040); tint (D-042)/targetsPlayer (D-051)/maxBounces (D-052)/neverExpire (D-059) params
             │   ├── projectile_poof.dart     // shrink+drift despawn flourish, shared by every projectile type — D-053
             │   ├── knife_projectile.dart    // Bruiser kit: pierces, clean->bloody sprite swap — D-029

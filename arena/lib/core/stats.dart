@@ -110,4 +110,20 @@ class BossStats {
   /// How close the player has to get before the boss teleports away
   /// (DECISIONS D-042).
   static const double teleportTriggerDistancePx = 90;
+
+  /// Multiplies the mirror-point offset the destination is computed from
+  /// (DECISIONS D-060, developer's call: "make boss teleport a longer
+  /// distance") — `1.0` would land exactly on the opposite-of-player mirror
+  /// point (the original D-042 behavior); this lands further past it, in
+  /// the same direction. First-guess placeholder like every other tuning
+  /// number here.
+  static const double teleportDistanceMultiplier = 1.6;
+
+  /// Time between the destination telegraph (`effect_anima`) appearing and
+  /// the boss actually arriving there (DECISIONS D-060, developer's call:
+  /// "appear only where he will teleport 0.5 seconds before... teleport
+  /// with a delay"). The boss is frozen — no walk/fire/contact damage —
+  /// for the whole window, a committed wind-up rather than something the
+  /// player can bait and dodge out of.
+  static const double teleportDelaySec = 0.5;
 }
