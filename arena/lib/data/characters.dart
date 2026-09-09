@@ -49,10 +49,10 @@ class CharacterDef {
 /// The 4 select-screen slots (PRD §5.2). Real unlock-via-progression gating
 /// (TASKS 8.4, DECISIONS D-055) as of Phase 13 — the Apprentice is always
 /// open, the other 3 gate on lifetime kills (`unlockKillThreshold`,
-/// steeper per slot). The Bruiser has its own `KnifeAttack` (D-029) and the
-/// Skirmisher has `SpiralFireAttack` (D-034); the Warden still shares the
-/// Apprentice's `ProjectileAttack` as a placeholder until it gets its own
-/// `AttackBehavior` (CLAUDE.md §4.12).
+/// steeper per slot). The Bruiser has its own `KnifeAttack` (D-029), the
+/// Skirmisher has `SpiralFireAttack` (D-034), and the Warden has
+/// `WardenSlamAttack` (D-056) — all 4 characters now have a distinct kit,
+/// closing the last CLAUDE.md §4.12 placeholder.
 const List<CharacterDef> kCharacters = [
   CharacterDef(
     id: 'apprentice',
@@ -92,11 +92,13 @@ const List<CharacterDef> kCharacters = [
   CharacterDef(
     id: 'warden',
     name: 'The Warden',
-    descriptor: 'Tough and steady — bolts for now, a real kit is planned.',
+    descriptor: 'Slams the ground around it — stand in the middle, hit everyone.',
     stats: StatBlock(str: 3, vit: 9, dex: 4, intellect: 4),
     spriteFolder: 'assets/images/characters/fourth',
     spritePrefix: 'fourth',
-    attackBehavior: ProjectileAttack(),
+    // Third real distinct kit (TASKS 8.3, DECISIONS D-056) -- melee AoE
+    // around the player instead of a projectile, fits the VIT-heavy stats.
+    attackBehavior: WardenSlamAttack(),
     unlockKillThreshold: 300,
   ),
 ];

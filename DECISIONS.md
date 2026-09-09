@@ -2223,6 +2223,57 @@ itself, D-050) is the developer's to run.
 
 ---
 
+## D-056 — Warden's own kit: melee AoE "Ground Slam", no new art
+
+**Date:** 2026-09-10 · **Status:** Accepted
+**Context:** TASKS 8.3's last open sub-item — the Warden had been sharing
+`ProjectileAttack` as a placeholder since D-028, flagged again as the one
+real remaining code task in this session's "what's next" survey. Developer
+asked to start it "with what assets we have already" — no new sprites, no
+new VFX sheets.
+
+**Decision:** `WardenSlamAttack` (`game/attack_behavior.dart`) — not a
+projectile at all, unlike every other kit. A short-range AoE burst centered
+on the player: `allWithinRange` (the same targeting helper `AuraComponent`'s
+tick already uses) finds every `Damageable` inside `attackRangePx * 0.35`,
+each one takes damage and gets knocked radially outward from the player.
+Visual is entirely existing assets — `fire` (already loaded for every
+character via `CharacterAnimations`, D-024, since `fourth-fire.png` was
+already part of the Warden's original sheet delivery, D-028) for the swing,
+and `gameAssets.explosionAnimation` (`vfx/vfx/effect_explosion2.png`,
+already loaded for the Skirmisher's kill flourish, D-034) for the shockwave
+— sized to `radiusPx * 2` directly rather than a new fixed-width constant,
+so the VFX can't drift out of sync with the actual hitbox (same reasoning
+`AuraComponent` already uses for its own ring).
+
+Tuning multipliers on top of the shared per-hit formula, same "own
+multiplier on the shared base" pattern `KnifeAttack`/`SpiralFireAttack`
+already use: -35% range (melee, not ranged — this is the actual
+differentiator), -25% attack speed (tankier: hits less often), -15% damage
+per hit (offsetting it landing on every target in the radius per swing
+instead of just the nearest one), +50% knockback (the "shove a cluster
+back" flavor a VIT-heavy tank should have). All first-guess numbers, same as
+every other kit's tuning — expect a follow-up pass once it's seen on-device.
+
+**Because:** Fits the Warden's stat line (`kCharacters`: 9 VIT, the highest
+in the roster) without needing a design pass on brand-new art mid-session.
+Reusing `allWithinRange` and `spawnEffect` rather than adding new machinery
+keeps this consistent with how Aura's own AoE already works, and closes the
+last CLAUDE.md §4.12 placeholder — every character now has a distinct
+`AttackBehavior`, no more shared `ProjectileAttack()` fallback.
+
+**Consequences:** No new `core/` gameplay math (the AoE loop is
+component-level, same category as the Bruiser's pierce, D-029) — no new
+unit tests needed, same reasoning D-029/D-034 already used for their own
+kits. `flutter analyze` clean, `flutter test` 92/92 (unchanged — no new
+tests), `flutter build apk --debug` succeeds. On-device feel (does the swing
+read right, does the explosion VFX actually line up with the real hit
+radius, does the slower cadence feel intentional rather than just weaker)
+is the developer's to check, same standing rule as every other on-device
+item since D-050.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

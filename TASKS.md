@@ -338,7 +338,27 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
         the orbit's own wobble radius) so it can't falsely trigger near an
         edge the way the pre-D-038 version did. **This closes out the
         Skirmisher's main attack** — no further changes requested.
-      - [ ] Warden — something tankier, fits `vit`-heavy stats
+      - [x] Warden — **Ground Slam** (DECISIONS D-056): no new art requested
+        or added — a short-range AoE hit centered on the player (not a
+        projectile at all), damaging + knocking back every `Damageable`
+        within the radius at once (`allWithinRange`, same shape
+        `AuraComponent`'s tick uses), reusing the already-loaded `fire`
+        animation for the swing and the existing `explosionAnimation` sized
+        to the hit radius for the shockwave. -35% range (melee, not ranged),
+        -25% attack speed, -15% damage per hit (offsetting hitting every
+        target in the radius at once), +50% knockback vs. the shared
+        formula. Closes the last CLAUDE.md §4.12 placeholder — all 4
+        characters now have a distinct kit. `flutter analyze` clean,
+        `flutter test` 92/92 (no new tests — no new `core/` math, the AoE
+        loop is component-level like the Bruiser's pierce was), `flutter
+        build apk --debug` succeeds.
+      - [ ] On-device verification of the Warden's Ground Slam —
+        **developer**: swing plays the `fire` animation, the explosion VFX
+        is roughly centered on the player and sized to actually match where
+        enemies get hit (not visibly bigger/smaller than the real radius),
+        every enemy in range takes damage + gets knocked outward (not just
+        the nearest one), attack cadence feels appropriately slower/heavier
+        than the other 3 kits rather than just weaker
       - [ ] On-device verification of the Bruiser's knife — **developer**:
         pierce reads clearly (doesn't look like it stopped at the first
         enemy), clean→bloody swap is visible mid-flight, spin doesn't look

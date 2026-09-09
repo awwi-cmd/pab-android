@@ -44,8 +44,11 @@ Ultimate Mirror, Projectile Ray, Projectile Thunder, Defence Crystal) is
 built, on-device verification pending** — see D-049. **Phase 13
 (progression-gated character unlocks, swipe-carousel character select, and
 a chest economy with a persistent gem wallet) is built, on-device
-verification pending** — see D-055. This is real, ongoing post-demo work
-now, not speculative scope;
+verification pending** — see D-055. **The Warden's own `AttackBehavior`
+(TASKS 8.3's last open sub-item — closes the CLAUDE.md §4.12 "every
+character has a distinct kit" goal) is built, on-device verification
+pending** — see D-056. This is real, ongoing post-demo work now, not
+speculative scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
 The Backlog is still binding for what hasn't been explicitly asked for — keep
@@ -168,7 +171,7 @@ ArenaDemo/                    <- repo root, open this in your editor
             ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling; addToWorld/addToHud split — D-040.
             │                              //   Split from ~820 lines (D-045/D-048): asset loading moved to game_assets.dart
             ├── game_assets.dart           // GameAssets — every SpriteAnimation/Sprite, loaded once, held by ArenaGame — D-045/D-048
-            ├── attack_behavior.dart       // AttackBehavior (+ onEquipped hook) + ProjectileAttack + KnifeAttack + SpiralFireAttack — D-024/D-029/D-034/D-036
+            ├── attack_behavior.dart       // AttackBehavior (+ onEquipped hook) + ProjectileAttack + KnifeAttack + SpiralFireAttack + WardenSlamAttack — D-024/D-029/D-034/D-036/D-056
             ├── components/
             │   ├── player.dart              // takeDamage applies Defence Crystal resistance + blood-impact VFX (D-033/D-049); heal() for potions (D-043); free movement, no bounds clamp (D-040)
             │   ├── enemy.dart              // hp/contactDamage scaled by level at spawn (D-026); implements Damageable (D-042)
