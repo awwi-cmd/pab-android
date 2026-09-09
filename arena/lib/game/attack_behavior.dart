@@ -261,3 +261,81 @@ class SpiralFireAttack extends AttackBehavior {
     player.playFire();
   }
 }
+
+/// The Warden's kit (TASKS 8.3, DECISIONS D-056): "Ground Slam" — no new art,
+/// built from what the character sheet + shared VFX already had. Unlike
+/// every other kit here it isn't a projectile at all: a short-range AoE hit
+/// centered on the player, damaging and knocking back every
+/// [Damageable] caught inside the radius (same [allWithinRange] shape
+/// `AuraComponent` uses for its tick, but a single instant burst on the
+/// normal attack-cooldown loop instead of a DOT). Fits the VIT-heavy stat
+/// line (`kCharacters`'s Warden: 9 VIT) — trades the ranged cast every other
+/// kit gets for standing in the middle of a cluster and hitting all of it at
+/// once, with a bigger shove than a single-target hit would apply.
+///
+/// Visual reuses `fire` (already loaded for every character, DECISIONS
+/// D-024) for the windup/swing and the existing `explosionAnimation`
+/// (`vfx/vfx/effect_explosion2.png`, DECISIONS D-034) sized to the hit
+/// radius itself for the slam's shockwave — same "derive the VFX size from
+/// the actual gameplay radius" approach `AuraComponent` already uses,
+/// rather than a fixed width constant that could drift out of sync with the
+/// real hitbox.
+class WardenSlamAttack extends AttackBehavior {
+  const WardenSlamAttack();
+
+  /// Melee, not ranged (DECISIONS D-056) -- a fraction of the shared
+  /// attackRangePx formula, same "own multiplier on the shared base" pattern
+  /// [KnifeAttack]/[SpiralFireAttack] use.
+  static const _rangeMultiplier = 0.35;
+
+  /// -25% attack speed vs. the shared formula (tankier: hits less often,
+  /// but every hit is a multi-target burst with knockback attached).
+  static const _attackSpeedMultiplier = 0.75;
+
+  /// -15% per-hit damage vs. the shared formula, to offset it landing on
+  /// every enemy in the radius at once rather than just the nearest one.
+  static const _damageMultiplier = 0.85;
+
+  /// +50% knockback -- the Warden shoving a cluster of enemies back is the
+  /// whole point of a VIT-heavy melee tank.
+  static const _knockbackMultiplier = 1.5;
+
+  @override
+  double cooldownSeconds(StatBlock stats) =>
+      (1 / stats.attacksPerSec) / _attackSpeedMultiplier;
+
+  @override
+  void perform(ArenaGame game) {
+    final stats = game.effectiveStats;
+    final player = game.player;
+    final radiusPx = stats.attackRangePx * _rangeMultiplier;
+
+    final targets = game.damageableTargets;
+    final positions = [for (final t in targets) t.position];
+    final hitIndices = allWithinRange(player.position, positions, radiusPx);
+    if (hitIndices.isEmpty) return; // nothing in range -- no swing
+
+    final damage = (stats.damagePerHit + game.upgrades.bonusDamage) * _damageMultiplier;
+    final knockback = stats.knockbackImpulse * _knockbackMultiplier;
+    for (final index in hitIndices) {
+      final target = targets[index];
+      if (target.isDying) continue;
+      final direction = target.position - player.position;
+      // Radially outward from the player; on-top-of-player targets just
+      // skip the knockback rather than dividing by a zero-length vector.
+      if (direction.length2 > 0) {
+        direction.normalize();
+        target.applyKnockback(direction, knockback);
+      }
+      target.takeDamage(damage);
+      game.onProjectileHit(target.position.clone(), damage);
+    }
+
+    game.spawnEffect(
+      game.gameAssets.explosionAnimation,
+      player.position.clone(),
+      size: Vector2.all(radiusPx * 2),
+    );
+    player.playFire();
+  }
+}
