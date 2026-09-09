@@ -2274,6 +2274,90 @@ item since D-050.
 
 ---
 
+## D-057 — Debug end-round button, and chests pay out via a playing-card draw
+
+**Date:** 2026-09-10 · **Status:** Accepted
+**Context:** Developer's spec, one message, two asks: (1) "Create a end
+round debug button make sure it takes the points/kills/score etc." and (2)
+replace the chest reveal's gem-rarity payout with the newly-delivered
+`assets/images/cards` deck (4 suits x 13 ranks + 2 Jokers + card backs) —
+"add them instead of the reward when we open chests... make them change
+really fast randomly, stop on one at the end, make each of them reward a
+specific amount depending on the card."
+
+**Decision, debug end-round:**
+- `ArenaGame.debugEndRound()` is a thin wrapper over the existing
+  `debugDie()` — both just set `_roundEndDelay = 0`, which `update()`
+  already reads to call `_endRound()`. No new round-ending machinery: the
+  existing `_endRound()` unconditionally banks `coinsEarned`/
+  `gemsCollected`/`kills` into the persistent wallet regardless of how the
+  round ended (real death or debug), so reusing that exact path is what
+  makes "carries the points/kills/score" true, rather than something to
+  re-verify by hand.
+- Placed in Settings' DEBUG section (reached via the Pause Menu), not as a
+  second always-on-screen button next to the existing DIE (debug) one — the
+  existing "queued, plays out once you close the pause menu" shape
+  `debugGrantLevelUp` already uses fits it exactly: `debugEndRound()` is
+  called while the engine may still be paused (Settings doesn't resume it),
+  so `update()` — and therefore `_endRound()` — genuinely can't fire until
+  the player actually backs out and closes the pause menu.
+
+**Decision, chest cards:**
+- `core/economy.dart`: `kChestDeck` is a real 54-card deck built once
+  (`ChestCard(assetPath, label, gemReward)` per entry) — 4 suits x 13 ranks
+  from `kCardRanks`/`CardSuit`, plus the 2 Jokers. `rollChestCard(Random)`
+  draws one uniformly. Drawing uniformly from a real deck gives the reward
+  its odds for free (a Joker: 2/54 ≈ 3.7%, an Ace: 4/54 ≈ 7.4%, any given
+  number card: 4/54) — no separate weight table needed the way
+  `kRarityWeights` has one for the gem/coin/potion economy.
+- Reward table (`kCardRankGemValue`, first-guess placeholder like every
+  other number in this project): number cards pay face value (2-10),
+  Jack/Queen/King step up (15/20/25), Ace is the best non-Joker card (35);
+  `kJokerGemValue` (75) is the jackpot, on the deck's rarest draw. Suit is
+  purely cosmetic — value is keyed on rank alone.
+- `ChestComponent._finishOpening` now calls `rollChestCard` instead of
+  `rollChestGems` and hands the single `ChestCard` to
+  `ArenaGame.onChestOpened`, which credits `card.gemReward` into
+  `gemsCollected` immediately, same "banked the moment the chest finishes
+  opening, revealed after" ordering D-055 already used. The reveal overlay
+  is purely cosmetic playback of an already-decided result — the spin never
+  has a chance to land on anything but the pre-rolled card, so there's no
+  risk of the animation and the actual payout disagreeing.
+- `_ChestRevealOverlay` (`arena_screen.dart`) is now a `StatefulWidget`: 22
+  flicker steps through a random `kChestDeck` card each, `Timer`-driven,
+  per-step delay ramping 45ms → 260ms (`_minStepMs`/`_maxStepMs`, an
+  ease-out quadratic) so it reads as a slot-reel genuinely decelerating into
+  its stop rather than just cutting off — "change really fast randomly,
+  stop on one at the end," the developer's literal spec. The real card is
+  never shown until the very last step. CONTINUE is disabled
+  (`onPressed: null`) until the spin finishes, so the popup can't be
+  dismissed before the payout is actually visible.
+- `pubspec.yaml` gained one `assets/` entry per suit folder plus `Joker/`
+  and `Back Cards/` (the literal folder name, space included — Flutter's
+  asset declarations handle it fine) — `Back Cards/` isn't actually used by
+  the reveal (cards render face-up throughout, no flip), declared anyway
+  since it shipped with the rest and costs nothing idle.
+
+**Because:** Reusing `debugDie()`'s exact path for the new button is the
+only way "make sure it takes the points/kills/score" is actually
+guaranteed rather than asserted — new code duplicating that bookkeeping
+would be a second place for it to drift out of sync with a real death. A
+real deck (vs. inventing a new N-tier reward table) gives natural,
+legible odds for free and reuses art delivered specifically for this.
+
+**Consequences:** `rollChestGems`/`kChestMinGems`/`kChestMaxGems` are gone
+— chests no longer roll a *group* of gems, they roll one card. Any future
+code wanting chest odds/payouts reaches for `kChestDeck`/`rollChestCard`,
+not the old function. `flutter analyze` clean, `flutter test` 95/95 (3 new,
+replacing the 3 old `rollChestGems` cases — `economy_test.dart`'s
+`kChestDeck`/`rollChestCard` groups), `flutter build apk --debug` succeeds.
+On-device verification (does the debug button actually end the round with
+correct numbers, does the spin read as intentional and not just chaotic
+flicker, does the final card match the payout) is the developer's to run,
+same standing rule since D-050.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

@@ -47,8 +47,10 @@ a chest economy with a persistent gem wallet) is built, on-device
 verification pending** — see D-055. **The Warden's own `AttackBehavior`
 (TASKS 8.3's last open sub-item — closes the CLAUDE.md §4.12 "every
 character has a distinct kit" goal) is built, on-device verification
-pending** — see D-056. This is real, ongoing post-demo work now, not
-speculative scope;
+pending** — see D-056. **A debug end-round button (Settings' debug section)
+and chest rewards drawn from a real playing-card deck instead of a
+gem-rarity group are built, on-device verification pending** — see D-057.
+This is real, ongoing post-demo work now, not speculative scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
 The Backlog is still binding for what hasn't been explicitly asked for — keep
@@ -140,6 +142,7 @@ ArenaDemo/                    <- repo root, open this in your editor
     │   │   │                            //   anima — 9x7 grid PNGs — D-032/D-033/D-034/D-035/D-042
     │   │   ├── consumables/            // gems/money/potions.png, 5 rarity cols x N anim rows (D-043)
     │   │   ├── ui/                     // currency-counter.png (round-over "big red coin", D-043)
+    │   │   ├── cards/                  // real 52-card deck + 2 Jokers + backs, chest reveal draw (D-057)
     │   │   └── scenes/                // floor tile variants + border tile (D-023)
     │   └── audio/
     │       └── core/                  // sfx-explosion.wav, sfx-you-died.wav (D-044)
@@ -153,7 +156,7 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   ├── game_rules.dart    // pure gameplay math (targeting, spawn decay, knockback,
         │   │                      //   enemy/boss level-scaling D-026/D-042, randomPerimeterPoint D-041)
         │   ├── progression.dart   // XP curve, UpgradeKind (Aura + Mirror/Ray/Thunder/Crystal), PlayerUpgrades — D-025/D-027/D-049
-        │   ├── economy.dart       // ItemRarity + gem/coin/potion/chest-gem value tables — D-043/D-055
+        │   ├── economy.dart       // ItemRarity + gem/coin/potion value tables; kChestDeck/rollChestCard (54-card chest reward) — D-043/D-057
         │   └── meta_progression.dart // MetaStat (STR/VIT/DEX/INT/CORRUPTION), coins+gems+lifetimeKills wallet, SharedPreferences I/O — D-047/D-055
         ├── data/
         │   └── characters.dart    // CharacterDef list; unlockKillThreshold gates slots 2-4 — D-028/D-055

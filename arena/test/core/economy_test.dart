@@ -75,25 +75,49 @@ void main() {
     });
   });
 
-  group('rollChestGems (DECISIONS D-055)', () {
-    test('count is always within the min/max range', () {
-      final random = Random(3);
-      for (var i = 0; i < 500; i++) {
-        final gems = rollChestGems(random);
-        expect(gems.length, greaterThanOrEqualTo(kChestMinGems));
-        expect(gems.length, lessThanOrEqualTo(kChestMaxGems));
+  group('kChestDeck (DECISIONS D-057)', () {
+    test('is a full 52-card deck plus 2 Jokers', () {
+      expect(kChestDeck.length, 54);
+    });
+
+    test('every entry has a positive gem reward and a real asset path', () {
+      for (final card in kChestDeck) {
+        expect(card.gemReward, greaterThan(0));
+        expect(card.assetPath, startsWith('assets/images/cards/'));
       }
     });
 
-    test('every gem is a real rarity tier', () {
-      final random = Random(8);
-      for (final rarity in rollChestGems(random)) {
-        expect(ItemRarity.values, contains(rarity));
+    test('number cards pay their face value', () {
+      final two = kChestDeck.firstWhere((c) => c.label == '2 of Clubs');
+      final ten = kChestDeck.firstWhere((c) => c.label == '10 of Spades');
+      expect(two.gemReward, 2);
+      expect(ten.gemReward, 10);
+    });
+
+    test('an Ace pays more than any number card, a Joker pays the most', () {
+      final ace = kChestDeck.firstWhere((c) => c.label == 'Ace of Hearts');
+      final numberCards = kChestDeck.where((c) => c.label.startsWith(RegExp(r'[0-9]')));
+      for (final card in numberCards) {
+        expect(ace.gemReward, greaterThan(card.gemReward));
+      }
+      final jokers = kChestDeck.where((c) => c.label == 'Joker');
+      expect(jokers, hasLength(2));
+      for (final joker in jokers) {
+        expect(joker.gemReward, greaterThan(ace.gemReward));
+      }
+    });
+  });
+
+  group('rollChestCard (DECISIONS D-057)', () {
+    test('always returns a card from the deck', () {
+      final random = Random(3);
+      for (var i = 0; i < 500; i++) {
+        expect(kChestDeck, contains(rollChestCard(random)));
       }
     });
 
     test('is deterministic for a given seed', () {
-      expect(rollChestGems(Random(12)), rollChestGems(Random(12)));
+      expect(rollChestCard(Random(12)), rollChestCard(Random(12)));
     });
   });
 

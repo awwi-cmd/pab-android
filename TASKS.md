@@ -751,8 +751,9 @@ than guessed (DECISIONS D-055).*
       `spawnExplosionEffect` (SFX included) 0.35s later, swapping to the
       real `chest_01`-`chest_12` 12-file opening animation
       (`loadFileSequenceAnimation`, new in `sheet_loader.dart`) at the same
-      moment. Rolls 3-6 gems (`rollChestGems`, `core/economy.dart`) into
-      the same round-scoped `gemsCollected` Round Over already shows.
+      moment. Rolled 3-6 gems (`rollChestGems`) into `gemsCollected` —
+      **superseded by 14.2 (DECISIONS D-057):** the payout is now a single
+      playing-card draw (`rollChestCard`), not a gem-count roll.
 - [x] **13.4** Persistent gem wallet + ChestReveal popup —
       `MetaProgression.gems`/`addGems`, same shape as coins, credited at
       round-over. New `ChestReveal` Flame overlay (4th one, alongside
@@ -760,7 +761,10 @@ than guessed (DECISIONS D-055).*
       reveal of gems & gem count," genuinely pausing the round, grouped by
       rarity. `ArenaGame._afterMenuClosed()` generalizes the level-up
       chaining logic into a 3-way priority (level-up, then chest reveal,
-      then actually resume) so it can't collide with either.
+      then actually resume) so it can't collide with either. **The reveal's
+      own content (grouped-by-rarity gem list) is superseded by 14.2** — the
+      overlay itself (the popup, its pause/resume wiring, its place in the
+      priority chain) is untouched.
 - [x] **13.5** `flutter analyze` clean, `flutter test` 92/92 (7 new —
       `test/data/characters_test.dart`'s 4 `isUnlockedFor`/`kCharacters`
       cases, `economy_test.dart`'s 3 `rollChestGems` cases), `flutter build
@@ -782,6 +786,63 @@ than guessed (DECISIONS D-055).*
 select screen never shows more than one character idle-animating at once,
 and chests spawn, open, and pay out gems into a wallet that survives to the
 next round.
+
+---
+
+## Phase 14 — Debug end-round button, card-based chest reveal
+*Goal: two developer asks in one message — a dedicated debug control to end
+a round from the pause menu (distinct from the always-on-screen DIE button)
+verified to carry kills/score/coins/gems through correctly, and replacing
+the chest reveal's gem-rarity-group payout with a real playing-card draw
+(`assets/images/cards`, delivered pre-session) that spins fast and settles
+on one card, each card paying a specific amount (DECISIONS D-057).*
+
+- [x] **14.1** `ArenaGame.debugEndRound()` — Settings' existing DEBUG
+      section (reached via Pause Menu, alongside the god-mode toggle and
+      GRANT LEVEL UP), same "queued, plays out once you close the pause
+      menu" shape `debugGrantLevelUp` already uses (calling it while paused
+      can't run `update()`, so it can't fire until the menu actually
+      closes/resumes). Internally identical to the existing `debugDie()` —
+      both just set `_roundEndDelay = 0`, read by `update()`'s existing
+      check, which calls the same `_endRound()` every real death does. That
+      unconditionally banks `coinsEarned`/`gemsCollected`/`kills` into the
+      persistent wallet (D-047/D-055) regardless of how the round ended, so
+      "make sure it takes the points/kills/score" needed no new bookkeeping
+      — reusing the proven path *is* the guarantee.
+- [x] **14.2** Chest reveal replaced with a card draw (DECISIONS D-057) —
+      `core/economy.dart`: `kChestDeck`, a real 52-card deck (4 suits x 13
+      ranks, `assets/images/cards/<Suit>/<Rank>.png`) plus 2 Jokers, 54
+      cards total; `rollChestCard` draws one uniformly (natural odds for
+      free — a Joker is 2/54, an Ace 4/54 — no separate weight table).
+      Reward is per-rank (`kCardRankGemValue`: 2-10 face value, Jack/Queen/
+      King 15/20/25, Ace 35) or the Joker jackpot (`kJokerGemValue` 75) —
+      suit is cosmetic. `ChestComponent._finishOpening` rolls the card up
+      front (`rollChestCard`) and hands it to `ArenaGame.onChestOpened`,
+      which credits `card.gemReward` into `gemsCollected` immediately — the
+      ChestReveal overlay's spin is a reveal *animation* of an
+      already-decided result, not a live roll. `_ChestRevealOverlay`
+      rewritten as a `StatefulWidget`: 22 flicker steps through random
+      `kChestDeck` cards, per-step delay ramping 45ms → 260ms (ease-out,
+      slot-reel deceleration) before landing on the real card; CONTINUE is
+      disabled until the spin actually finishes.
+- [x] **14.3** `flutter analyze` clean, `flutter test` 95/95 (3 new —
+      `economy_test.dart`'s `kChestDeck`/`rollChestCard` cases replacing the
+      old `rollChestGems` ones), `flutter build apk --debug` succeeds (new
+      `assets/images/cards/<Suit>/` folders declared in `pubspec.yaml`,
+      including the space in `Back Cards/` — unused by the reveal itself,
+      declared anyway since it was delivered alongside the rest).
+- [ ] **14.4** On-device verification — **developer** (CLAUDE.md §2): the
+      Settings END ROUND button actually ends the round once the pause menu
+      closes, and Round Over shows the same kills/coins/gems the round
+      actually had (not zeroed/stale); opening a chest spins visibly fast
+      then audibly/visually settles on one card, not a jarring hard stop;
+      the card shown at the end matches the "+N gems" payout text; CONTINUE
+      is unpressable mid-spin; the gem total on character select reflects
+      the card's actual payout after the round ends.
+
+**Exit criterion:** a debug round-end from the pause menu produces the same
+Round Over numbers a real death would; opening a chest in the arena spins
+through cards and settles on one whose payout matches what gets credited.
 
 ---
 

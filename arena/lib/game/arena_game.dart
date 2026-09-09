@@ -142,14 +142,17 @@ class ArenaGame extends FlameGame {
   /// as [potionCount].
   int chestCount = 0;
 
-  /// The most recently opened chest's gem haul, shown by the ChestReveal
+  /// The most recently opened chest's reward card, shown by the ChestReveal
   /// overlay (`ArenaScreen`) until [closeChestReveal] is called — `null`
   /// when nothing is pending. Deferred behind [_maybeShowChestReveal]'s
   /// gate the same way a level-up is (DECISIONS D-025's `_pendingLevelUps`
   /// pattern), so a chest that finishes opening while the Pause Menu or a
   /// level-up popup is already showing doesn't fight it for the screen.
-  List<ItemRarity>? _pendingChestGems;
-  List<ItemRarity>? get pendingChestGems => _pendingChestGems;
+  /// Holds the already-rolled [ChestCard] (DECISIONS D-057) — the overlay's
+  /// spin animation is cosmetic flicker leading up to this, not a live roll,
+  /// so the result has to exist before the spin ever starts.
+  ChestCard? _pendingChestCard;
+  ChestCard? get pendingChestCard => _pendingChestCard;
 
   /// Exposed for [AttackBehavior]s (`attack_behavior.dart`) to build
   /// projectiles from — the animation itself isn't per-character yet, but
@@ -281,7 +284,7 @@ class ArenaGame extends FlameGame {
     coinsEarned = 0;
     potionCount = 0;
     chestCount = 0;
-    _pendingChestGems = null;
+    _pendingChestCard = null;
 
     addToWorld(ArenaFloor());
     player = PlayerComponent(
@@ -578,7 +581,7 @@ class ArenaGame extends FlameGame {
       _maybeShowNextLevelUp();
       return;
     }
-    if (_pendingChestGems != null) {
+    if (_pendingChestCard != null) {
       _maybeShowChestReveal();
       return;
     }
@@ -857,20 +860,21 @@ class ArenaGame extends FlameGame {
   }
 
   /// Called by [ChestComponent] once its opening sequence finishes
-  /// (DECISIONS D-055). The gems fold into the same round-scoped
-  /// [gemsCollected] Round Over already shows (chests and enemy drops
-  /// aren't tracked separately); the reveal popup itself is deferred behind
+  /// (DECISIONS D-057, superseding D-055's flat gem-group reward). The
+  /// card's `gemReward` folds into the same round-scoped [gemsCollected]
+  /// Round Over already shows (chests and enemy drops aren't tracked
+  /// separately); the reveal popup itself is deferred behind
   /// [_maybeShowChestReveal]'s gate, same as a level-up's, so it can't pop
   /// up on top of the Pause Menu or Level Up.
-  void onChestOpened(List<ItemRarity> gems) {
-    gemsCollected += gems.length;
+  void onChestOpened(ChestCard card) {
+    gemsCollected += card.gemReward;
     chestCount--;
-    _pendingChestGems = gems;
+    _pendingChestCard = card;
     _maybeShowChestReveal();
   }
 
   void _maybeShowChestReveal() {
-    if (roundOver.value || _pendingChestGems == null) return;
+    if (roundOver.value || _pendingChestCard == null) return;
     if (overlays.isActive('PauseMenu') ||
         overlays.isActive('LevelUp') ||
         overlays.isActive('ChestReveal')) {
@@ -884,7 +888,7 @@ class ArenaGame extends FlameGame {
   /// Called by the ChestReveal overlay's own dismiss button.
   void closeChestReveal() {
     overlays.remove('ChestReveal');
-    _pendingChestGems = null;
+    _pendingChestCard = null;
     _afterMenuClosed();
   }
 
@@ -908,11 +912,29 @@ class ArenaGame extends FlameGame {
 
   /// Debug-only stand-in for HP <= 0 (PRD §3: the arena's only real exit is
   /// death) — jumps straight to round end without waiting on a death anim,
-  /// since the player box hasn't necessarily taken lethal damage.
+  /// since the player box hasn't necessarily taken lethal damage. Also the
+  /// implementation behind [debugEndRound] below — both are "skip straight
+  /// to Round Over," just reachable from two different debug surfaces.
   void debugDie() {
     if (roundOver.value || _roundEndDelay != null) return;
     _roundEndDelay = 0;
   }
+
+  /// Debug-only "end round now" button (Settings' debug section, reachable
+  /// from the Pause Menu — developer's ask: a dedicated end-round control,
+  /// separate from the always-on-screen DIE button, that's easy to verify
+  /// carries the round's actual kills/score/coins/gems through). Same exact
+  /// path as [debugDie] — `_roundEndDelay = 0` is read by [update] the next
+  /// tick and calls [_endRound], which unconditionally banks
+  /// `coinsEarned`/`gemsCollected`/`kills` into the persistent wallet
+  /// (DECISIONS D-047/D-055) regardless of how the round ended — so nothing
+  /// extra is needed here to make those numbers carry over correctly.
+  /// Called while the engine is still paused (Settings is reached from the
+  /// Pause Menu without resuming first) — that's fine, [update] just won't
+  /// run (and so [_endRound] won't fire) until the player backs out to
+  /// Resume/closes the pause menu, same "queued, plays out once the menu
+  /// closes" shape [debugGrantLevelUp] already uses for its own popup.
+  void debugEndRound() => debugDie();
 
   void _endRound() {
     roundOver.value = true;
