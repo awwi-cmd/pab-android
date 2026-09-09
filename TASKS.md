@@ -846,6 +846,75 @@ through cards and settles on one whose payout matches what gets credited.
 
 ---
 
+## Phase 15 — Chest reveal polish, and a batch of drop-economy/VFX tunes
+*Goal: fix a real overflow bug in the chest reveal, add the shuffle lead-in
+and landing bounce it was missing, add main-menu-reachable currency debug
+tools, and land a batch of small, independent tuning asks across the gem
+economy, the boss's teleport VFX, Aura, and Ultimate Mirror (DECISIONS
+D-058/D-059).*
+
+- [x] **15.1** Chest reveal overflow fix — `_ChestRevealOverlay`'s content
+      wrapped in `SingleChildScrollView` (was `Padding` directly under
+      `Center`), so a short viewport scrolls instead of overflowing. Real
+      bug, not a tune.
+- [x] **15.2** Chest reveal: card-back shuffle lead-in (`_shuffling` phase,
+      8 steps @ 70ms through the 2 `Back Cards/` assets) before the
+      existing D-057 face-card spin, and a jump/land bounce
+      (`AnimationController` + `TweenSequence`, ease-out up then
+      bounce-out down) once the spin lands on the real card.
+- [x] **15.3** Currency debug tools reachable from Settings off the main
+      menu, not just the arena's Pause Menu — `MetaProgressionRepository.
+      debugAdjustCoins`/`debugAdjustGems`/`debugResetWallet`; Settings'
+      DEBUG section now loads/shows the wallet unconditionally, with the
+      existing `ArenaGame`-only tools (god mode, grant level up, end round)
+      still gated on a live game underneath the same header.
+- [x] **15.4** Gem drop chance -25% on top of D-046's existing -80%
+      (`kGemBaseDropChance`/`kGemDropChancePerLevel`, `core/economy.dart`).
+- [x] **15.5** Gems float in place same as potions — `GemComponent` reuses
+      the exact sine-bob `PotionComponent` already has; the driving
+      constants renamed `kItemFloatAmplitudePx`/`kItemFloatPeriodSec`
+      (were `kPotionFloat*`) since both pickups now share them.
+- [x] **15.6** Boss's teleport `effect_anima` flourish -40% size
+      (`kBossAnimaWidthPx`, new constant — `kAnimaWidthPx` itself untouched
+      since the chest-opening sequence also plays it and wasn't asked to
+      change).
+- [x] **15.7** Aura shield -25% radius (`UpgradeAmounts.auraRadiusPx`,
+      also the actual damage radius, not just the visual) and -20%
+      brightness (new `_brightness` constant folded into
+      `AuraComponent`'s existing contrast color matrix).
+- [x] **15.8** Ultimate Mirror: multiple mirrors now desync their
+      active/cooldown cycle by 0.5s per spawn order
+      (`UpgradeAmounts.mirrorStaggerDelaySec`, `MirrorComponent.
+      staggerDelaySec`); each mirror also rolls a fire axis (horizontal or
+      vertical) at spawn and re-rolls it every reactivation, instead of
+      always firing left/right.
+- [x] **15.9** Ultimate Mirror's bolts never expire/despawn —
+      `ProjectileComponent.neverExpire` (new, default `false`, every other
+      projectile unaffected) skips the max-range/out-of-bounds despawn
+      checks entirely; only an actual hit removes one.
+- [x] **15.10** `flutter analyze` clean, `flutter test` 95/95 (unchanged —
+      every change in this phase is a tuning constant or component-level
+      behavior, no new `core/` formula), `flutter build apk --debug`
+      succeeds.
+- [ ] **15.11** On-device verification — **developer** (CLAUDE.md §2): the
+      chest reveal no longer overflows on the real device, the back-card
+      shuffle reads as a distinct lead-in and the jump/land reads as
+      landing (not a jitter); the main-menu Settings currency buttons
+      actually move the wallet and Character Select reflects it; gems
+      visibly bob like potions; the boss's teleport flourish reads smaller
+      without looking wrong; the Aura ring reads smaller/dimmer without
+      disappearing or feeling useless; with 2-3 mirrors up, they visibly
+      fall out of sync and sometimes fire vertically; mirror bolts really
+      never poof, and a long round with several mirrors up doesn't visibly
+      tank performance from the growing live-bolt count.
+
+**Exit criterion:** the chest reveal has no layout bugs and reads as a
+complete shuffle→spin→land→reveal sequence; the currency debug tools work
+from both Settings entry points; every tuning number above lands the way
+its ask described on an actual device.
+
+---
+
 ## Backlog (post-demo — do not start)
 
 Kept here so ideas have somewhere to go that isn't the current sprint.

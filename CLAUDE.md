@@ -50,7 +50,11 @@ character has a distinct kit" goal) is built, on-device verification
 pending** — see D-056. **A debug end-round button (Settings' debug section)
 and chest rewards drawn from a real playing-card deck instead of a
 gem-rarity group are built, on-device verification pending** — see D-057.
-This is real, ongoing post-demo work now, not speculative scope;
+**Chest reveal polish (overflow fix, card-back shuffle lead-in, jump/land
+bounce) plus main-menu-reachable currency debug tools and a batch of
+gem-drop/gem-float/boss-anima/Aura/Ultimate-Mirror tunes are built,
+on-device verification pending** — see D-058/D-059. This is real, ongoing
+post-demo work now, not speculative scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
 The Backlog is still binding for what hasn't been explicitly asked for — keep
@@ -157,13 +161,13 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   │                      //   enemy/boss level-scaling D-026/D-042, randomPerimeterPoint D-041)
         │   ├── progression.dart   // XP curve, UpgradeKind (Aura + Mirror/Ray/Thunder/Crystal), PlayerUpgrades — D-025/D-027/D-049
         │   ├── economy.dart       // ItemRarity + gem/coin/potion value tables; kChestDeck/rollChestCard (54-card chest reward) — D-043/D-057
-        │   └── meta_progression.dart // MetaStat (STR/VIT/DEX/INT/CORRUPTION), coins+gems+lifetimeKills wallet, SharedPreferences I/O — D-047/D-055
+        │   └── meta_progression.dart // MetaStat (STR/VIT/DEX/INT/CORRUPTION), coins+gems+lifetimeKills wallet; debugAdjustCoins/debugAdjustGems/debugResetWallet — D-047/D-055/D-059
         ├── data/
         │   └── characters.dart    // CharacterDef list; unlockKillThreshold gates slots 2-4 — D-028/D-055
         ├── ui/
         │   ├── screens/
         │   │   ├── main_menu_screen.dart
-        │   │   ├── settings_screen.dart        // + debug section when opened from pause (D-025)
+        │   │   ├── settings_screen.dart        // currency debug always shown; god mode/grant-level-up/end-round only when opened from pause (D-025/D-059)
         │   │   ├── credits_screen.dart
         │   │   ├── character_select_screen.dart // swipe carousel, one character at a time; locked slots show a bar-fill unlock panel — D-055
         │   │   ├── shop_screen.dart       // empty placeholder, back button only — D-047
@@ -180,14 +184,14 @@ ArenaDemo/                    <- repo root, open this in your editor
             │   ├── enemy.dart              // hp/contactDamage scaled by level at spawn (D-026); implements Damageable (D-042)
             │   ├── damageable.dart          // shared hit-detection interface, enemy + boss — D-042
             │   ├── boss.dart                // idle/walk/fire/death state machine, teleport-on-approach — D-042
-            │   ├── projectile.dart          // _outOfBounds is camera.visibleWorldRect-relative (D-040); tint (D-042)/targetsPlayer (D-051)/maxBounces (D-052) params
+            │   ├── projectile.dart          // _outOfBounds is camera.visibleWorldRect-relative (D-040); tint (D-042)/targetsPlayer (D-051)/maxBounces (D-052)/neverExpire (D-059) params
             │   ├── projectile_poof.dart     // shrink+drift despawn flourish, shared by every projectile type — D-053
             │   ├── knife_projectile.dart    // Bruiser kit: pierces, clean->bloody sprite swap — D-029
             │   ├── spiral_fire_projectile.dart // Skirmisher kit: orbiting yin-yang pair — D-034
             │   ├── tracking_effect.dart      // VFX glued to a moving target, optional fade-out — D-034/D-035/D-036
             │   ├── spawner.dart              // camera-relative spawn ring + straggler culling — D-041
-            │   ├── gem.dart                  // world pickup, self-collects near the player — D-043
-            │   ├── potion.dart               // world pickup + float bob, heals on touch — D-043
+            │   ├── gem.dart                  // world pickup, float bob, self-collects near the player — D-043/D-059
+            │   ├── potion.dart               // world pickup + float bob, heals on touch — D-043/D-059
             │   ├── potion_spawner.dart       // periodic random-area drop — D-043
             │   ├── chest.dart                // world chest: anima+explosion then chest_01-12 opening sequence — D-055
             │   ├── chest_spawner.dart        // periodic random-area drop, same shape as potion_spawner.dart — D-055
@@ -195,7 +199,7 @@ ArenaDemo/                    <- repo root, open this in your editor
             │   ├── damage_text.dart
             │   ├── arena_floor.dart          // endless tiling from camera.visibleWorldRect, no border — D-041
             │   ├── aura.dart                // Aura skill: shield-ring visual, area-tick damage — D-027/D-032
-            │   ├── mirror.dart              // Ultimate Mirror skill: stationary turret, fires both sides — D-049
+            │   ├── mirror.dart              // Ultimate Mirror skill: cycling turret, staggered per-mirror phase, random fire axis, immortal bolts — D-049/D-050/D-059
             │   ├── ray_beam.dart            // Projectile Ray skill: visual only, hit-test lives in ArenaGame — D-049
             │   └── defence_crystal.dart     // Defence Crystal skill: figure-8 orbit visual only, stat bonus on PlayerUpgrades — D-049
             ├── input/

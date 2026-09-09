@@ -42,6 +42,7 @@ class ProjectileComponent extends SpriteAnimationComponent
     Color? tint,
     this.excludeSelf,
     this.targetsPlayer = false,
+    this.neverExpire = false,
     int maxBounces = 0,
   }) : _direction = direction.normalized(),
        _bouncesLeft = maxBounces,
@@ -72,6 +73,15 @@ class ProjectileComponent extends SpriteAnimationComponent
   // projectile" (2026-09-09).
   final Damageable? excludeSelf;
   final bool targetsPlayer;
+
+  /// `true` skips both the [maxRangePx] and [_outOfBounds] despawn checks
+  /// entirely (DECISIONS D-059, developer's call: Ultimate Mirror's bolts
+  /// should "not expire and not despawn") — the projectile just keeps
+  /// flying in a straight line forever, only ever removed by actually
+  /// hitting something. `false` (default, every other existing use) is
+  /// unchanged. Not combined with [maxBounces] anywhere yet — bouncing only
+  /// triggers off the same out-of-bounds check this flag skips.
+  final bool neverExpire;
   int _bouncesLeft;
 
   double _traveled = 0;
@@ -88,16 +98,18 @@ class ProjectileComponent extends SpriteAnimationComponent
     position.add(_scratch);
     _traveled += step;
 
-    if (_traveled >= maxRangePx) {
-      _expire();
-      return;
-    }
-    if (_outOfBounds()) {
-      if (_bouncesLeft <= 0) {
+    if (!neverExpire) {
+      if (_traveled >= maxRangePx) {
         _expire();
         return;
       }
-      _bounce();
+      if (_outOfBounds()) {
+        if (_bouncesLeft <= 0) {
+          _expire();
+          return;
+        }
+        _bounce();
+      }
     }
 
     if (targetsPlayer) {

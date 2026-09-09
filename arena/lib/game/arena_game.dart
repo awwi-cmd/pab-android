@@ -613,6 +613,10 @@ class ArenaGame extends FlameGame {
       final mirror = MirrorComponent(
         startPosition: randomVisiblePoint(_random, camera.visibleWorldRect),
         animation: gameAssets.mirrorAnimation,
+        // DECISIONS D-059 ("spawn not in sync, by 0.5 seconds delay"): each
+        // new mirror's cycle starts half a second further behind the
+        // previous one, by spawn order.
+        staggerDelaySec: _mirrors.length * UpgradeAmounts.mirrorStaggerDelaySec,
       );
       _mirrors.add(mirror);
       addToWorld(mirror);

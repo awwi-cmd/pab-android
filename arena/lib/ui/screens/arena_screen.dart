@@ -596,14 +596,15 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay> {
 }
 
 /// Chest opening's "fancy popup and reveal of gems & gem count" (DECISIONS
-/// D-057, superseding D-055's flat gem-group reward) — a Flame overlay like
-/// LevelUp/PauseMenu, so the world stays visible (dimmed) behind it and the
-/// round is genuinely paused for the reveal. The actual reward
+/// D-057/D-058, superseding D-055's flat gem-group reward) — a Flame overlay
+/// like LevelUp/PauseMenu, so the world stays visible (dimmed) behind it and
+/// the round is genuinely paused for the reveal. The actual reward
 /// (`ArenaGame.pendingChestCard`) is already rolled by the time this opens
 /// (`ChestComponent`/`ArenaGame.onChestOpened`); what this widget owns is
-/// purely the reveal *animation* — flicker through random cards from the
-/// deck really fast, easing out to a stop on the real card (developer's
-/// literal spec), then show what it actually pays.
+/// purely the reveal *animation*: a quick card-back shuffle, transitioning
+/// into flicker through random face-up cards from the deck really fast,
+/// easing out to a stop on the real card, which then does a little jump/land
+/// (DECISIONS D-058) before showing what it actually pays.
 class _ChestRevealOverlay extends StatefulWidget {
   const _ChestRevealOverlay({required this.game});
 
@@ -613,8 +614,21 @@ class _ChestRevealOverlay extends StatefulWidget {
   State<_ChestRevealOverlay> createState() => _ChestRevealOverlayState();
 }
 
-class _ChestRevealOverlayState extends State<_ChestRevealOverlay> {
+class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
+    with SingleTickerProviderStateMixin {
   static final Random _random = Random();
+
+  /// DECISIONS D-058: "add another animation before the current one, that
+  /// goes between back cards, and after that transition to this one" — a
+  /// short shuffle through the 2 card backs before the real face-card spin
+  /// ever starts, same flat-rate flicker the face spin's own fastest steps
+  /// use (no ease-out here, it's a lead-in beat, not the landing).
+  static const _shuffleSteps = 8;
+  static const _shuffleStepMs = 70;
+  static const _backAssetPaths = [
+    'assets/images/cards/Back Cards/Blue.png',
+    'assets/images/cards/Back Cards/Red.png',
+  ];
 
   /// DECISIONS D-057: "change really fast randomly, stop on one at the
   /// end" — [_spinSteps] flicker steps through a random deck card each,
@@ -628,24 +642,62 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay> {
   static const _maxStepMs = 260;
 
   late final ChestCard _finalCard = widget.game.pendingChestCard!;
-  late ChestCard _displayed = _randomFlickerCard();
-  int _step = 0;
+  String _displayedAsset = _backAssetPaths.first;
+  bool _shuffling = true;
   bool _spinning = true;
+  int _step = 0;
   Timer? _timer;
+
+  /// DECISIONS D-058: a small jump-then-land bounce plays once the spin
+  /// actually lands on [_finalCard] — a quick hop up (`Curves.easeOut`)
+  /// followed by a bouncy drop back to rest (`Curves.bounceOut`), not a
+  /// symmetric tween, so it reads as landing rather than floating.
+  late final AnimationController _landController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 520),
+  );
+  late final Animation<double> _jumpOffset = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(begin: 0.0, end: -22.0).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 35,
+    ),
+    TweenSequenceItem(
+      tween: Tween(begin: -22.0, end: 0.0).chain(CurveTween(curve: Curves.bounceOut)),
+      weight: 65,
+    ),
+  ]).animate(_landController);
 
   @override
   void initState() {
     super.initState();
-    _scheduleNextStep();
+    _scheduleShuffleStep();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _landController.dispose();
     super.dispose();
   }
 
   ChestCard _randomFlickerCard() => kChestDeck[_random.nextInt(kChestDeck.length)];
+
+  void _scheduleShuffleStep() {
+    _step++;
+    if (_step > _shuffleSteps) {
+      // Shuffle's done -- transition straight into the real face-card spin.
+      _shuffling = false;
+      _displayedAsset = _randomFlickerCard().assetPath;
+      _step = 0;
+      _scheduleNextStep();
+      return;
+    }
+    _timer = Timer(const Duration(milliseconds: _shuffleStepMs), () {
+      if (!mounted) return;
+      setState(() => _displayedAsset = _backAssetPaths[_step % _backAssetPaths.length]);
+      _scheduleShuffleStep();
+    });
+  }
 
   void _scheduleNextStep() {
     _step++;
@@ -653,9 +705,10 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay> {
       _timer = Timer(const Duration(milliseconds: _maxStepMs), () {
         if (!mounted) return;
         setState(() {
-          _displayed = _finalCard;
+          _displayedAsset = _finalCard.assetPath;
           _spinning = false;
         });
+        _landController.forward(from: 0);
       });
       return;
     }
@@ -663,7 +716,7 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay> {
     final delayMs = _minStepMs + ((_maxStepMs - _minStepMs) * t * t).round();
     _timer = Timer(Duration(milliseconds: delayMs), () {
       if (!mounted) return;
-      setState(() => _displayed = _randomFlickerCard());
+      setState(() => _displayedAsset = _randomFlickerCard().assetPath);
       _scheduleNextStep();
     });
   }
@@ -673,7 +726,11 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay> {
     return Container(
       color: Colors.black.withValues(alpha: 0.82),
       child: Center(
-        child: Padding(
+        // DECISIONS D-058 bugfix: on a short screen the fixed-height reward
+        // slot below pushed the total past the available height ("bottom
+        // overflowed by 4.0 pixels") -- scrollable so it never can again,
+        // while still centering normally whenever it already fits.
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -688,13 +745,20 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay> {
                 ),
               ),
               const SizedBox(height: 20),
-              _ChestCardFace(card: _displayed),
+              AnimatedBuilder(
+                animation: _jumpOffset,
+                builder: (context, child) => Transform.translate(
+                  offset: Offset(0, _jumpOffset.value),
+                  child: child,
+                ),
+                child: _PlayingCardImage(assetPath: _displayedAsset),
+              ),
               const SizedBox(height: 12),
               // Fixed height so the reward text popping in doesn't shift
-              // the CONTINUE button while still spinning.
+              // the CONTINUE button while still spinning/shuffling.
               SizedBox(
                 height: 46,
-                child: _spinning
+                child: (_shuffling || _spinning)
                     ? const Text(
                         '...',
                         style: TextStyle(color: ArenaColors.textDim, fontSize: 18),
@@ -728,13 +792,13 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay> {
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: ArenaColors.accent),
                   ),
-                  // Disabled mid-spin so the popup can't be dismissed before
-                  // the real card (and its payout) has actually landed.
-                  onPressed: _spinning ? null : widget.game.closeChestReveal,
+                  // Disabled mid-shuffle/spin so the popup can't be dismissed
+                  // before the real card (and its payout) has actually landed.
+                  onPressed: (_shuffling || _spinning) ? null : widget.game.closeChestReveal,
                   child: Text(
                     'CONTINUE',
                     style: TextStyle(
-                      color: _spinning ? ArenaColors.textDim : ArenaColors.accent,
+                      color: (_shuffling || _spinning) ? ArenaColors.textDim : ArenaColors.accent,
                     ),
                   ),
                 ),
@@ -747,14 +811,16 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay> {
   }
 }
 
-/// One playing-card image (`assets/images/cards`, DECISIONS D-057), native
-/// 61x93 px, rendered flat (no flip/3D) since the spin itself is what sells
-/// the slot-machine feel — a flip animation on top of an already-fast
-/// flicker would just read as noisy.
-class _ChestCardFace extends StatelessWidget {
-  const _ChestCardFace({required this.card});
+/// One playing-card image (`assets/images/cards`, DECISIONS D-057/D-058),
+/// native 61x93 px, rendered flat (no flip/3D) since the spin itself is what
+/// sells the slot-machine feel — a flip animation on top of an already-fast
+/// flicker would just read as noisy. Takes a raw asset path rather than a
+/// [ChestCard] so the same widget renders both the shuffle phase's card
+/// backs and the spin phase's faces.
+class _PlayingCardImage extends StatelessWidget {
+  const _PlayingCardImage({required this.assetPath});
 
-  final ChestCard card;
+  final String assetPath;
 
   static const _width = 110.0;
   static const _aspect = 93 / 61;
@@ -765,7 +831,7 @@ class _ChestCardFace extends StatelessWidget {
       width: _width,
       height: _width * _aspect,
       child: Image.asset(
-        card.assetPath,
+        assetPath,
         filterQuality: FilterQuality.none, // D-011
         fit: BoxFit.fill,
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
+import '../../core/meta_progression.dart';
 import '../../core/settings.dart';
 import '../../game/arena_game.dart';
 import '../widgets/pixel_button.dart';
@@ -26,17 +27,46 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _repo = SettingsRepository();
+  final _metaRepo = MetaProgressionRepository();
   Settings? _settings;
+
+  /// DECISIONS D-059: loaded unconditionally (unlike the arena-only debug
+  /// tools below, gated on [SettingsScreenArgs.debugGame]) so the currency
+  /// debug section works from Settings off the main menu too, where no
+  /// `ArenaGame` exists to read a live wallet off of.
+  MetaProgression? _meta;
 
   @override
   void initState() {
     super.initState();
     _repo.load().then((loaded) => setState(() => _settings = loaded));
+    _loadMeta();
+  }
+
+  Future<void> _loadMeta() async {
+    final meta = await _metaRepo.load();
+    if (!mounted) return;
+    setState(() => _meta = meta);
   }
 
   Future<void> _update(Settings next) async {
     setState(() => _settings = next);
     await _repo.save(next);
+  }
+
+  Future<void> _adjustCoins(int delta) async {
+    await _metaRepo.debugAdjustCoins(delta);
+    _loadMeta();
+  }
+
+  Future<void> _adjustGems(int delta) async {
+    await _metaRepo.debugAdjustGems(delta);
+    _loadMeta();
+  }
+
+  Future<void> _resetWallet() async {
+    await _metaRepo.debugResetWallet();
+    _loadMeta();
   }
 
   @override
@@ -138,9 +168,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             onChanged: (value) => _update(settings.copyWith(showFps: value)),
           ),
-          if (debugGame != null) ...[
+          if (_meta case final meta?) ...[
             const SizedBox(height: 24),
             _SectionLabel('DEBUG'),
+            const SizedBox(height: 8),
+            Text(
+              'Coins: ${meta.coins}   Gems: ${meta.gems}',
+              style: const TextStyle(
+                color: ArenaColors.textPrimary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: PixelButton(
+                    label: '+100 COINS',
+                    onPressed: () => _adjustCoins(100),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: PixelButton(
+                    label: '-100 COINS',
+                    onPressed: () => _adjustCoins(-100),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: PixelButton(
+                    label: '+50 GEMS',
+                    onPressed: () => _adjustGems(50),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: PixelButton(
+                    label: '-50 GEMS',
+                    onPressed: () => _adjustGems(-50),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: PixelButton(
+                    label: 'RESET WALLET',
+                    onPressed: _resetWallet,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (debugGame != null) ...[
+            const SizedBox(height: 24),
             SwitchListTile(
               value: debugGame.debugGodMode,
               activeThumbColor: ArenaColors.danger,
