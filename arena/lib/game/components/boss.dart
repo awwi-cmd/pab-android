@@ -52,6 +52,19 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
   double _fireCooldownTimer = 0;
   double _contactCooldownTimer = 0;
 
+  /// The current 3-shot burst (DECISIONS D-052) — `_burstShotsRemaining >
+  /// 0` while one is in progress; `_fireCooldownTimer` above only starts
+  /// counting down again once the whole burst is spent, not between
+  /// individual shots inside it.
+  int _burstShotsRemaining = 0;
+  double _burstTimer = 0;
+
+  /// The boss's own live bolts (DECISIONS D-053, "maximum of 9 projectiles
+  /// at once") — pruned of anything no longer mounted (hit something,
+  /// expired, poofed away) each time it's checked, rather than needing
+  /// `ProjectileComponent` to call back out when it's removed.
+  final List<ProjectileComponent> _liveBolts = [];
+
   final Vector2 _scratch = Vector2.zero(); // reused every frame
 
   @override
@@ -89,7 +102,26 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
       player.takeDamage(BossStats.contactDamage * _statMultiplier);
     }
 
-    if (distance > BossStats.fireRangePx) {
+    if (_burstShotsRemaining > 0) {
+      // Mid-burst (DECISIONS D-052) -- pre-empts the walk/hold decision
+      // below entirely, same as the teleport check above pre-empts
+      // everything. Each shot re-aims fresh at wherever the player
+      // currently is, not the `toPlayer` snapshot from the top of this
+      // frame -- the player may have moved since the burst started.
+      current = BossAnim.fire;
+      _burstTimer -= dt;
+      if (_burstTimer <= 0) {
+        _burstTimer = BossStats.boltBurstIntervalSec;
+        _burstShotsRemaining--;
+        // Skip this shot outright if already at the live-bolt cap, rather
+        // than queuing/delaying it -- the burst still finishes on schedule
+        // either way, it just may fire fewer than 3 bolts on a screen
+        // that's already crowded with this boss's own shots.
+        if (_liveBoltCountBelowCap()) {
+          _fire(player.position - position);
+        }
+      }
+    } else if (distance > BossStats.fireRangePx) {
       // Too far to fire -- close the distance.
       current = BossAnim.walk;
       _scratch
@@ -105,34 +137,53 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
       _fireCooldownTimer -= dt;
       if (_fireCooldownTimer <= 0) {
         _fireCooldownTimer = BossStats.fireCooldownSec;
-        _fire(toPlayer);
+        // Starts the burst -- the first shot goes out next frame (burst
+        // timer starts at 0), not this one, keeping this branch itself
+        // simple (just "should a burst start").
+        _burstShotsRemaining = BossStats.boltBurstCount;
+        _burstTimer = 0;
       } else {
         current = BossAnim.idle;
       }
     }
   }
 
+  /// `true` if the boss can fire another bolt without going over
+  /// [BossStats.boltMaxLiveCount] (DECISIONS D-053) — prunes [_liveBolts]
+  /// of anything no longer mounted first, since that's the only signal
+  /// available that an earlier bolt is gone (hit something, ran out of
+  /// range/bounces, poofed away).
+  bool _liveBoltCountBelowCap() {
+    _liveBolts.removeWhere((bolt) => !bolt.isMounted);
+    return _liveBolts.length < BossStats.boltMaxLiveCount;
+  }
+
   void _fire(Vector2 towardPlayer) {
     if (towardPlayer.length2 == 0) return; // exactly on top of the player
     current = BossAnim.fire;
-    game.addToWorld(
-      ProjectileComponent(
-        startPosition: position.clone(),
-        direction: towardPlayer.normalized(),
-        damage: BossStats.boltDamage * _statMultiplier,
-        knockback: BossStats.boltKnockback,
-        speedPxPerS: BossStats.boltSpeedPxPerS,
-        maxRangePx: BossStats.fireRangePx * 2,
-        animation: game.boltAnimation,
-        tint: kBossBoltTint,
-        // DECISIONS D-051: checks the player, not game.damageableTargets --
-        // the bug this fixes. excludeSelf (the D-046 self-hit guard) is
-        // gone with it: it only ever mattered for the damageableTargets
-        // loop this bolt no longer runs, so self-collision is impossible
-        // by construction now, not guarded against.
-        targetsPlayer: true,
-      ),
+    final bolt = ProjectileComponent(
+      startPosition: position.clone(),
+      direction: towardPlayer.normalized(),
+      damage: BossStats.boltDamage * _statMultiplier,
+      knockback: BossStats.boltKnockback,
+      speedPxPerS: BossStats.boltSpeedPxPerS,
+      // DECISIONS D-053: the original fireRangePx*2 budget plus "5 seconds
+      // longer" worth of extra travel at the bolt's own speed.
+      maxRangePx: BossStats.boltMaxRangePx,
+      animation: game.boltAnimation,
+      tint: kBossBoltTint,
+      // DECISIONS D-051: checks the player, not game.damageableTargets --
+      // the bug this fixes. excludeSelf (the D-046 self-hit guard) is
+      // gone with it: it only ever mattered for the damageableTargets
+      // loop this bolt no longer runs, so self-collision is impossible
+      // by construction now, not guarded against.
+      targetsPlayer: true,
+      // DECISIONS D-052: bounces off the edge of the visible view instead
+      // of despawning immediately, up to boltBounceCount times.
+      maxBounces: BossStats.boltBounceCount,
     );
+    game.addToWorld(bolt);
+    _liveBolts.add(bolt);
   }
 
   /// Teleports to the mirror image of the boss's current position across

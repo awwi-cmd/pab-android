@@ -62,8 +62,50 @@ class BossStats {
   static const double fireRangePx = 260;
   static const double fireCooldownSec = 2.2;
   static const double boltDamage = 12;
-  static const double boltSpeedPxPerS = 220;
+  // 2026-09-09 tune (DECISIONS D-052, developer's call): +30% (was 220).
+  static const double boltSpeedPxPerS = 220 * 1.3;
   static const double boltKnockback = 40;
+
+  /// 3-shot burst per fire cycle, each re-aimed at the player's position at
+  /// the instant it actually fires — not the direction computed once when
+  /// the burst started — spaced by [boltBurstIntervalSec] (DECISIONS
+  /// D-052, developer's call: "shoot 3 in quick succession at player
+  /// current location"). [fireCooldownSec] above is the gap between one
+  /// whole burst ending and the next one starting, not between individual
+  /// shots.
+  static const int boltBurstCount = 3;
+  static const double boltBurstIntervalSec = 0.12;
+
+  /// How many times the bolt bounces off the edge of what's currently
+  /// visible before it actually despawns (DECISIONS D-052) — see
+  /// `ProjectileComponent.maxBounces`'s doc comment for why "the edge of
+  /// the visible view" is what "the wall" means in a world with no fixed
+  /// bounds (D-040).
+  static const int boltBounceCount = 3;
+
+  /// How many extra seconds of travel (DECISIONS D-053, developer's call:
+  /// "last 5 seconds longer") get folded into [boltMaxRangePx] below — this
+  /// project has no separate time-based projectile lifespan anywhere
+  /// (every projectile despawns on distance travelled, not a clock), so
+  /// "5 seconds longer" is converted to the equivalent extra distance at
+  /// the bolt's own (post-D-052, +30%) speed rather than adding a second,
+  /// parallel despawn mechanism just for this one bolt.
+  static const double boltExtraLifetimeSec = 5.0;
+
+  /// The bolt's actual despawn distance (`ProjectileComponent.maxRangePx`)
+  /// — the original `fireRangePx * 2` budget plus [boltExtraLifetimeSec]
+  /// converted to px via [boltSpeedPxPerS]. A getter, not a plain `const`,
+  /// since it's derived from two other constants above rather than an
+  /// independent number (CLAUDE.md §4.3 — no formula duplicated at the
+  /// call site).
+  static double get boltMaxRangePx =>
+      fireRangePx * 2 + boltSpeedPxPerS * boltExtraLifetimeSec;
+
+  /// How many of the boss's own bolts can be alive at once (DECISIONS
+  /// D-053, developer's call: "maximum of 9 projectiles at once") —
+  /// `BossComponent` tracks its own live bolts and skips a burst shot
+  /// rather than firing over the cap.
+  static const int boltMaxLiveCount = 9;
 
   /// How close the player has to get before the boss teleports away
   /// (DECISIONS D-042).

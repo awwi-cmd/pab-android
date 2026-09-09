@@ -169,10 +169,44 @@ upgrade, just also touch this map.
 
 **`CharacterDef` (`data/characters.dart`).** Every field a character needs
 to be playable — stats, sprite location (`spriteFolder` +
-`spritePrefix`, D-024), attack behavior — is already on this one data
-class. A new playable character (unlocking slot 2/3/4) is: drop the sprite
-sheets in a new folder, write a `CharacterDef`, flip `unlocked: true`. No
-other file should need editing for that alone.
+`spritePrefix`, D-024), attack behavior, unlock gate
+(`unlockKillThreshold`, D-055) — is already on this one data class. A new
+playable character (a 5th slot) is: drop the sprite sheets in a new folder,
+write a `CharacterDef`, pick a kill threshold (or omit it for
+always-unlocked). No other file should need editing for that alone — the
+carousel (`CharacterSelectScreen`) iterates `kCharacters` generically, same
+as the old grid did.
+
+**Persistent per-round credits, the `addCoins` shape (D-047/D-055).**
+`MetaProgressionRepository` has three of these now — `addCoins`, `addGems`,
+`addLifetimeKills` — all the same read-modify-write shape: load the current
+saved state, bump one field, save it back, called once each from
+`ArenaGame._endRound`. A future 4th persistent counter (a scoring metric,
+a "bosses killed" unlock condition) is a 4th field on `MetaProgression` +
+a 4th `addX` method on the repository, not a new mechanism.
+
+**A world pickup that spawns randomly and self-collects, the
+`PotionSpawner`/`GemComponent` shape (D-043, `ChestSpawner`/`ChestComponent`
+D-055's second example).** Two matched pieces: a `Component` that ticks its
+own interval timer and calls one `ArenaGame.spawnX(Vector2)` method
+(`spawnPotion`/`spawnChest`), and the spawned component itself checking
+`position.distanceTo(player.position) < someRadius` in its own `update()`
+and calling back into `ArenaGame` when close enough. A chest generalizes
+this one step further — first a proximity trigger, then a short fixed VFX
+beat (`ArenaGame.spawnEffect`/`spawnExplosionEffect`, already-existing
+one-shot helpers), *then* the payout — worth reading
+(`game/components/chest.dart`) if a future pickup needs "something happens
+before the reward," not just an instant collect.
+
+**A 4th Flame overlay and the level-up chaining pattern generalized
+(D-025 → D-055).** `ArenaGame._afterMenuClosed()` is now the one place that
+decides what shows next once any of LevelUp/PauseMenu/ChestReveal closes —
+pending level-ups first, then a pending chest reveal, then actually
+resume. A 5th thing that needs to interrupt the round with a paused popup
+(its own overlay registered in `ArenaScreen.overlayBuilderMap`, CLAUDE.md
+§4.2) slots into this same priority chain rather than needing its own
+bespoke coordination with the other three — decide where in the priority
+order it belongs, add one more branch to `_afterMenuClosed`, done.
 
 **`core/game_rules.dart` (D-024).** Pure gameplay math — targeting, spawn
 interval decay, knockback distance — lives here specifically so it's

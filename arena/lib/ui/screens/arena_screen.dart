@@ -4,6 +4,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
+import '../../core/economy.dart';
 import '../../core/meta_progression.dart';
 import '../../core/progression.dart';
 import '../../core/settings.dart';
@@ -73,6 +74,7 @@ class _ArenaScreenState extends State<ArenaScreen> {
               'RoundOver': (context, game) => _RoundOverOverlay(game: game),
               'LevelUp': (context, game) => _LevelUpOverlay(game: game),
               'PauseMenu': (context, game) => _PauseMenuOverlay(game: game),
+              'ChestReveal': (context, game) => _ChestRevealOverlay(game: game),
             },
           ),
           // Hidden once the round ends OR a menu/popup owns the screen
@@ -587,6 +589,109 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay> {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Chest opening's "fancy popup and reveal of gems & gem count" (DECISIONS
+/// D-055, developer's literal spec) — a Flame overlay like LevelUp/
+/// PauseMenu, so the world stays visible (dimmed) behind it and the round
+/// is genuinely paused for the reveal, not just a floating text. Groups
+/// `ArenaGame.pendingChestGems` by rarity so "3 common, 1 rare" reads as a
+/// breakdown, not a flat list.
+class _ChestRevealOverlay extends StatelessWidget {
+  const _ChestRevealOverlay({required this.game});
+
+  final ArenaGame game;
+
+  @override
+  Widget build(BuildContext context) {
+    final gems = game.pendingChestGems ?? const <ItemRarity>[];
+    final counts = <ItemRarity, int>{};
+    for (final rarity in gems) {
+      counts[rarity] = (counts[rarity] ?? 0) + 1;
+    }
+    return Container(
+      color: Colors.black.withValues(alpha: 0.82),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'CHEST OPENED!',
+                style: TextStyle(
+                  color: ArenaColors.accent,
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 16,
+                runSpacing: 12,
+                children: [
+                  for (final rarity in ItemRarity.values)
+                    if (counts[rarity] != null) _GemCount(rarity: rarity, count: counts[rarity]!),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '+${gems.length} gems',
+                style: const TextStyle(
+                  color: ArenaColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: ArenaColors.accent),
+                  ),
+                  onPressed: game.closeChestReveal,
+                  child: const Text(
+                    'CONTINUE',
+                    style: TextStyle(color: ArenaColors.accent),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GemCount extends StatelessWidget {
+  const _GemCount({required this.rarity, required this.count});
+
+  final ItemRarity rarity;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _SpriteCell(
+          asset: 'assets/images/consumables/gems.png',
+          sheetWidth: 80,
+          sheetHeight: 144,
+          cellSize: 16,
+          column: rarity.index,
+          row: 0,
+          displaySize: 32,
+        ),
+        const SizedBox(height: 4),
+        Text('x$count', style: const TextStyle(color: ArenaColors.textDim)),
       ],
     );
   }

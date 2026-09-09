@@ -75,3 +75,21 @@ Future<SpriteAnimation> loadColumnAnimation(
   ];
   return SpriteAnimation(frames, loop: loop);
 }
+
+/// Loads one [SpriteAnimation] out of a *sequence of separate files*, one
+/// frame per file, in the given order (DECISIONS D-055 — the chest-opening
+/// sequence, `consumables/chest_01.png`..`chest_12.png`: 12 whole images,
+/// not one sheet sliced into cells like every other loader in this file).
+/// [path]s are relative to Flame's default image root (`assets/images/`),
+/// same as [loadSheetAnimation].
+Future<SpriteAnimation> loadFileSequenceAnimation(
+  List<String> paths, {
+  double stepTime = 0.1,
+  bool loop = true,
+}) async {
+  final frames = [
+    for (final path in paths)
+      SpriteAnimationFrame(Sprite(await Flame.images.load(path)), stepTime),
+  ];
+  return SpriteAnimation(frames, loop: loop);
+}

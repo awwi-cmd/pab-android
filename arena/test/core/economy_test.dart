@@ -75,6 +75,28 @@ void main() {
     });
   });
 
+  group('rollChestGems (DECISIONS D-055)', () {
+    test('count is always within the min/max range', () {
+      final random = Random(3);
+      for (var i = 0; i < 500; i++) {
+        final gems = rollChestGems(random);
+        expect(gems.length, greaterThanOrEqualTo(kChestMinGems));
+        expect(gems.length, lessThanOrEqualTo(kChestMaxGems));
+      }
+    });
+
+    test('every gem is a real rarity tier', () {
+      final random = Random(8);
+      for (final rarity in rollChestGems(random)) {
+        expect(ItemRarity.values, contains(rarity));
+      }
+    });
+
+    test('is deterministic for a given seed', () {
+      expect(rollChestGems(Random(12)), rollChestGems(Random(12)));
+    });
+  });
+
   group('potionHealAmount', () {
     test('increases with rarity', () {
       var previous = 0.0;

@@ -1956,6 +1956,273 @@ session drove itself (developer's standing instruction, D-050).
 
 ---
 
+## D-052 — Boss bolt: 3-shot burst, bounces off the visible edge, +30% speed
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer's spec, verbatim: fire 3 in quick succession at the
+player's current location instead of 1; the bolt can bounce off "the wall"
+3 times; +30% bolt speed. This project has had no fixed arena wall since
+D-040 (roaming world, no bounds) — read as the edge of
+`camera.visibleWorldRect`, the existing stand-in for "off-screen"
+everywhere else a projectile checks its own bounds in this codebase
+(`ProjectileComponent._outOfBounds`, `KnifeProjectileComponent`,
+`SpiralFireProjectileComponent`), not a literal wall that doesn't exist.
+**Decision:**
+1. **Burst, not a faster cooldown.** `BossComponent` gained
+   `_burstShotsRemaining`/`_burstTimer`, checked first in `update()` (ahead
+   of the walk/hold-and-fire branch, same precedence tier as the teleport
+   check above it). `BossStats.fireCooldownSec` still gates the *whole*
+   burst starting, not individual shots inside it —
+   `BossStats.boltBurstIntervalSec` (0.12s) is the new, separate number for
+   spacing between the 3 shots. Each shot re-aims fresh at
+   `player.position - position` at the instant it actually fires, not the
+   `toPlayer` vector captured once at the top of that frame's `update()` —
+   "current location" means current at each shot, not current when the
+   burst started.
+2. **Bounce is a generic `ProjectileComponent` capability, not a
+   boss-only fork.** `maxBounces` (default `0`, every existing call site
+   unaffected) reflects the direction vector off whichever axis of
+   `camera.visibleWorldRect` was crossed instead of despawning, clamping
+   position back inside so a fast bolt can't re-trigger a second bounce
+   next frame while still technically outside. Kept on the shared component
+   (like `targetsPlayer`/`tint`/`excludeSelf` before it) rather than a new
+   `BouncingProjectileComponent`, since nothing else about the boss's bolt
+   differs from the base shape — one more optional param was simpler than
+   a parallel class. `BossComponent._fire` passes
+   `maxBounces: BossStats.boltBounceCount` (3); every other caller keeps
+   the default (no behavior change for the Apprentice/Warden's bolt or
+   Ultimate Mirror's).
+3. **+30% speed is a straight multiply on the existing constant** —
+   `BossStats.boltSpeedPxPerS` `220 * 1.3`, not a new number typed inline
+   (CLAUDE.md §4.3).
+**Because:** Both new boss-only numbers (burst interval, bounce count) live
+on `BossStats` alongside the boss's other bolt constants — same file,
+same reasoning as `boltDamage`/`boltKnockback` already being there, not a
+new constants class. The burst-precedence placement (checked before the
+walk/fire decision, same tier as the teleport check) means a player closing
+to melee mid-burst still teleports the boss away correctly — the burst
+doesn't have to know about teleporting, it just gets pre-empted by the
+existing check the same way normal firing always was.
+**Consequences:** A burst interrupted by a teleport (player rushes in
+mid-burst) resumes from the boss's new position next frame rather than
+being cancelled outright — not asked to cancel it, and cancelling would
+need extra state to track "was this shot skipped," so left as the simpler
+behavior. Bounced bolts can now stay alive well past
+`BossStats.fireRangePx * 2`'s original travel budget (each bounce is a free
+reset of position/direction, not distance) — `maxRangePx` is unchanged and
+still the hard stop once `_traveled` catches up, so this can't accidentally
+create an immortal bolt. `flutter analyze` clean, `flutter test` 85/85,
+`flutter build apk --debug` succeeds — on-device feel (does the burst read
+as 3 shots or a blur, does the bounce look intentional or glitchy off a
+camera edge that's itself moving) is the developer's to check (CLAUDE.md
+§2), not driven by this session.
+
+---
+
+## D-053 — Boss bolt lifetime/cap, and a shared "poof" despawn for every projectile
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer's spec: the boss's bolt should last 5 seconds
+longer, cap at 9 of the boss's own bolts alive at once, and every
+projectile in the game (not just the boss's — asked and confirmed via
+`AskUserQuestion` rather than guessed, since it materially changed scope)
+should despawn with a 100%→0% size shrink drifting downward — a "poof" —
+instead of just vanishing.
+**Decision:**
+1. **+5s lifetime as extra distance, not a second despawn clock.**
+   Nothing in this codebase despawns a projectile on a timer — every one
+   (`ProjectileComponent`, the knife, Spiral Fire) despawns on distance
+   traveled or leaving the screen. Added `BossStats.boltExtraLifetimeSec`
+   (5.0) and a derived `BossStats.boltMaxRangePx` getter (`fireRangePx * 2
+   + boltSpeedPxPerS * boltExtraLifetimeSec`) instead of a parallel
+   time-based mechanism just for this one bolt — "5 seconds longer"
+   converts cleanly to "however far it travels in 5 more seconds at its
+   own (post-D-052) speed," reusing the existing distance model rather
+   than adding a second one next to it.
+2. **9-bolt cap is the boss's own bookkeeping, not `ProjectileComponent`'s.**
+   `BossComponent._liveBolts` (a `List<ProjectileComponent>`) is pruned of
+   anything no longer mounted, then checked, before each individual burst
+   shot — a shot skipped for being over the cap still consumes its slot in
+   the 3-shot burst (the burst always finishes on schedule, it just may
+   fire fewer than 3 bolts onto an already-crowded screen), rather than
+   stalling the whole burst waiting for room. `ProjectileComponent` itself
+   needed no changes — `isMounted` (a plain Flame `Component` property) is
+   already enough signal that an earlier bolt is gone, whether it hit
+   something, ran out of range, or expired.
+3. **`ProjectilePoofComponent` (`game/components/projectile_poof.dart`) is
+   shared, not boss-only** — confirmed with the developer rather than
+   assumed, since "every projectile" is a materially bigger change than
+   "just the boss's bolt." Takes exactly one of `animation`/`sprite`
+   (asserted) so it can shrink whatever the expiring projectile was
+   actually showing — the bolt/Mirror/boss bolt and Spiral Fire pass their
+   `SpriteAnimation`, the knife passes its current `Sprite` (clean or
+   bloody, whichever it had drawn blood into by the time it left the
+   screen) — rather than needing a second component class per visual type.
+   Wired into the "expires without hitting anything" path only, in all
+   three projectile classes (`ProjectileComponent._expire`,
+   `KnifeProjectileComponent._expire`, `SpiralFireProjectileComponent
+   ._expire`) — **not** the hit path, which already has its own feedback
+   (`ArenaGame.onProjectileHit`'s spark + damage number, or Spiral Fire's
+   impact/explosion flourish) and would just look cluttered with a poof
+   layered on top. Carries over the expiring projectile's current `angle`
+   too, so a spinning knife's poof doesn't snap to a flat orientation right
+   before it shrinks away.
+**Because:** All three follow the same rule this project already leans on
+— reuse the existing mechanism (distance-based despawn, `isMounted` as the
+liveness signal, the projectile's own current visual state) rather than
+adding a parallel one, and ask rather than guess when a request's scope is
+genuinely ambiguous (CLAUDE.md §6).
+**Consequences:** `boltMaxRangePx` being a getter (not a `const`) is a
+small, deliberate exception to this file's usual all-`const` `BossStats` —
+it's derived from two other constants in the same class, and CLAUDE.md §4.3
+asks for the formula to live in `core/`, not be duplicated at the
+`BossComponent._fire` call site. `flutter analyze` clean, `flutter test`
+85/85, `flutter build apk --debug` succeeds — on-device feel (does 9 bolts
+read as "a lot" or "cluttered," does the poof read as intentional at 0.35s)
+is the developer's to check (CLAUDE.md §2).
+
+---
+
+## D-054 — Death SFX moved to fire with the Round Over overlay, not on HP hitting 0
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer's spec: "make the death sound play as soon as the
+dark overlay after you die appears." `ArenaGame.onPlayerDied()` was firing
+`sfx-you-died.wav` immediately when HP hit 0 — under the ~0.6s death
+animation (`_roundEndDelaySec`, PRD §6.5) and well before `_endRound()`
+actually shows the dark `RoundOver` overlay.
+**Decision:** The SFX call moved from `onPlayerDied()` into `_endRound()`,
+gated by a new `_realDeath` bool (set only by `onPlayerDied()`, reset every
+round) instead of the old `_roundEndDelay == null` guard — `debugDie()`
+still never triggers it, same "a debug kill isn't a real death" rule as
+before, just carried by an explicit flag instead of an incidental null
+check.
+**Because:** A dedicated bool reads directly as what it's for ("was this a
+real death") rather than reusing a timer's null-ness as a stand-in signal
+for it, which was only ever true by construction (both paths happened to
+set `_roundEndDelay` around the same time) — worth making explicit now that
+the SFX call is moving to a different method than the one that sets that
+timer.
+**Consequences:** `flutter analyze` clean. No test coverage needed (D-019 —
+this is exactly the "does it feel right" category, not arithmetic that can
+drift) — on-device confirmation the sound now lines up with the dark
+overlay is the developer's to check.
+
+---
+
+## D-055 — Character unlocks, swipe-carousel select screen, chest economy
+**Date:** 2026-09-09 · **Status:** Accepted
+**Context:** Developer's spec, in one message, three related asks:
+1. Real progression-gated character unlocking (TASKS 8.4 had explicitly
+   flagged this as "ask before picking the unlock condition/mechanism,
+   don't guess" — asked via `AskUserQuestion` rather than guessed this
+   time) plus a "locked panel asset" for it.
+2. The 2x2 character-select grid has all 4 characters idle-animating at
+   once — "looks fucking silly" — fix via a swipe carousel bringing up one
+   character and its stats at a time. (SHOP was also asked for as a
+   "placeholder... completely empty, only back button" — already exists,
+   shipped exactly that way in D-047; nothing to build.)
+3. 12 chest sprites (`consumables/chest_01.png`..`chest_12.png`, delivered
+   pre-session) need to spawn in the world, run an opening sequence
+   ("anima + explosion before chest opens"), give gems, and those gems
+   (plus the existing coin total) need to persist into a spendable wallet
+   — with "a fancy chest opening pop-up and reveal of gems & gem count."
+Three more real decisions were asked and confirmed rather than guessed
+(`AskUserQuestion`, all three "Recommended" options chosen): the unlock
+metric is **total lifetime kills** (not coins spent, rounds played, or
+best single-round level); the carousel is a **full replacement** of the
+grid, not a "freeze the unselected tiles" patch; chest gems become a
+**separate persistent gem wallet**, not folded into the coin total.
+
+**Decision, unlock logic:**
+- `CharacterDef.unlockKillThreshold` (`int?`, `null` = always unlocked)
+  replaces the old flat `unlocked: true` placeholder bool from D-028 —
+  Apprentice `null`, Bruiser 50, Skirmisher 150, Warden 300 (steeper per
+  slot, first-guess numbers like everything else in this project).
+  `CharacterDef.isUnlockedFor(int lifetimeKills)` is the actual gate, unit
+  tested (`test/data/characters_test.dart`).
+- `MetaProgression`/`MetaProgressionRepository` gained `lifetimeKills` +
+  `addLifetimeKills`, same read-modify-write shape as `addCoins` (D-047),
+  called once from `ArenaGame._endRound` with that round's `kills`.
+- The `bar-empty.png`/`bar-filling.png`/`star-empty.png`/`star-full.png`
+  assets delivered alongside this ask turned out to already be exactly
+  "the locked panel asset" — a progress bar (bar-empty background,
+  bar-filling clipped to `lifetimeKills / threshold`) plus a star-empty
+  badge, both read directly off existing files with no new art needed.
+
+**Decision, character select redesign:**
+- `CharacterSelectScreen` rewritten around a `PageView.builder` — one
+  `_CharacterPage` per `CharacterDef`, swipe left/right, a `_PageDots` row
+  replacing the grid's implicit "which tile is selected" readout. Only the
+  current page's portrait is ever animating, which is what actually answers
+  "looks silly" — not a new animation mechanism, just one on screen instead
+  of four.
+- A locked page's `_CharacterPage` still shows real stats (not hidden) —
+  dimmed to 35% opacity instead — with `_LockedPanel` (the bar/star combo
+  above) in place of the `ENTER ARENA` button. Wallet readout
+  (`_WalletRow`) now shows gems next to coins (`star-full.png` icon, the
+  filled/complete half of the same star pair used for the locked badge).
+- Wallet + SHOP/UPGRADES stay pinned above the carousel, outside the
+  `PageView`, unaffected by swiping — `ShopScreen` itself needed no
+  changes (already the literal "empty, back button only" placeholder
+  D-047 asked for).
+
+**Decision, chest economy:**
+- `game/anim/sheet_loader.dart` gained `loadFileSequenceAnimation` — a
+  fourth loader alongside `loadSheetAnimation`/`loadColumnAnimation`, for
+  the one case neither fits: 12 *separate whole-image files* forming one
+  animation, not cells sliced out of a single sheet.
+- `ChestComponent` (`game/components/chest.dart`) sits closed
+  (`chest_01.png` alone, looping as a 1-frame "animation") until the player
+  walks within `kChestPickupRadiusPx`, then runs a fixed beat: `ArenaGame.
+  animaAnimation` first, `ArenaGame.spawnExplosionEffect` (and its SFX, for
+  free) `_explosionDelaySec` (0.35s) later, swapping to the real
+  `chest_01`-`chest_12` opening sequence at the same moment — "anima +
+  explosion before chest opens," read as a 1-2-3 beat rather than everything
+  landing on one frame. `ChestSpawner` is `PotionSpawner` (D-043) with the
+  serial numbers changed — same random-point-in-a-view-sized-rect shape,
+  rarer interval (40s vs. 15s) and lower live cap (2 vs. 5), since a chest
+  is a bigger, rarer payout than a potion.
+- Gems from a chest (`rollChestGems` — 3-6 independent `rollRarity` rolls,
+  `core/economy.dart`, same weighted scale every other drop already uses)
+  fold into the exact same round-scoped `ArenaGame.gemsCollected` Round
+  Over already displays — chests and enemy drops aren't tracked
+  separately, matching how coins already work (one total, multiple
+  sources). `MetaProgressionRepository.addGems` credits that whole round
+  total into the new persistent wallet at `_endRound`, same call site as
+  `addCoins`/`addLifetimeKills`.
+- **ChestReveal** is a 4th Flame overlay, same shape as `LevelUp`/
+  `PauseMenu`/`RoundOver` (registered in `ArenaScreen`'s
+  `overlayBuilderMap` — CLAUDE.md §4.2's registration-order rule) — the
+  "fancy popup" ask, genuinely pausing the round rather than a floating
+  text. `ArenaGame._afterMenuClosed()` generalizes the level-up chaining
+  logic (D-025's `_pendingLevelUps` gate) into a 3-way priority: a pending
+  level-up first, then a pending chest reveal, only then does the round
+  actually resume — so a chest finishing its open sequence while the Pause
+  Menu or a level-up popup already owns the screen doesn't fight either
+  for it, it just waits its turn.
+**Because:** Every mechanism reuses a shape this project already has —
+`PotionSpawner`'s random-drop pattern for `ChestSpawner`, `addCoins`'s
+read-modify-write shape for `addGems`/`addLifetimeKills`, `LevelUp`'s
+overlay-plus-pending-queue shape for `ChestReveal`, `rollRarity`'s shared
+weighted scale for chest gems — rather than inventing a parallel one for
+each new feature, consistent with this file's own running theme. The three
+real open decisions (unlock metric, carousel scope, gem-wallet-vs-coins)
+were asked rather than guessed, per CLAUDE.md §6 and TASKS 8.4's own
+standing instruction on the unlock question specifically.
+**Consequences:** All numeric first-guesses (kill thresholds, chest
+spawn interval/cap, gem count range, explosion-delay beat timing) are
+placeholders like every other tuning value in this project — a real
+balance pass needs on-device time. `CharacterDef.unlocked` no longer
+exists as a field (superseded by `unlockKillThreshold`/`isUnlockedFor`) —
+any future code reaching for `.unlocked` needs updating to the new
+mechanism, there's no compatibility shim. `flutter analyze` clean,
+`flutter test` 92/92 (7 new: `characters_test.dart`'s 4, `economy_test.
+dart`'s 3 `rollChestGems` cases), `flutter build apk --debug` succeeds.
+On-device verification (the whole feature is genuinely untested past the
+build/widget-test line — D-019 stops automated coverage at Character
+Select, and this session was also asked to stop driving the emulator
+itself, D-050) is the developer's to run.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

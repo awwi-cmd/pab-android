@@ -41,8 +41,11 @@ see D-040. **Phase 10 (boss fight, SFX, loot economy) is built** — see
 D-042/D-043/D-044. **Phase 11 (persistent meta-progression: SHOP + UPGRADES
 from character select) is built** — see D-047. **Phase 12 (four new powers:
 Ultimate Mirror, Projectile Ray, Projectile Thunder, Defence Crystal) is
-built, on-device verification pending** — see D-049. This is real, ongoing
-post-demo work now, not speculative scope;
+built, on-device verification pending** — see D-049. **Phase 13
+(progression-gated character unlocks, swipe-carousel character select, and
+a chest economy with a persistent gem wallet) is built, on-device
+verification pending** — see D-055. This is real, ongoing post-demo work
+now, not speculative scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
 The Backlog is still binding for what hasn't been explicitly asked for — keep
@@ -105,7 +108,7 @@ batch files. Always `set FLUTTER=C:\src\flutter\bin\flutter.bat`.
 
 ## 3. Repository layout
 
-Kept current as of Phase 12.6 (2026-09-09) — update this tree when you add a
+Kept current as of Phase 13 (2026-09-09) — update this tree when you add a
 file that will confuse the next person if it's missing here, same discipline
 as `TASKS.md`.
 
@@ -147,19 +150,19 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   ├── game_rules.dart    // pure gameplay math (targeting, spawn decay, knockback,
         │   │                      //   enemy/boss level-scaling D-026/D-042, randomPerimeterPoint D-041)
         │   ├── progression.dart   // XP curve, UpgradeKind (Aura + Mirror/Ray/Thunder/Crystal), PlayerUpgrades — D-025/D-027/D-049
-        │   ├── economy.dart       // ItemRarity + gem/coin/potion value tables — D-043
-        │   └── meta_progression.dart // MetaStat (STR/VIT/DEX/INT/CORRUPTION), wallet + SharedPreferences I/O — D-047
+        │   ├── economy.dart       // ItemRarity + gem/coin/potion/chest-gem value tables — D-043/D-055
+        │   └── meta_progression.dart // MetaStat (STR/VIT/DEX/INT/CORRUPTION), coins+gems+lifetimeKills wallet, SharedPreferences I/O — D-047/D-055
         ├── data/
-        │   └── characters.dart    // CharacterDef list (4 slots, all unlocked, D-028)
+        │   └── characters.dart    // CharacterDef list; unlockKillThreshold gates slots 2-4 — D-028/D-055
         ├── ui/
         │   ├── screens/
         │   │   ├── main_menu_screen.dart
         │   │   ├── settings_screen.dart        // + debug section when opened from pause (D-025)
         │   │   ├── credits_screen.dart
-        │   │   ├── character_select_screen.dart // grid tile IS the idle-animation portrait; wallet + SHOP/UPGRADES buttons — D-047
+        │   │   ├── character_select_screen.dart // swipe carousel, one character at a time; locked slots show a bar-fill unlock panel — D-055
         │   │   ├── shop_screen.dart       // empty placeholder, back button only — D-047
         │   │   ├── upgrades_screen.dart   // 5 MetaStat rows, buy buttons — D-047
-        │   │   └── arena_screen.dart      // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu)
+        │   │   └── arena_screen.dart      // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu/ChestReveal)
         │   └── widgets/                   // buttons, stat bars, shared chrome
         └── game/
             ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling; addToWorld/addToHud split — D-040.
@@ -171,7 +174,8 @@ ArenaDemo/                    <- repo root, open this in your editor
             │   ├── enemy.dart              // hp/contactDamage scaled by level at spawn (D-026); implements Damageable (D-042)
             │   ├── damageable.dart          // shared hit-detection interface, enemy + boss — D-042
             │   ├── boss.dart                // idle/walk/fire/death state machine, teleport-on-approach — D-042
-            │   ├── projectile.dart          // _outOfBounds is camera.visibleWorldRect-relative (D-040); optional tint param for the boss's green bolt (D-042)
+            │   ├── projectile.dart          // _outOfBounds is camera.visibleWorldRect-relative (D-040); tint (D-042)/targetsPlayer (D-051)/maxBounces (D-052) params
+            │   ├── projectile_poof.dart     // shrink+drift despawn flourish, shared by every projectile type — D-053
             │   ├── knife_projectile.dart    // Bruiser kit: pierces, clean->bloody sprite swap — D-029
             │   ├── spiral_fire_projectile.dart // Skirmisher kit: orbiting yin-yang pair — D-034
             │   ├── tracking_effect.dart      // VFX glued to a moving target, optional fade-out — D-034/D-035/D-036
@@ -179,6 +183,8 @@ ArenaDemo/                    <- repo root, open this in your editor
             │   ├── gem.dart                  // world pickup, self-collects near the player — D-043
             │   ├── potion.dart               // world pickup + float bob, heals on touch — D-043
             │   ├── potion_spawner.dart       // periodic random-area drop — D-043
+            │   ├── chest.dart                // world chest: anima+explosion then chest_01-12 opening sequence — D-055
+            │   ├── chest_spawner.dart        // periodic random-area drop, same shape as potion_spawner.dart — D-055
             │   ├── hp_bar.dart               // now on camera.viewport (HUD), not world — D-040
             │   ├── damage_text.dart
             │   ├── arena_floor.dart          // endless tiling from camera.visibleWorldRect, no border — D-041
