@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flame/game.dart';
@@ -595,23 +596,80 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay> {
 }
 
 /// Chest opening's "fancy popup and reveal of gems & gem count" (DECISIONS
-/// D-055, developer's literal spec) — a Flame overlay like LevelUp/
-/// PauseMenu, so the world stays visible (dimmed) behind it and the round
-/// is genuinely paused for the reveal, not just a floating text. Groups
-/// `ArenaGame.pendingChestGems` by rarity so "3 common, 1 rare" reads as a
-/// breakdown, not a flat list.
-class _ChestRevealOverlay extends StatelessWidget {
+/// D-057, superseding D-055's flat gem-group reward) — a Flame overlay like
+/// LevelUp/PauseMenu, so the world stays visible (dimmed) behind it and the
+/// round is genuinely paused for the reveal. The actual reward
+/// (`ArenaGame.pendingChestCard`) is already rolled by the time this opens
+/// (`ChestComponent`/`ArenaGame.onChestOpened`); what this widget owns is
+/// purely the reveal *animation* — flicker through random cards from the
+/// deck really fast, easing out to a stop on the real card (developer's
+/// literal spec), then show what it actually pays.
+class _ChestRevealOverlay extends StatefulWidget {
   const _ChestRevealOverlay({required this.game});
 
   final ArenaGame game;
 
   @override
-  Widget build(BuildContext context) {
-    final gems = game.pendingChestGems ?? const <ItemRarity>[];
-    final counts = <ItemRarity, int>{};
-    for (final rarity in gems) {
-      counts[rarity] = (counts[rarity] ?? 0) + 1;
+  State<_ChestRevealOverlay> createState() => _ChestRevealOverlayState();
+}
+
+class _ChestRevealOverlayState extends State<_ChestRevealOverlay> {
+  static final Random _random = Random();
+
+  /// DECISIONS D-057: "change really fast randomly, stop on one at the
+  /// end" — [_spinSteps] flicker steps through a random deck card each,
+  /// the per-step delay ramping from [_minStepMs] up to [_maxStepMs] (an
+  /// ease-out quadratic, not a flat rate) so it reads as a slot-reel
+  /// genuinely slowing down into its landing rather than just stopping
+  /// abruptly. The real result is never shown mid-flicker — only the very
+  /// last step lands on [_finalCard].
+  static const _spinSteps = 22;
+  static const _minStepMs = 45;
+  static const _maxStepMs = 260;
+
+  late final ChestCard _finalCard = widget.game.pendingChestCard!;
+  late ChestCard _displayed = _randomFlickerCard();
+  int _step = 0;
+  bool _spinning = true;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleNextStep();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  ChestCard _randomFlickerCard() => kChestDeck[_random.nextInt(kChestDeck.length)];
+
+  void _scheduleNextStep() {
+    _step++;
+    if (_step >= _spinSteps) {
+      _timer = Timer(const Duration(milliseconds: _maxStepMs), () {
+        if (!mounted) return;
+        setState(() {
+          _displayed = _finalCard;
+          _spinning = false;
+        });
+      });
+      return;
     }
+    final t = _step / _spinSteps;
+    final delayMs = _minStepMs + ((_maxStepMs - _minStepMs) * t * t).round();
+    _timer = Timer(Duration(milliseconds: delayMs), () {
+      if (!mounted) return;
+      setState(() => _displayed = _randomFlickerCard());
+      _scheduleNextStep();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       color: Colors.black.withValues(alpha: 0.82),
       child: Center(
@@ -630,23 +688,38 @@ class _ChestRevealOverlay extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 16,
-                runSpacing: 12,
-                children: [
-                  for (final rarity in ItemRarity.values)
-                    if (counts[rarity] != null) _GemCount(rarity: rarity, count: counts[rarity]!),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '+${gems.length} gems',
-                style: const TextStyle(
-                  color: ArenaColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+              _ChestCardFace(card: _displayed),
+              const SizedBox(height: 12),
+              // Fixed height so the reward text popping in doesn't shift
+              // the CONTINUE button while still spinning.
+              SizedBox(
+                height: 46,
+                child: _spinning
+                    ? const Text(
+                        '...',
+                        style: TextStyle(color: ArenaColors.textDim, fontSize: 18),
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _finalCard.label,
+                            style: const TextStyle(
+                              color: ArenaColors.accent,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '+${_finalCard.gemReward} gems',
+                            style: const TextStyle(
+                              color: ArenaColors.textPrimary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
               ),
               const SizedBox(height: 24),
               SizedBox(
@@ -655,10 +728,14 @@ class _ChestRevealOverlay extends StatelessWidget {
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: ArenaColors.accent),
                   ),
-                  onPressed: game.closeChestReveal,
-                  child: const Text(
+                  // Disabled mid-spin so the popup can't be dismissed before
+                  // the real card (and its payout) has actually landed.
+                  onPressed: _spinning ? null : widget.game.closeChestReveal,
+                  child: Text(
                     'CONTINUE',
-                    style: TextStyle(color: ArenaColors.accent),
+                    style: TextStyle(
+                      color: _spinning ? ArenaColors.textDim : ArenaColors.accent,
+                    ),
                   ),
                 ),
               ),
@@ -670,29 +747,28 @@ class _ChestRevealOverlay extends StatelessWidget {
   }
 }
 
-class _GemCount extends StatelessWidget {
-  const _GemCount({required this.rarity, required this.count});
+/// One playing-card image (`assets/images/cards`, DECISIONS D-057), native
+/// 61x93 px, rendered flat (no flip/3D) since the spin itself is what sells
+/// the slot-machine feel — a flip animation on top of an already-fast
+/// flicker would just read as noisy.
+class _ChestCardFace extends StatelessWidget {
+  const _ChestCardFace({required this.card});
 
-  final ItemRarity rarity;
-  final int count;
+  final ChestCard card;
+
+  static const _width = 110.0;
+  static const _aspect = 93 / 61;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _SpriteCell(
-          asset: 'assets/images/consumables/gems.png',
-          sheetWidth: 80,
-          sheetHeight: 144,
-          cellSize: 16,
-          column: rarity.index,
-          row: 0,
-          displaySize: 32,
-        ),
-        const SizedBox(height: 4),
-        Text('x$count', style: const TextStyle(color: ArenaColors.textDim)),
-      ],
+    return SizedBox(
+      width: _width,
+      height: _width * _aspect,
+      child: Image.asset(
+        card.assetPath,
+        filterQuality: FilterQuality.none, // D-011
+        fit: BoxFit.fill,
+      ),
     );
   }
 }

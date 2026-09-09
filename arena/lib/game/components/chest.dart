@@ -15,8 +15,9 @@ import '../arena_game.dart';
 /// the chest itself swaps to the real 12-frame opening animation
 /// (`GameAssets.chestOpeningAnimation`) — "we can use anima + explosion
 /// before chest opens," the developer's literal spec. Once that finishes,
-/// it rolls gems (`rollChestGems`) and hands off to
-/// `ArenaGame.onChestOpened` for the reveal popup, then removes itself.
+/// it rolls a reward card (`rollChestCard`, DECISIONS D-057) and hands off
+/// to `ArenaGame.onChestOpened` for the card-spin reveal popup, then removes
+/// itself.
 class ChestComponent extends SpriteAnimationComponent
     with HasGameReference<ArenaGame> {
   ChestComponent({required Vector2 startPosition, required SpriteAnimation idleAnimation})
@@ -73,7 +74,7 @@ class ChestComponent extends SpriteAnimationComponent
   }
 
   void _finishOpening() {
-    game.onChestOpened(rollChestGems(_random));
+    game.onChestOpened(rollChestCard(_random));
     removeFromParent();
   }
 }

@@ -76,15 +76,78 @@ const Map<ItemRarity, double> kPotionHealByRarity = {
 
 double potionHealAmount(ItemRarity rarity) => kPotionHealByRarity[rarity]!;
 
-/// Chests (DECISIONS D-055) — a bigger, rarer payout than a single dropped
-/// gem: a handful of gems at once, each still rolled independently through
-/// [rollRarity] (same weighted scale gems/coins/potions already share, per
-/// the developer's original "same value logic" ask, D-043 — not a new
-/// probability scheme just for chests).
-const int kChestMinGems = 3;
-const int kChestMaxGems = 6;
+/// Chests (DECISIONS D-057, superseding D-055's flat gem-group reward) — a
+/// single draw from a real 52-card deck (`assets/images/cards`, 4 suits x 13
+/// ranks) plus 2 Jokers, 54 cards total. The reveal (`ChestReveal` overlay)
+/// spins through faces rapidly before landing on this one, so the roll
+/// itself has to be decided up front, not mid-animation — [rollChestCard]
+/// is the single source of truth both for what the spin lands on and what
+/// it pays out. Suit is cosmetic; [ChestCard.gemReward] is keyed on rank
+/// alone via [kCardRankGemValue] (or [kJokerGemValue] for the 2 Jokers).
+/// Drawing uniformly across the full deck gives the reward table its own
+/// natural odds for free — a Joker is 2/54, an Ace 4/54, a "2" 4/54 — no
+/// separate weight table needed the way [kRarityWeights] has one.
+enum CardSuit { clubs, diamonds, hearts, spades }
 
-List<ItemRarity> rollChestGems(Random random) {
-  final count = kChestMinGems + random.nextInt(kChestMaxGems - kChestMinGems + 1);
-  return [for (var i = 0; i < count; i++) rollRarity(random)];
+const Map<CardSuit, String> kCardSuitFolder = {
+  CardSuit.clubs: 'Clubs',
+  CardSuit.diamonds: 'Diamonds',
+  CardSuit.hearts: 'Hearts',
+  CardSuit.spades: 'Spades',
+};
+
+/// Rank order matches each suit folder's actual filenames.
+const List<String> kCardRanks = [
+  '2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace',
+];
+
+/// Placeholder like every other tuning value in this project — number cards
+/// pay their face value, face cards step up, Ace is the best non-Joker card.
+const Map<String, int> kCardRankGemValue = {
+  '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10,
+  'Jack': 15, 'Queen': 20, 'King': 25, 'Ace': 35,
+};
+
+/// The jackpot card -- rarest draw in the deck (2/54), biggest payout.
+const int kJokerGemValue = 75;
+
+class ChestCard {
+  const ChestCard({
+    required this.assetPath,
+    required this.label,
+    required this.gemReward,
+  });
+
+  /// Full `Image.asset` path (DECISIONS D-057) -- the chest reveal is a
+  /// plain Flutter overlay (CLAUDE.md §4.2), not a Flame component, so this
+  /// is the `assets/images/...`-rooted path `Image.asset` expects directly,
+  /// not the shorter Flame-relative path `sheet_loader.dart` uses.
+  final String assetPath;
+
+  /// e.g. "Ace of Spades", "Joker" -- display only.
+  final String label;
+  final int gemReward;
 }
+
+/// Built once (54 entries, same every time), not reconstructed per roll.
+final List<ChestCard> kChestDeck = [
+  for (final suit in CardSuit.values)
+    for (final rank in kCardRanks)
+      ChestCard(
+        assetPath: 'assets/images/cards/${kCardSuitFolder[suit]}/$rank.png',
+        label: '$rank of ${kCardSuitFolder[suit]}',
+        gemReward: kCardRankGemValue[rank]!,
+      ),
+  const ChestCard(
+    assetPath: 'assets/images/cards/Joker/Joker Card Black.png',
+    label: 'Joker',
+    gemReward: kJokerGemValue,
+  ),
+  const ChestCard(
+    assetPath: 'assets/images/cards/Joker/Joker Card Red.png',
+    label: 'Joker',
+    gemReward: kJokerGemValue,
+  ),
+];
+
+ChestCard rollChestCard(Random random) => kChestDeck[random.nextInt(kChestDeck.length)];

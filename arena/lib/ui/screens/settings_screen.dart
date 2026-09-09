@@ -171,6 +171,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 fontSize: 12,
               ),
             ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: PixelButton(
+                    label: 'END ROUND',
+                    onPressed: debugGame.debugEndRound,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Ends the round once you close the pause menu — kills/score/'
+              'coins/gems carry over exactly like a real death.',
+              style: TextStyle(
+                color: ArenaColors.textDim,
+                fontSize: 12,
+              ),
+            ),
           ],
         ],
       ),

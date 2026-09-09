@@ -73,6 +73,12 @@ flutter:
     - assets/images/scenes/
     - assets/images/consumables/
     - assets/images/ui/
+    - assets/images/cards/Back Cards/
+    - assets/images/cards/Clubs/
+    - assets/images/cards/Diamonds/
+    - assets/images/cards/Hearts/
+    - assets/images/cards/Joker/
+    - assets/images/cards/Spades/
     - assets/audio/
     - assets/audio/core/
 
