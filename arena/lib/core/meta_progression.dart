@@ -226,4 +226,33 @@ class MetaProgressionRepository {
     current.lifetimeKills += amount;
     await save(current);
   }
+
+  /// Debug-only direct wallet edits (Settings' DEBUG section, DECISIONS
+  /// D-059) — unlike [addCoins]/[addGems] above (round-over credits, which
+  /// ignore a non-positive amount since a zero-kill round has nothing to
+  /// add), these take any delta including negative, clamped so the wallet
+  /// can't go below zero, and work with no live `ArenaGame` at all — reached
+  /// from Settings off the main menu, not just the arena's Pause Menu.
+  Future<void> debugAdjustCoins(int delta) async {
+    final current = await load();
+    current.coins = (current.coins + delta).clamp(0, 1 << 30);
+    await save(current);
+  }
+
+  Future<void> debugAdjustGems(int delta) async {
+    final current = await load();
+    current.gems = (current.gems + delta).clamp(0, 1 << 30);
+    await save(current);
+  }
+
+  /// Zeroes coins/gems only (DECISIONS D-059) — `lifetimeKills` (the
+  /// character-unlock metric) and the STR/VIT/DEX/INT/CORRUPTION levels
+  /// already bought are progress, not spendable currency, so a "reset
+  /// wallet" debug tool leaves both alone.
+  Future<void> debugResetWallet() async {
+    final current = await load();
+    current.coins = 0;
+    current.gems = 0;
+    await save(current);
+  }
 }

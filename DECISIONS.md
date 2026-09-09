@@ -2358,6 +2358,156 @@ same standing rule since D-050.
 
 ---
 
+## D-058 — Chest reveal: fixed an overflow, added a shuffle lead-in and a landing bounce
+
+**Date:** 2026-09-10 · **Status:** Accepted
+**Context:** Feedback on D-057's chest reveal, three related asks: (1) a
+real layout bug — "when the chest opened, it says bottom overflowed by 4.0
+pixels"; (2) "make card, when draw is finished, do a jump and land
+animation"; (3) "add another animation before the current one, that goes
+between back cards, and after that transition to this one."
+
+**Decision:**
+- **Overflow (bug, not a tune):** `_ChestRevealOverlay`'s `Center(child:
+  Padding(child: Column(...)))` had no scroll fallback — on a short enough
+  viewport the fixed-height reward slot pushed the total past the available
+  height. Wrapped in `SingleChildScrollView` (`Center(child:
+  SingleChildScrollView(...))`, same idiom `_CharacterPage` already uses) —
+  centers normally whenever it fits, scrolls instead of overflowing when it
+  doesn't, on any screen size.
+- **Shuffle lead-in:** a new phase before the existing spin — `_shuffling`,
+  flickering through the 2 card backs (`assets/images/cards/Back Cards/`)
+  at a flat 70ms rate for 8 steps (no ease-out; it's a lead-in beat, not the
+  landing), then flips to the existing face-card spin logic unchanged —
+  "transition to this one" is simply continuing straight into the spin that
+  already existed, not a new second mechanism.
+- **Jump/land:** an `AnimationController` (`_landController`,
+  `SingleTickerProviderStateMixin`) fires once the spin's last step lands on
+  the real card — a `TweenSequence` hopping up (`0 → -22px`, `Curves.
+  easeOut`, 35% of the 520ms duration) then bouncing back down (`-22 → 0`,
+  `Curves.bounceOut`, the remaining 65%), applied via `Transform.translate`
+  around the card image. Asymmetric on purpose — a jump that eases out but
+  bounces on the way down reads as landing; a symmetric tween wouldn't.
+- `_ChestCardFace` renamed `_PlayingCardImage` and now takes a raw
+  `assetPath` `String` instead of a `ChestCard`, so the same widget renders
+  both the shuffle phase's backs and the spin phase's faces.
+
+**Because:** The overflow is a real bug regardless of screen size — fixing
+it with a scroll fallback is more robust than trimming padding/font sizes to
+fit one specific device. The shuffle-then-spin sequencing and the landing
+bounce are both purely additive to the existing state machine (`_shuffling`
+gates before `_spinning` already did, the landing animation fires off the
+existing "spin just finished" `setState`) — no change to the actual roll
+(`ArenaGame.pendingChestCard`) or payout logic from D-057.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 95/95 (unchanged
+— this is all UI/animation, no new `core/` logic), `flutter build apk
+--debug` succeeds. On-device verification (does the shuffle read as a
+distinct lead-in and not just more flicker, does the jump/land actually
+read as landing rather than a jitter, is the overflow actually gone on the
+real device/AVD it was reported on) is the developer's to run.
+
+---
+
+## D-059 — Debug currency tools, gem drop -25%, gem float, boss anima -40%, aura -25%/-20% bright, mirror desync + axis + immortal bolts
+
+**Date:** 2026-09-10 · **Status:** Accepted
+**Context:** Six unrelated tuning/feature asks in one message, batched here
+rather than split into six decisions since none is individually more than a
+couple of lines: (4) "add more useful debug in main menu settings that can
+affect currency as well"; (5) "reduce by 25% the amount of gems that drop";
+(6) "add gems float animation, make it like the potion one"; (7) "make the
+anima effect less in size by 40% on the boss when he teleports"; (8) "make
+aura shield 25% smaller, less bright by 20%"; (9) "make magic mirrors spawn
+not in sync, by 0.5 seconds delay, and can also spawn shooting from up to
+down"; (10) "make magic mirrors projectile not expire and not despawn."
+
+**Decision:**
+- **Currency debug (4):** `MetaProgressionRepository` gained
+  `debugAdjustCoins`/`debugAdjustGems` (any delta including negative,
+  clamped at 0 — unlike `addCoins`/`addGems`, which ignore non-positive
+  amounts since those exist for round-over credits) and `debugResetWallet`
+  (zeroes coins/gems only — `lifetimeKills` and the bought MetaStat levels
+  are progress, not currency, and stay untouched). `SettingsScreen` now
+  loads a `MetaProgression` unconditionally (not gated on
+  `SettingsScreenArgs.debugGame`) and shows a DEBUG section with the
+  current coins/gems plus ±100 coins/±50 gems/reset buttons from **either**
+  entry point — main menu Settings (no live `ArenaGame`) or the arena's
+  Pause Menu. The existing `ArenaGame`-only debug tools (god mode, grant
+  level up, end round) still require `debugGame != null` and now render
+  under the same DEBUG header instead of a second one.
+- **Gem drop -25% (5):** `kGemBaseDropChance`/`kGemDropChancePerLevel`
+  (`core/economy.dart`) each multiplied by 0.75 on top of D-046's existing
+  -80% tune (0.16→0.12, 0.002→0.0015).
+- **Gem float (6):** `GemComponent` gained the exact same sine-bob
+  `PotionComponent` already has. The two constants driving it
+  (`kPotionFloatAmplitudePx`/`kPotionFloatPeriodSec`) are renamed
+  `kItemFloatAmplitudePx`/`kItemFloatPeriodSec` and now shared by both,
+  rather than a second identical pair — "make it like the potion one" is
+  literal reuse, not a lookalike.
+- **Boss anima -40% (7):** new `kBossAnimaWidthPx = kAnimaWidthPx * 0.6`
+  (`core/constants.dart`), used at both `BossComponent._teleportAwayFrom`
+  call sites (departure and arrival — "when he teleports" covers the whole
+  teleport). `kAnimaWidthPx` itself is untouched since `ChestComponent`
+  also plays `effect_anima` for its own opening beat and wasn't asked to
+  change — a shared constant would have shrunk the chest's flourish too.
+- **Aura -25%/-20% bright (8):** `UpgradeAmounts.auraRadiusPx`
+  (`core/progression.dart`) *0.75 (85→63.75) — this is the shield's damage
+  radius too, not just its render size (`AuraComponent` sizes its visual to
+  it exactly by design, D-027), so the hitbox shrinks along with the art,
+  deliberately. `AuraComponent` gained a `_brightness = 0.8` constant,
+  folded into the existing contrast color matrix as a single combined
+  `_colorMatrix(contrast, brightness)` (`Paint.colorFilter` can only hold
+  one matrix, so this composes both effects into one rather than trying to
+  chain two) — brightness is a flat post-contrast multiply, a different
+  knob than contrast's pull-toward-grey.
+- **Mirror desync (9a):** `MirrorComponent` gained a `staggerDelaySec`
+  constructor param, added once to its initial `_phaseTimer` — since every
+  mirror runs identical active/cooldown durations, one one-time offset per
+  spawn order keeps them permanently out of phase, not just staggered at
+  the start. New `UpgradeAmounts.mirrorStaggerDelaySec = 0.5`;
+  `ArenaGame._syncMirrors` passes `_mirrors.length *
+  mirrorStaggerDelaySec` to each newly spawned one.
+- **Mirror fire axis (9b):** `MirrorComponent` gained `_horizontalAxis`
+  (bool), rolled randomly at spawn and re-rolled every time it reactivates
+  (`randomVisiblePoint` re-teleport branch) — `_fire()` picks
+  `[Vector2(1,0), Vector2(-1,0)]` or `[Vector2(0,1), Vector2(0,-1)]`
+  depending on it, instead of always the horizontal pair.
+- **Mirror bolts never expire (10):** `ProjectileComponent` gained
+  `neverExpire` (bool, default `false`) — when set, `update()` skips both
+  the `maxRangePx` and `_outOfBounds`/bounce checks entirely, so the
+  projectile only ever ends via actually hitting something. `MirrorComponent._fire`
+  is the only caller passing `true`; every other projectile in the project
+  (Apprentice/Warden bolt, boss bolt, knife, spiral fire) is unaffected.
+
+**Because:** Currency debug tools that only exist behind a live `ArenaGame`
+can't help test the character-unlock/wallet flow *before* a round even
+starts, which is exactly where "does the right character unlock" needs
+checking — main-menu reachability was the actual ask, not a nice-to-have.
+Reusing the potion's float constants for gems (rather than a parallel
+identical pair) and reusing `ProjectileComponent`'s existing despawn
+checks (rather than a Mirror-specific projectile subclass) both keep this
+project's "one shared mechanism, not a lookalike per caller" pattern intact
+the same way D-052/D-053's bounce/poof work already did.
+
+**Consequences:** Mirror bolts that never expire are a deliberate, scoped
+exception to this project's "no unbounded per-frame growth" instinct
+(CLAUDE.md §4.4) — they still can't accumulate indefinitely since
+`resetRound()` clears the whole world every round, but *within* a long
+round, enough active mirrors firing long enough could leave a growing
+number of bolts alive simultaneously (each one only removed by actually
+hitting something) — worth watching on-device if a very long round ever
+gets played through. `flutter analyze` clean, `flutter test` 95/95
+(unchanged — every change here is a tuning constant or component-level
+behavior, no new `core/` formula), `flutter build apk --debug` succeeds.
+On-device verification (does the currency debug UI actually work from both
+entry points, do gems now visibly bob, does the boss's teleport flourish
+read smaller without looking wrong, does the aura ring read smaller/dimmer
+without disappearing, do multiple mirrors visibly desync and sometimes fire
+vertically, do mirror bolts really never poof) is the developer's to run.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

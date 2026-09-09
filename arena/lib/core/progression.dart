@@ -140,7 +140,11 @@ class UpgradeAmounts {
   // Retuned 2026-09-08 after the first on-device pass read as doing
   // "barely any damage" (radius 70 / 0.5s / [4,8,14] originally) -- up
   // ~25-50% across the board. Still a guess, not a final balance pass.
-  static const double auraRadiusPx = 85;
+  // 2026-09-10 tune (DECISIONS D-059, developer's call: "make aura shield
+  // 25% smaller"): -25% (was 85) -- this is the shield's damage radius too
+  // (`AuraComponent` sizes its visual to it exactly, D-027), so the hitbox
+  // shrinks along with the visual, not just the art.
+  static const double auraRadiusPx = 85 * 0.75;
   static const double auraTickIntervalSec = 0.4;
   static const List<double> _auraDamagePerTickByStack = [6, 12, 20];
 
@@ -176,6 +180,14 @@ class UpgradeAmounts {
   static const double mirrorFireIntervalSec = 0.5;
   static const double mirrorActiveDurationSec = 3.0;
   static const double mirrorCooldownDurationSec = 3.0;
+
+  /// 2026-09-10 (DECISIONS D-059, developer's call: "spawn not in sync, by
+  /// 0.5 seconds delay") — every mirror ran the exact same
+  /// active/cooldown cycle from the same t=0, so 2-3 stacked mirrors always
+  /// flipped visible/hidden in lockstep. `ArenaGame._syncMirrors` multiplies
+  /// this by each new mirror's spawn order for its one-time initial phase
+  /// offset (`MirrorComponent`'s `staggerDelaySec` constructor param).
+  static const double mirrorStaggerDelaySec = 0.5;
   static const double mirrorBoltDamage = 8;
   static const double mirrorBoltKnockback = 50;
   static const double mirrorBoltSpeedPxPerS = 260;

@@ -96,11 +96,20 @@ const double kBossAspect = 192 / 256;
 /// the Apprentice's, just recoloured.
 const Color kBossBoltTint = Color(0xFF00FF00);
 
-/// The boss's teleport flourish (`effect_anima.png`, 9×7 grid, native cell
-/// 429×437) — plays once at the departure point and once at the arrival
-/// point (DECISIONS D-042).
+/// The teleport flourish (`effect_anima.png`, 9×7 grid, native cell
+/// 429×437), shared by the boss's teleport (DECISIONS D-042) and the
+/// chest-opening sequence's own lead-in beat (DECISIONS D-055).
 const double kAnimaWidthPx = 160;
 const double kAnimaAspect = 437 / 429;
+
+/// The boss's own teleport plays [kAnimaWidthPx] scaled down (DECISIONS
+/// D-059, developer's call: "-40% on the boss when he teleports") — a
+/// separate constant, not a change to [kAnimaWidthPx] itself, since that one
+/// is still shared with the chest-opening sequence, which wasn't asked to
+/// change. Applies at both the departure and arrival flourish
+/// (`BossComponent._teleportAwayFrom`) — "when he teleports" covers the
+/// whole teleport, not just one end of it.
+const double kBossAnimaWidthPx = kAnimaWidthPx * 0.6;
 
 /// SFX (DECISIONS D-044) — multiplies `Settings.sfxVolume` (0-100, the
 /// user's own slider) rather than replacing it, capped low per the
@@ -154,11 +163,13 @@ const double kThunderAspect = 256 / 128;
 const double kDefenceCrystalWidthPx = 32;
 const double kDefenceCrystalAspect = 1;
 
-/// Potions float up and down in place while sitting on the ground
-/// (developer's explicit ask) — a simple sine offset on top of their own
-/// looping sprite animation, not a second spritesheet.
-const double kPotionFloatAmplitudePx = 6;
-const double kPotionFloatPeriodSec = 1.6;
+/// Potions (and, since DECISIONS D-059, gems too — "make it like the potion
+/// one," the developer's literal ask) float up and down in place while
+/// sitting on the ground — a simple sine offset on top of their own looping
+/// sprite animation, not a second spritesheet. Shared by both pickups
+/// rather than duplicated so they can't drift apart on a future tune.
+const double kItemFloatAmplitudePx = 6;
+const double kItemFloatPeriodSec = 1.6;
 
 /// Flame component render order (CLAUDE.md §4.10) — layer via these
 /// constants, never a magic `priority:` int on a component.

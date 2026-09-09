@@ -38,8 +38,8 @@ class PotionComponent extends SpriteAnimationComponent
     _floatTime += dt;
     position.x = _basePosition.x;
     position.y = _basePosition.y +
-        sin(_floatTime * 2 * pi / kPotionFloatPeriodSec) *
-            kPotionFloatAmplitudePx;
+        sin(_floatTime * 2 * pi / kItemFloatPeriodSec) *
+            kItemFloatAmplitudePx;
 
     final player = game.player;
     if (player.isAlive &&

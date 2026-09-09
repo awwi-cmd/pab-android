@@ -36,7 +36,7 @@ class AuraComponent extends PositionComponent with HasGameReference<ArenaGame> {
         paint: Paint()
           ..filterQuality = FilterQuality.none // D-011
           ..color = const Color.fromRGBO(255, 255, 255, _opacity)
-          ..colorFilter = ColorFilter.matrix(_contrastMatrix(_contrast)),
+          ..colorFilter = ColorFilter.matrix(_colorMatrix(_contrast, _brightness)),
       ),
     );
   }
@@ -48,17 +48,28 @@ class AuraComponent extends PositionComponent with HasGameReference<ArenaGame> {
   static const _opacity = 0.8;
   static const _contrast = 0.8;
 
-  /// Standard contrast-scaling color matrix: scales every channel toward
-  /// (away from, if [factor] > 1) the 50% grey midpoint by [factor], alpha
-  /// untouched (last row `0 0 0 1 0`). `Color.fromRGBO`'s own alpha above
-  /// handles opacity separately -- this only pulls the ring's own colors
-  /// closer together, it doesn't fade it out.
-  static List<double> _contrastMatrix(double factor) {
-    final translate = (1 - factor) * 255 / 2;
+  /// 2026-09-10 tune (DECISIONS D-059, developer's call: "less bright by
+  /// 20%") -- a straight multiply-down on top of [_contrast]'s separate
+  /// pull-toward-grey, not the same knob: contrast changes how far the
+  /// colors sit from mid-grey, this changes how much light the whole ring
+  /// puts out.
+  static const _brightness = 0.8;
+
+  /// Combines the contrast pull-toward-grey and a flat brightness multiply
+  /// into one matrix (alpha untouched, last row `0 0 0 1 0`) rather than
+  /// chaining two `ColorFilter`s, which `Paint.colorFilter` can only hold
+  /// one of at a time. Brightness is applied *after* contrast (multiplying
+  /// contrast's own scale/translate terms), matching how the two would
+  /// compose if actually chained: `brightness * (contrast * pixel +
+  /// contrastTranslate)`. `Color.fromRGBO`'s own alpha above handles opacity
+  /// separately from both.
+  static List<double> _colorMatrix(double contrast, double brightness) {
+    final scale = contrast * brightness;
+    final translate = (1 - contrast) * 255 / 2 * brightness;
     return [
-      factor, 0, 0, 0, translate,
-      0, factor, 0, 0, translate,
-      0, 0, factor, 0, translate,
+      scale, 0, 0, 0, translate,
+      0, scale, 0, 0, translate,
+      0, 0, scale, 0, translate,
       0, 0, 0, 1, 0,
     ];
   }

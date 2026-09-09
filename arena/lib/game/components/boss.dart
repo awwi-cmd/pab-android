@@ -195,7 +195,7 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
     game.spawnEffect(
       game.animaAnimation,
       position.clone(),
-      size: Vector2(kAnimaWidthPx, kAnimaWidthPx * kAnimaAspect),
+      size: Vector2(kBossAnimaWidthPx, kBossAnimaWidthPx * kAnimaAspect),
     );
     _scratch
       ..setFrom(playerPosition)
@@ -206,7 +206,7 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
     game.spawnEffect(
       game.animaAnimation,
       position.clone(),
-      size: Vector2(kAnimaWidthPx, kAnimaWidthPx * kAnimaAspect),
+      size: Vector2(kBossAnimaWidthPx, kBossAnimaWidthPx * kAnimaAspect),
     );
     current = BossAnim.idle;
   }
