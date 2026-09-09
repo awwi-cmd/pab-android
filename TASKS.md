@@ -994,6 +994,54 @@ despawns while still partly on-screen.
 
 ---
 
+## Phase 18 — Layered BGM (2/3/1/4.wav), confetti independent-fall fix
+*Goal: wire the 4 delivered music tracks into a beat-synced, layered BGM
+system (base + Core + boss + death), and fix the two real complaints on
+the D-061 confetti burst (DECISIONS D-062/D-063).*
+
+- [x] **18.1** `BgmController` (`core/bgm_controller.dart`) — app-wide
+      singleton, started once from `ArenaApp.initState`. `2.wav` is the
+      permanent base layer; `enterCore()`/`bossSpawned()`/`bossCleared()`/
+      `died()`/`leaveArena()` layer `3.wav`/`1.wav`/`4.wav` in and out.
+      Every new layer syncs to the base layer's own loop boundary before
+      starting (`_waitForBaseLoopBoundary`) and fades 0%→100% over 2.5s;
+      layers fade back out the same way when removed.
+- [x] **18.2** Wired into `ArenaGame` (`resetRound` → `enterCore`,
+      `_maybeSpawnBoss`/`onBossKilled` → `bossSpawned`/`bossCleared`,
+      `_endRound` → `died` on a real death or `leaveArena` otherwise) and
+      `arena_screen.dart` (both MAIN MENU buttons → `leaveArena`, covering
+      the one path `_endRound` never sees: quitting mid-round via the
+      Pause Menu). `Settings.musicVolume` (previously unwired) now
+      actually drives every layer's volume, live.
+- [x] **18.3** mp3 compression — considered, explicitly **not done**: MP3's
+      encoder-delay/gapless-looping behavior varies by platform/decoder,
+      and this whole feature's one hard requirement (stated twice by the
+      developer) is exact loop-boundary sync. Kept as lossless WAV; see
+      DECISIONS D-062 for the full reasoning.
+- [x] **18.4** Confetti: independent per-particle timing
+      (`startDelayFraction`) instead of one shared flight fraction, and
+      `endAlign` moved well outside the visible box (was landing near the
+      card and visibly stopping there) with `Curves.easeIn` instead of
+      `easeOut` so it reads as falling away, not decelerating into a stop.
+- [x] **18.5** `flutter analyze` clean, `flutter test` 95/95 (unchanged —
+      audio/timing plumbing and animation tuning, no new `core/` formula),
+      `flutter build apk --debug` succeeds.
+- [ ] **18.6** On-device verification — **developer** (CLAUDE.md §2, and
+      the first real audio-output check this project has ever needed): the
+      whole BGM stack stays in phase with itself through several
+      boss-spawn/clear cycles over a long round (this can't be verified
+      without real speakers); fades actually sound like 2-3s crossfades,
+      not clicks; Music Volume slider affects it live; the confetti burst
+      now reads as individual pieces launching over time and actually
+      exits the screen instead of stopping mid-air.
+
+**Exit criterion:** a full round's audio is one continuous, in-phase
+layered track from menu → Core → boss → (death or menu), with no audible
+seam at any layer transition; the confetti burst reads as a real scatter,
+not a synchronized clump that freezes.
+
+---
+
 ## Backlog (post-demo — do not start)
 
 Kept here so ideas have somewhere to go that isn't the current sprint.

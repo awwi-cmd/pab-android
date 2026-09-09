@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/bgm_controller.dart';
 import '../../core/constants.dart';
 import '../../core/meta_progression.dart';
 import '../../core/settings.dart';
@@ -50,6 +51,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _update(Settings next) async {
+    // DECISIONS D-062: unlike SFX volume (read fresh per one-shot play),
+    // the BGM stack is already looping -- it needs to react live, not just
+    // on the next track that happens to start. Compared before the
+    // setState below overwrites `_settings` with `next`.
+    if (next.musicVolume != _settings?.musicVolume) {
+      BgmController.instance.setMasterVolume(next.musicVolume);
+    }
     setState(() => _settings = next);
     await _repo.save(next);
   }

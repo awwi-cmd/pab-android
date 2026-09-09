@@ -8,6 +8,7 @@ import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter/widgets.dart' show EdgeInsets;
 
+import '../core/bgm_controller.dart';
 import '../core/constants.dart';
 import '../core/economy.dart';
 import '../core/game_rules.dart';
@@ -286,6 +287,12 @@ class ArenaGame extends FlameGame {
     chestCount = 0;
     _pendingChestCard = null;
 
+    // DECISIONS D-062: entering the arena is entering "Core" -- not
+    // awaited (it may wait out most of a loop before the layer above it
+    // actually starts, DECISIONS D-062's sync rule) so the round itself
+    // never blocks on it.
+    unawaited(BgmController.instance.enterCore());
+
     addToWorld(ArenaFloor());
     player = PlayerComponent(
       character: character,
@@ -451,6 +458,7 @@ class ArenaGame extends FlameGame {
     kills++;
     grantXp(kBossXpReward);
     coinsEarned += _rollCoins() * kBossCoinMultiplier;
+    unawaited(BgmController.instance.bossCleared()); // DECISIONS D-062
     _maybeSpawnBoss(); // in case another spawn was queued while this one was up
   }
 
@@ -523,6 +531,7 @@ class ArenaGame extends FlameGame {
     _bossSpawnsCreated++;
     _boss = boss;
     addToWorld(boss);
+    unawaited(BgmController.instance.bossSpawned()); // DECISIONS D-062
   }
 
   void _maybeShowNextLevelUp() {
@@ -949,7 +958,17 @@ class ArenaGame extends FlameGame {
     // still under the death animation, well before the overlay appears).
     // `debugDie()` never sets `_realDeath`, so a debug kill still stays
     // silent.
-    if (_realDeath) _playSfx('core/sfx-you-died.wav');
+    if (_realDeath) {
+      _playSfx('core/sfx-you-died.wav');
+      // DECISIONS D-062: fades the whole Core/boss BGM stack out and
+      // crosses over into the death theme (4.wav).
+      unawaited(BgmController.instance.died());
+    } else {
+      // Not a real death (debug end round, or any future non-death round
+      // end) -- fighting's over either way, so Core's layer(s) fade back
+      // out, same as if the player had backed out via the Pause Menu.
+      unawaited(BgmController.instance.leaveArena());
+    }
     // The round's coin/gem haul and kill count cross over into the
     // persistent wallet exactly once, here (DECISIONS D-047/D-055) —
     // `coinsEarned`/`gemsCollected`/`kills` themselves stay the

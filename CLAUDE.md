@@ -58,8 +58,12 @@ real overflow fix, and a reworked boss teleport (destination telegraph,
 0.5s delay, arrival size-down/up pop, longer distance) are built,
 on-device verification pending** — see D-060. **Chest reveal confetti and
 every projectile type despawning further off-screen instead of at the bare
-visible edge are built, on-device verification pending** — see D-061. This
-is real, ongoing post-demo work now, not speculative scope;
+visible edge are built, on-device verification pending** — see D-061.
+**Layered, beat-synced background music (`core/bgm_controller.dart` —
+2/3/1/4.wav base/Core/boss/death layers) and a confetti independent-timing/
+falls-off-screen fix are built, on-device verification pending** —
+see D-062/D-063. This is real, ongoing post-demo work now, not speculative
+scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
 The Backlog is still binding for what hasn't been explicitly asked for — keep
@@ -154,14 +158,15 @@ ArenaDemo/                    <- repo root, open this in your editor
     │   │   ├── cards/                  // real 52-card deck + 2 Jokers + backs, chest reveal draw (D-057)
     │   │   └── scenes/                // floor tile variants + border tile (D-023)
     │   └── audio/
-    │       └── core/                  // sfx-explosion.wav, sfx-you-died.wav (D-044)
+    │       └── core/                  // sfx-explosion.wav, sfx-you-died.wav (D-044); 1-4.wav layered BGM tracks (D-062)
     └── lib/
         ├── main.dart              // runApp only
-        ├── app.dart               // MaterialApp, routes, theme
+        ├── app.dart               // MaterialApp, routes, theme; starts BgmController once (D-062)
         ├── core/
         │   ├── constants.dart     // design size, colors, layer priorities, render scales
         │   ├── stats.dart         // StatBlock + ALL derived-stat formulas, EnemyStats
         │   ├── settings.dart      // Settings model + SharedPreferences I/O
+        │   ├── bgm_controller.dart // app-wide singleton: layered/beat-synced BGM (2/3/1/4.wav base/Core/boss/death) — D-062
         │   ├── game_rules.dart    // pure gameplay math (targeting, spawn decay, knockback,
         │   │                      //   enemy/boss level-scaling D-026/D-042, randomPerimeterPoint D-041)
         │   ├── progression.dart   // XP curve, UpgradeKind (Aura + Mirror/Ray/Thunder/Crystal), PlayerUpgrades — D-025/D-027/D-049
@@ -172,12 +177,12 @@ ArenaDemo/                    <- repo root, open this in your editor
         ├── ui/
         │   ├── screens/
         │   │   ├── main_menu_screen.dart
-        │   │   ├── settings_screen.dart        // currency debug always shown; god mode/grant-level-up/end-round only when opened from pause (D-025/D-059)
+        │   │   ├── settings_screen.dart        // currency debug always shown; god mode/grant-level-up/end-round only when opened from pause (D-025/D-059); Music Volume live-drives BgmController (D-062)
         │   │   ├── credits_screen.dart
         │   │   ├── character_select_screen.dart // swipe carousel, one character at a time; locked slots show a bar-fill unlock panel — D-055
         │   │   ├── shop_screen.dart       // empty placeholder, back button only — D-047
         │   │   ├── upgrades_screen.dart   // 5 MetaStat rows, buy buttons — D-047
-        │   │   └── arena_screen.dart      // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu/ChestReveal)
+        │   │   └── arena_screen.dart      // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu/ChestReveal); ChestReveal confetti — D-061/D-063
         │   └── widgets/                   // buttons, stat bars, shared chrome
         └── game/
             ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling; addToWorld/addToHud split — D-040.

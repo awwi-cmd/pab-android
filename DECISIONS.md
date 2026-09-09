@@ -2655,6 +2655,161 @@ is the developer's to run.
 
 ---
 
+## D-062 — Layered, beat-synced background music (2/3/1/4.wav)
+
+**Date:** 2026-09-10 · **Status:** Accepted
+**Context:** Developer delivered 4 music tracks
+(`assets/audio/core/1..4.wav`), all authored at 162 BPM and (near enough)
+identical loop length, meant to stack rather than swap: "2.wav as the main
+BGM playing everywhere while not in CORE (fighting mobs)," "3.wav... plays
+alongside 2.wav once we enter core, but at 25% less volume," "1.wav starts
+playing fading in with 35% less volume... when a boss spawns," "4.wav
+starts playing when you die." The explicit, repeated emphasis: "when
+another one starts playing over another, [it] must start at the next cue
+loop point of the one that's playing already... very important otherwise
+they wont be in sync," and every new layer "must fade it in from 0%-100%
+... over like 2-3 seconds." Also asked: "compress sounds if needed into
+mp3."
+
+**Decision, architecture:** `BgmController` (`core/bgm_controller.dart`) —
+a process-wide singleton, not tied to any screen or `ArenaGame` instance,
+since the base layer has to keep playing across every menu and survive
+`ArenaGame` being torn down/rebuilt between rounds (same "outlives any one
+screen" category as `Settings`/`MetaProgression`, not round state per
+CLAUDE.md §4.5). Uses `AudioPlayer` from `package:flame_audio/flame_audio.
+dart`'s own re-export of `audioplayers` — not a new dependency (`flame_
+audio` already depends on it and re-exports it wholesale); `FlameAudio`'s
+own `loop`/`bgm` helpers only ever manage one track, not several
+independently-faded layers stacked at once, so this manages its own
+`AudioPlayer` per layer instead.
+
+**Decision, sync:** every new layer is started via `_startSyncedLayer`,
+which first awaits `_waitForBaseLoopBoundary()` — reads the permanent base
+layer's `getDuration()`/`getCurrentPosition()` and delays by exactly
+`duration - position` before calling `FlameAudio.loop` on the new track.
+Since every track shares the same tempo and loop length, starting any new
+layer at the instant the base layer wraps back to its own position 0 keeps
+every layer in phase with every other from that point on, not just
+approximately in time — the base layer (`2.wav`) is always the sync
+reference, never any other layer, so there's one clock, not a chain of
+relative offsets that could compound error.
+
+**Decision, fades:** `_fadeVolume`/`_fadeOutAndStop` step a layer's volume
+in 25 increments over 2.5s (`_fadeDuration`) via repeated `setVolume` calls
+on a `Future.delayed` loop — a plain Dart singleton outside the widget
+tree has no `vsync`/`AnimationController` to reach for, so this is the
+equivalent for audio. Every layer fades in on start; fade-out (not
+explicitly asked for, but an abrupt cut against everything else being a
+smooth crossfade would be the odd one out, developer's-intent-consistent
+call) uses the same shape in reverse. A `generation` counter per layer
+slot lets a fade started by an old start/stop call detect it's been
+superseded and bail out quietly, so rapid enter/leave-core or repeated
+boss spawns can't leave two fades fighting over one slot's volume.
+
+**Decision, relative volumes:** `_coreRelativeVolume = 0.75` (3.wav, "25%
+less"), `_bossRelativeVolume = 0.65` (1.wav, "35% less"),
+`_deathRelativeVolume = 1.0` (4.wav — no relative number was given for it,
+full/reference volume assumed). All three multiply `Settings.musicVolume`
+(the existing, previously-unwired 0-100 slider) the same way `_playSfx`
+already multiplies `Settings.sfxVolume` for SFX — `setMasterVolume` is
+called once at app boot (`ArenaApp`'s new `initState`, which is what
+actually calls `BgmController.instance.start()`) and again live from
+`SettingsScreen._update` whenever the slider moves, since a looping BGM
+stack (unlike a one-shot SFX) needs to react while it's already playing,
+not just on the next track that happens to start.
+
+**Decision, triggers (judgment calls where the spec didn't say):** the
+spec didn't say what stops the boss layer or the death layer, so:
+`ArenaGame.onBossKilled` calls `bossCleared()` (fades `1.wav` out — a boss
+theme shouldn't outlive the boss); leaving the arena via either MAIN MENU
+button (Round Over's or the Pause Menu's) calls `leaveArena()` (fades
+core/boss/death all back down to just the base layer, "2.wav... playing
+everywhere"). `ArenaGame._endRound` itself also calls `died()` (real death)
+or `leaveArena()` (any other round end, e.g. the debug END ROUND button) —
+the Pause Menu's MAIN MENU button is the one real "leave Core" path
+`_endRound` never sees at all (quitting mid-round without the round ever
+actually ending), so both call sites exist and both are idempotent against
+each other (a second `leaveArena()` on an already-`null` player is a
+no-op).
+
+**Decision, mp3 compression — explicitly NOT done:** the developer asked
+to "compress sounds if needed into mp3." Judgment call: **not done**, for
+a real technical reason, not laziness — MP3 is a lossy, frame-based format
+with encoder delay/padding at the start of the file (the LAME/Xing gap);
+whether a decoder strips that gap correctly for genuinely sample-accurate
+looping varies by platform and player stack, and this entire feature's
+one hard requirement, stated twice, is that the loop boundary be *exact*
+("very important otherwise they wont be in sync"). Trading that
+correctness for a smaller APK on 4 files totaling ~8MB reads as the wrong
+trade here. The 4 tracks stay lossless WAV. Flagged back to the developer
+rather than silently doing either extreme (compressing and risking the
+one thing that mattered most, or silently ignoring an explicit ask) — if
+this is still wanted despite the risk, worth actually testing on-device
+before committing to it, not assuming the tradeoff either way from a build
+machine.
+
+**Because:** A background-audio decision (sync/fade/layering) belongs
+outside the widget tree and outside `ArenaGame`'s round-scoped state for
+the same reason `Settings`/`MetaProgression` do — none of screens/rounds
+own the app's actual lifetime, and BGM has to outlive all of them. Reusing
+`flame_audio`'s own re-exported `AudioPlayer` keeps this at zero new
+dependencies while still getting the low-level per-layer control
+`FlameAudio.loop`'s single-track model doesn't offer.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 95/95 (unchanged
+— this is audio/timing plumbing, not `core/` gameplay formula territory),
+`flutter build apk --debug` succeeds. On-device verification (does the
+whole stack actually stay in phase after several boss spawns/clears over
+a long round — the one thing that can't be verified without real device
+audio output — does the crossfade actually sound smooth at 2-3s, does
+Settings' Music Volume slider affect it live) is the developer's to run;
+this is also the first time this project's BGM has ever been wired to
+anything at all, so it's genuinely untested past the build line.
+
+---
+
+## D-063 — Confetti: independent per-piece timing, falls off-screen instead of stopping mid-air
+
+**Date:** 2026-09-10 · **Status:** Accepted
+**Context:** Follow-up on D-061's confetti: "shoot the confetti pieces
+independently, and make them fall more outside of the screen, because
+they stop in the middle now."
+
+**Decision:** Two changes to `_ConfettiPainter`/`_buildConfetti`
+(`arena_screen.dart`):
+- **Independent timing:** each `_ConfettiParticle` gained
+  `startDelayFraction` (random, 0-35% of the burst's total duration).
+  `_ConfettiPainter.paint` now computes a *local* timeline per particle
+  (`[startDelayFraction, 1]` of the shared controller remapped to
+  `[0, 1]`) instead of every particle sharing one global flight fraction —
+  pieces launch, arc, and spin on their own individual clocks within the
+  shared burst, not all in lockstep.
+- **Falls off-screen, doesn't stop:** `endAlign` used to land close to the
+  card (roughly ±0.4 `Alignment` units) — every piece visibly came to
+  rest and hung there, which read as "stop in the middle." `endAlign` is
+  now well outside the visible box on both axes (`dy` up to `2.4`, more
+  than a full screen-height past the bottom edge) — a piece's animation
+  now ends by actually leaving the screen, same as real confetti falling
+  away, not settling inside it. The flight curve changed from
+  `Curves.easeOut` (decelerates into a stop — exactly the wrong shape for
+  "keeps falling") to `Curves.easeIn` (accelerates, reading as gravity).
+  Burst duration extended 950ms → 1400ms so the longer, staggered flights
+  have room to actually finish leaving the screen before the animation
+  ends.
+
+**Because:** Both complaints trace to the same root cause — the original
+design treated the burst as one synchronized swarm that all arrived at a
+fixed point together, which is neither how real confetti moves nor what
+was asked for either time.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 95/95
+(unchanged — animation-only), `flutter build apk --debug` succeeds.
+On-device verification (does the burst now read as individual pieces
+rather than one synchronized clump, do pieces actually exit the screen
+instead of parking mid-air) is the developer's to run.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer
