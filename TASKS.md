@@ -856,7 +856,9 @@ D-058/D-059).*
 - [x] **15.1** Chest reveal overflow fix — `_ChestRevealOverlay`'s content
       wrapped in `SingleChildScrollView` (was `Padding` directly under
       `Center`), so a short viewport scrolls instead of overflowing. Real
-      bug, not a tune.
+      bug, not a tune. **Incomplete — the actual overflow was a separate,
+      inner fixed-height box further down the same tree; the real fix
+      landed in 16.1 (DECISIONS D-060).**
 - [x] **15.2** Chest reveal: card-back shuffle lead-in (`_shuffling` phase,
       8 steps @ 70ms through the 2 `Back Cards/` assets) before the
       existing D-057 face-card spin, and a jump/land bounce
@@ -912,6 +914,47 @@ D-058/D-059).*
 complete shuffle→spin→land→reveal sequence; the currency debug tools work
 from both Settings entry points; every tuning number above lands the way
 its ask described on an actual device.
+
+---
+
+## Phase 16 — Chest overflow (the real fix), boss teleport telegraph/delay/pop/distance
+*Goal: fix the chest reveal overflow for real (15.1's fix addressed a
+different overflow than the one actually reported), and rework the boss's
+teleport into a telegraphed, delayed, longer jump with an arrival bounce
+(DECISIONS D-060).*
+
+- [x] **16.1** Chest reveal overflow, the real fix — the reward text sat in
+      a fixed `SizedBox(height: 46)` a couple of lines of real text were
+      taller than; replaced with `ConstrainedBox(minHeight: 46)` + `Center`,
+      which can grow to fit content but never clips it. 15.1's
+      `SingleChildScrollView` (a different, real fix for a different,
+      real overflow source) stays.
+- [x] **16.2** Boss teleport destination telegraph — `effect_anima` now
+      plays at the destination the boss is about to appear at, not at its
+      current position (D-042's original behavior).
+- [x] **16.3** Boss teleport delay — `BossStats.teleportDelaySec` (0.5s):
+      the boss is frozen (no walk/fire/contact damage) between the
+      telegraph appearing and it actually arriving.
+- [x] **16.4** Boss teleport arrival pop — a size-down-then-up sine bounce
+      (`BossComponent._popScale`/`_tickTeleportPop`, 0.28s, dips to 60%
+      size at its midpoint) plays once the boss actually appears.
+- [x] **16.5** Boss teleport distance — `BossStats.
+      teleportDistanceMultiplier` (1.6) lands further past the exact
+      opposite-of-player mirror point D-042 used, instead of exactly on it.
+- [x] **16.6** `flutter analyze` clean, `flutter test` 95/95 (unchanged —
+      no new `core/` formula, both changes are UI layout and
+      component-level behavior), `flutter build apk --debug` succeeds.
+- [ ] **16.7** On-device verification — **developer** (CLAUDE.md §2): the
+      "BOTTOM OVERFLOWED" warning is actually gone now; the destination
+      telegraph clearly shows where the boss is about to appear before he
+      does; the freeze during the wind-up reads as an intentional cast, not
+      a hang/bug; the arrival pop reads as landing, not a glitch; the
+      teleport distance feels meaningfully longer than before.
+
+**Exit criterion:** no overflow warning fires from the chest reveal under
+any content/screen combination; a full boss teleport reads as one clear
+sequence — telegraph, wait, jump, land — landing noticeably further away
+than the old exact-mirror teleport.
 
 ---
 

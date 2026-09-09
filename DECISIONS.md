@@ -2508,6 +2508,77 @@ vertically, do mirror bolts really never poof) is the developer's to run.
 
 ---
 
+## D-060 — Chest reveal: the *real* overflow; boss teleport reworked into a telegraphed, delayed, longer jump
+
+**Date:** 2026-09-10 · **Status:** Accepted
+**Context:** Two reports. (1) "Still occurs 'BOTTOM OVERFLOWED BY 4.0
+PIXELS'" — D-058's `SingleChildScrollView` fix didn't actually touch the
+real cause. (2) A full rework of the boss's D-042/D-052 teleport: "make
+boss anima appear only where he will teleport 0.5 seconds before, so
+automatically make him teleport with a delay," "add a boss animation when
+he teleports, he must size down and size up where he appears," and "make
+boss teleport a longer distance."
+
+**Decision, the overflow (bug, not a re-tune):**
+- The actual `RenderFlex` overflowing was never the outer `Column` D-058's
+  scroll wrapper targeted — it was the *inner* one, a fixed
+  `SizedBox(height: 46)` clipping a 2-line reward text (label + "+N gems")
+  that's a few pixels taller than 46px once real font line-height is
+  accounted for. The outer scroll fix was real and stays (protects against
+  a short *screen*), but it can't fix a *hard-clipped fixed-height child*
+  further down the same tree — two independent overflow sources, only one
+  of which D-058 actually addressed.
+- Fixed by replacing the fixed height with `ConstrainedBox(constraints:
+  BoxConstraints(minHeight: 46))` — a minimum can only make the box grow to
+  fit real content, never clip it, so it can't overflow again regardless of
+  future copy/font changes. `Center` keeps the "..." placeholder vertically
+  centered at that minimum height exactly as before.
+
+**Decision, boss teleport rework (supersedes D-042's instant version):**
+- `BossComponent._beginTeleport` computes the destination up front (mirror
+  point across the player, `BossStats.teleportDistanceMultiplier` = 1.6
+  past it — the "longer distance" ask) and plays `effect_anima` **there**
+  immediately, not at the boss's current position the way D-042 did —
+  "appear only where he will teleport."
+  `_teleportPending`/`_teleportDelayTimer` (`BossStats.teleportDelaySec` =
+  0.5) then freeze the boss entirely (no walk/fire/contact damage,
+  `current = BossAnim.idle`) for that half-second before
+  `_completeTeleport` actually repositions it — "automatically... with a
+  delay," a committed wind-up the player can see coming but the boss can't
+  be baited out of once it starts.
+- On arrival, `_completeTeleport` starts a `_popScale` bounce — a sine dip
+  (`1 - sin(t·π) · 0.4` over 0.28s) that starts and ends at 1 and bottoms
+  out at 60% size at its midpoint, ticked every frame by `_tickTeleportPop`
+  — "size down and size up where he appears." Since `BossComponent` already
+  used `scale.x` for horizontal facing (±1, D-042), facing was pulled out
+  into its own `_facingSign` field so the two can't stomp each other;
+  `scale.setValues(_facingSign * _popScale, _popScale)` combines them once
+  per frame instead.
+
+**Because:** A `minHeight` constraint is the correct fix for "content that
+might be taller than my placeholder guess" — a fixed height is only ever
+safe when the content's exact size is actually known, which two lines of
+real rendered text never reliably are across font/locale/accessibility
+settings. The teleport rework keeps every existing mechanic (mirror-point
+math, `effect_anima`, `ArenaGame.spawnEffect`) and only changes *when* and
+*where* they fire, rather than introducing a parallel teleport system.
+
+**Consequences:** `BossComponent._teleportAwayFrom` (D-042) is gone,
+replaced by `_beginTeleport`/`_completeTeleport`. The boss is now
+uninterruptible-but-freezeable for `teleportDelaySec` once a teleport
+starts — still damageable/knockback-able during the wind-up (neither is
+gated on `_teleportPending`), just AI-frozen. `flutter analyze` clean,
+`flutter test` 95/95 (unchanged — no new `core/` formula, both changes are
+UI layout and component-level behavior), `flutter build apk --debug`
+succeeds. On-device verification (does the overflow warning actually stop
+appearing now, does the destination telegraph read as a clear warning
+before the boss arrives, does the freeze read as intentional wind-up rather
+than a bug/hang, does the size-down-then-up bounce read as landing, does
+the longer jump distance feel meaningfully different from the old exact
+mirror point) is the developer's to run.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

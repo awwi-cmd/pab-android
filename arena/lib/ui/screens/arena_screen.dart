@@ -754,36 +754,49 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
                 child: _PlayingCardImage(assetPath: _displayedAsset),
               ),
               const SizedBox(height: 12),
-              // Fixed height so the reward text popping in doesn't shift
-              // the CONTINUE button while still spinning/shuffling.
-              SizedBox(
-                height: 46,
-                child: (_shuffling || _spinning)
-                    ? const Text(
-                        '...',
-                        style: TextStyle(color: ArenaColors.textDim, fontSize: 18),
-                      )
-                    : Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _finalCard.label,
-                            style: const TextStyle(
-                              color: ArenaColors.accent,
-                              fontWeight: FontWeight.bold,
+              // A *minimum* height so the "..." placeholder doesn't leave a
+              // jarring gap while still spinning/shuffling -- DECISIONS
+              // D-060 bugfix: this used to be a fixed `SizedBox(height: 46)`
+              // clipping its child, which the 2-line reward text (label +
+              // "+N gems", each with real font line-height) was a few
+              // pixels taller than -- "BOTTOM OVERFLOWED BY 4.0 PIXELS",
+              // reproducing every time regardless of the outer
+              // SingleChildScrollView (that fixes the *overlay* overflowing
+              // its screen; this was a separate, smaller `RenderFlex`
+              // overflowing its own fixed box further down the tree).
+              // `minHeight` can only grow this box to fit its real content,
+              // never clip it, so it can't overflow again even if the copy
+              // or font changes later.
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 46),
+                child: Center(
+                  child: (_shuffling || _spinning)
+                      ? const Text(
+                          '...',
+                          style: TextStyle(color: ArenaColors.textDim, fontSize: 18),
+                        )
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _finalCard.label,
+                              style: const TextStyle(
+                                color: ArenaColors.accent,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '+${_finalCard.gemReward} gems',
-                            style: const TextStyle(
-                              color: ArenaColors.textPrimary,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                            const SizedBox(height: 4),
+                            Text(
+                              '+${_finalCard.gemReward} gems',
+                              style: const TextStyle(
+                                color: ArenaColors.textPrimary,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                ),
               ),
               const SizedBox(height: 24),
               SizedBox(

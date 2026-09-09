@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flame/components.dart';
@@ -26,6 +27,14 @@ enum BossAnim { idle, walk, fire, death }
 /// firing and teleporting that `EnemyComponent` has no hook for — but both
 /// need to be hittable by the exact same attack code, which `Damageable`
 /// (`damageable.dart`) gives them without either knowing the other exists.
+///
+/// Teleport (DECISIONS D-060, superseding D-042's instant version): the
+/// destination's `effect_anima` telegraph now plays first, then the boss
+/// waits `BossStats.teleportDelaySec` (frozen — no walk/fire/contact
+/// damage) before actually appearing there, further away than the exact
+/// opposite-of-player mirror point (`BossStats.teleportDistanceMultiplier`).
+/// It pops in with a quick size-down-then-up bounce (`_popScale`) rather
+/// than just snapping to full size.
 class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
     with HasGameReference<ArenaGame>
     implements Damageable {
@@ -67,6 +76,28 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
 
   final Vector2 _scratch = Vector2.zero(); // reused every frame
 
+  /// Horizontal facing (DECISIONS D-042) — kept separate from [scale]
+  /// itself now that [_popScale] (DECISIONS D-060) also drives `scale`;
+  /// the two are combined into `scale` once per frame in [update] rather
+  /// than each writing `scale.x`/`scale.y` directly, so they can't stomp
+  /// each other.
+  double _facingSign = 1;
+
+  // Teleport wind-up (DECISIONS D-060) -- see the class doc comment.
+  bool _teleportPending = false;
+  double _teleportDelayTimer = 0;
+  final Vector2 _teleportDestination = Vector2.zero();
+
+  /// The post-arrival size-down-then-up bounce (DECISIONS D-060, "he must
+  /// size down and size up where he appears") — `_popScale` dips below 1
+  /// then eases back to it over [_teleportPopDurationSec] once
+  /// [_teleportPopTimer] is set by [_completeTeleport]; `0` (the default)
+  /// means inactive, holding `_popScale` at 1.
+  double _popScale = 1;
+  double _teleportPopTimer = 0;
+  static const _teleportPopDurationSec = 0.28;
+  static const _teleportPopDepth = 0.4; // dips to 60% size at its lowest
+
   @override
   bool get isDying => current == BossAnim.death;
 
@@ -81,17 +112,30 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
       return;
     }
 
+    _tickTeleportPop(dt);
+    scale.setValues(_facingSign * _popScale, _popScale);
+
+    if (_teleportPending) {
+      // Frozen for the whole wind-up -- no walk/fire/contact damage -- a
+      // committed action the player can't bait and dodge out of, not a
+      // window where the boss keeps acting normally.
+      current = BossAnim.idle;
+      _teleportDelayTimer -= dt;
+      if (_teleportDelayTimer <= 0) _completeTeleport();
+      return;
+    }
+
     final player = game.player;
     if (!player.isAlive) return;
 
     final toPlayer = player.position - position;
     final distance = toPlayer.length;
 
-    // Teleport away the instant the player threatens melee (DECISIONS
-    // D-042) -- checked before anything else this frame, so it pre-empts
-    // both contact damage and the walk/fire state below.
+    // Start the teleport wind-up the instant the player threatens melee
+    // (DECISIONS D-042/D-060) -- checked before anything else this frame,
+    // so it pre-empts both contact damage and the walk/fire state below.
     if (distance <= BossStats.teleportTriggerDistancePx) {
-      _teleportAwayFrom(player.position);
+      _beginTeleport(player.position);
       return;
     }
 
@@ -128,12 +172,12 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
         ..setFrom(toPlayer)
         ..normalize()
         ..scale(BossStats.moveSpeedPxPerS * dt);
-      if (_scratch.x != 0) scale.x = _scratch.x < 0 ? -1 : 1;
+      if (_scratch.x != 0) _facingSign = _scratch.x < 0 ? -1 : 1;
       position.add(_scratch);
     } else {
       // In range -- hold position and shoot instead of closing all the way
       // in (a caster boss, not a brawler).
-      if (toPlayer.x != 0) scale.x = toPlayer.x < 0 ? -1 : 1;
+      if (toPlayer.x != 0) _facingSign = toPlayer.x < 0 ? -1 : 1;
       _fireCooldownTimer -= dt;
       if (_fireCooldownTimer <= 0) {
         _fireCooldownTimer = BossStats.fireCooldownSec;
@@ -146,6 +190,23 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
         current = BossAnim.idle;
       }
     }
+  }
+
+  /// Ticks [_teleportPopTimer] down and derives [_popScale] from it — a
+  /// sine dip so it starts and ends at 1 (no seam against the boss's normal
+  /// scale) and bottoms out at `1 - _teleportPopDepth` at the midpoint,
+  /// rather than a linear down-then-up which would visibly kink at the
+  /// bottom. No-ops (holding `_popScale` at 1) once the timer runs out.
+  void _tickTeleportPop(double dt) {
+    if (_teleportPopTimer <= 0) {
+      _popScale = 1;
+      return;
+    }
+    _teleportPopTimer -= dt;
+    final elapsed =
+        (_teleportPopDurationSec - _teleportPopTimer).clamp(0.0, _teleportPopDurationSec);
+    final t = elapsed / _teleportPopDurationSec;
+    _popScale = 1 - sin(t * pi) * _teleportPopDepth;
   }
 
   /// `true` if the boss can fire another bolt without going over
@@ -186,28 +247,38 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
     _liveBolts.add(bolt);
   }
 
-  /// Teleports to the mirror image of the boss's current position across
-  /// the player -- literally "the other side" of wherever the player is,
-  /// not a random point (DECISIONS D-042). Plays `effect_anima` at both
-  /// ends; both are one-shot (`ArenaGame.spawnEffect`'s `removeOnFinish`)
-  /// so neither needs manual cleanup.
-  void _teleportAwayFrom(Vector2 playerPosition) {
-    game.spawnEffect(
-      game.animaAnimation,
-      position.clone(),
-      size: Vector2(kBossAnimaWidthPx, kBossAnimaWidthPx * kAnimaAspect),
-    );
+  /// Computes the destination (further past the mirror-image point across
+  /// the player than D-042's original exact mirror, DECISIONS D-060's
+  /// `teleportDistanceMultiplier`) and telegraphs it with `effect_anima`
+  /// immediately — "appear only where he will teleport 0.5 seconds
+  /// before" — rather than at the boss's current (departure) position the
+  /// way D-042 used to. The actual move happens later, in
+  /// [_completeTeleport], once [_teleportDelayTimer] runs out.
+  void _beginTeleport(Vector2 playerPosition) {
     _scratch
       ..setFrom(playerPosition)
       ..sub(position); // vector from boss to player
-    position
+    _teleportDestination
       ..setFrom(playerPosition)
-      ..add(_scratch); // player position + (player - boss) = mirrored point
+      ..x += _scratch.x * BossStats.teleportDistanceMultiplier
+      ..y += _scratch.y * BossStats.teleportDistanceMultiplier;
     game.spawnEffect(
       game.animaAnimation,
-      position.clone(),
+      _teleportDestination.clone(),
       size: Vector2(kBossAnimaWidthPx, kBossAnimaWidthPx * kAnimaAspect),
     );
+    _teleportPending = true;
+    _teleportDelayTimer = BossStats.teleportDelaySec;
+  }
+
+  /// Actually moves the boss to the telegraphed destination once the
+  /// wind-up finishes, and starts the size-down-then-up arrival bounce
+  /// (DECISIONS D-060) — `_tickTeleportPop` (driven every frame from
+  /// [update]) reads [_teleportPopTimer] from here on.
+  void _completeTeleport() {
+    _teleportPending = false;
+    position.setFrom(_teleportDestination);
+    _teleportPopTimer = _teleportPopDurationSec;
     current = BossAnim.idle;
   }
 
