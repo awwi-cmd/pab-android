@@ -120,6 +120,53 @@ double corruptionRewardMultiplier(int corruptionLevel) {
   return 1 + corruptionLevel * kCorruptionRewardPerLevel;
 }
 
+/// A random point *inside* [visible], inset by [marginFactor] of its own
+/// width/height so it doesn't land glued to the very edge (DECISIONS D-049
+/// — Ultimate Mirror: "mirrors spawn only on screen where player can see",
+/// the opposite requirement from [randomPerimeterPoint] below, which spawns
+/// just *outside* what's visible).
+Vector2 randomVisiblePoint(
+  Random random,
+  Rect visible, {
+  double marginFactor = 0.1,
+}) {
+  final insetX = visible.width * marginFactor;
+  final insetY = visible.height * marginFactor;
+  final left = visible.left + insetX;
+  final right = visible.right - insetX;
+  final top = visible.top + insetY;
+  final bottom = visible.bottom - insetY;
+  return Vector2(
+    left + random.nextDouble() * (right - left),
+    top + random.nextDouble() * (bottom - top),
+  );
+}
+
+/// Indices of every candidate within [halfWidth] of the line segment from
+/// [origin] to `origin + direction.normalized() * maxRange`, and not behind
+/// [origin] or past the far end (DECISIONS D-049 — Projectile Ray: a
+/// piercing beam hits everything along its line, not just one target like
+/// [nearestWithinRange] or one radius like [allWithinRange]). Order
+/// preserved, same as [allWithinRange].
+List<int> alongLineWithinRange(
+  Vector2 origin,
+  Vector2 direction,
+  List<Vector2> candidates,
+  double maxRange,
+  double halfWidth,
+) {
+  final dir = direction.normalized();
+  final result = <int>[];
+  for (var i = 0; i < candidates.length; i++) {
+    final toCandidate = candidates[i] - origin;
+    final along = toCandidate.dot(dir);
+    if (along < 0 || along > maxRange) continue;
+    final perpendicular = (toCandidate - dir * along).length;
+    if (perpendicular <= halfWidth) result.add(i);
+  }
+  return result;
+}
+
 /// A random point just outside [visible], by [marginFactor] of its own
 /// width/height (DECISIONS D-041/D-042) — shared by `Spawner` (enemies) and
 /// the boss's spawn point, so both land just off whatever the player can

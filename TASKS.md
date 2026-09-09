@@ -517,13 +517,25 @@ Developer delivered `boss_map1.png`, `audio/core/`, and
       succeeds. Remaining on-device verification (bolt color, teleport
       flashes, SFX feel, potion float, coin animation accuracy) still open
       — re-check after this pass.
-- [ ] **10.7** `arena_game.dart` split (DECISIONS D-045) — now ~820 lines,
-      well past CLAUDE.md §5's ~300-line guideline. Extract the ~20
-      `SpriteAnimation`/`Sprite` fields and their entire `onLoad()` loading
-      block into a separate `VfxLibrary`/`AssetLibrary` class; `ArenaGame`
-      keeps round state, spawn/kill bookkeeping, `addToWorld`/`addToHud`.
-      Do this **before** the next feature that touches `ArenaGame`
-      significantly.
+- [x] **10.7** `arena_game.dart` split (DECISIONS D-045, closed by D-048) —
+      the ~20 `SpriteAnimation`/`Sprite` fields and the entire `onLoad()`
+      loading block moved into `game/game_assets.dart`'s `GameAssets` class;
+      `ArenaGame` holds one `late GameAssets gameAssets` and keeps round
+      state, spawn/kill bookkeeping, `addToWorld`/`addToHud`. Every existing
+      call site (`AttackBehavior`s, `BossComponent`, `AuraComponent`) is
+      unchanged — `ArenaGame` still exposes `boltAnimation`/`knifeCleanSprite`/
+      etc. as thin getters delegating to `gameAssets`. `flutter analyze`
+      clean, `flutter test` passes, `flutter build apk --debug` succeeds.
+- [x] **10.8** Fixed: boss bolt never damaged the player (DECISIONS D-051,
+      developer report). `ProjectileComponent`'s hit-test only ever checked
+      `game.damageableTargets` (enemies + boss — "what a player attack can
+      hit"), which never contained the player, so the boss's own bolt
+      always found nothing to hit despite visibly firing/travelling. New
+      `targetsPlayer` param on `ProjectileComponent`, `true` for the boss's
+      bolt only, checks `game.player` directly instead. `flutter analyze`
+      clean, `flutter test` 85/85, `flutter build apk --debug` succeeds.
+      On-device confirmation that the boss's bolt now actually lands is
+      **developer's** to check (CLAUDE.md §2).
 
 **Exit criterion:** a full round can include a boss encounter with working
 audio feedback, gems/potions appearing and being collected in the world,
@@ -567,6 +579,86 @@ Developer specced this directly (DECISIONS D-047).*
 
 **Exit criterion:** coins earned finishing a round are spendable from
 character select on a permanent, felt improvement to the next run.
+
+---
+
+## Phase 12 — Four new powers
+*Goal: 4 new level-up skills — Ultimate Mirror, Projectile Ray, Projectile
+Thunder, Defence Crystal. Developer delivered
+`ultimate-mirror.png`/`projectile-ray-beam.png`/`projectile-thunder.png`/
+`defence-crystal.png` and specced all four directly (DECISIONS D-049).*
+
+- [x] **12.1** `core/game_rules.dart` gained 2 new pure functions:
+      `randomVisiblePoint` (a point *inside* the visible view, inset by a
+      margin — the opposite of `randomPerimeterPoint`) and
+      `alongLineWithinRange` (every candidate within a half-width of a line
+      segment — a piercing beam's hit test). Unit-tested.
+- [x] **12.2** Ultimate Mirror (`UpgradeKind.ultimateMirror`,
+      `game/components/mirror.dart`) — a stationary turret that spawns
+      somewhere on screen (`randomVisiblePoint`) and fires a bolt out each
+      side on a fast, fixed 0.5s timer. Levels (max 3) add more mirrors;
+      a single mirror's own damage/pace doesn't scale.
+- [x] **12.3** Projectile Ray (`UpgradeKind.projectileRay`) — a second,
+      independently-cooling attack owned by `ArenaGame` (not a
+      `CharacterDef.attackBehavior` — every character can pick it): a
+      piercing beam (`alongLineWithinRange`) along the line to the nearest
+      target, base cooldown 3s. Levels (max 3) raise attack speed and
+      damage. Visual: `game/components/ray_beam.dart`'s
+      `RayBeamEffectComponent`, stretched/rotated to the shot.
+- [x] **12.4** Projectile Thunder (`UpgradeKind.projectileThunder`) —
+      strikes `thunderTargetCount(stacks)` random living targets with a
+      lightning-bolt VFX (`ArenaPriority.hitEffects`, so it always reads on
+      top of the enemy sprite) and damage, on a cooldown that shrinks 4s →
+      1s over its 4 levels (the developer's literal spec — the one skill
+      capped at 4 stacks instead of the usual 3); damage also rises per
+      level.
+- [x] **12.5** Defence Crystal (`UpgradeKind.defenceCrystal`,
+      `game/components/defence_crystal.dart`) — single-pick (cap 1, no
+      further levels: the spec never said "levels increase" anything for
+      this one). Orbits the player in a figure-8/lemniscate path. Grants a
+      flat damage-resistance multiplier (`PlayerComponent.takeDamage`) and a
+      small HP-regen bonus (`PlayerComponent`'s regen line), both applied
+      via `PlayerUpgrades` the same additive-layer way vit/dex/str/intellect
+      are.
+- [x] **12.6** All 4 wired into the existing level-up machinery for free —
+      `kUpgradeWeights`/`kUpgradeMaxPicks`/`UpgradeKind.label`/`.description`
+      — no UI edit needed (`LevelUp` overlay already iterates
+      `UpgradeKind.values`/`currentLevelUpChoices`). `flutter analyze`
+      clean, `flutter test` 85/85 (14 new), `flutter build apk --debug`
+      succeeds. Debug APK installed and launched on the emulator without a
+      crash (confirms the new sheet-slicing grid dimensions are valid) —
+      further on-device play was blocked by the emulator itself getting
+      stuck in a "System UI isn't responding" loop on this run, unrelated
+      to this change; see 12.7.
+- [x] **12.7** First tune pass (DECISIONS D-050, developer's call, ahead of
+      on-device verification): Projectile Thunder +40% size (`kThunderWidthPx`)
+      and +20% brightness (`ArenaGame.spawnEffect`'s new `brightness` param,
+      a pure color-matrix multiply); Ultimate Mirror changed from a
+      permanent turret to a 3s-active/3s-hidden cycle
+      (`mirrorActiveDurationSec`/`mirrorCooldownDurationSec`), re-picking an
+      on-screen spot each time it reappears; Defence Crystal's figure-8
+      +60% bigger (`defenceCrystalOrbitRadiusXPx`/`Y`) and now toggles
+      `priority` in front of/behind the player as it crosses the 8's own
+      center; Projectile Ray's beam sprite +40% thicker
+      (`kRayBeamThicknessPx`, visual only, hit-test width untouched).
+      `flutter analyze` clean, `flutter test` 85/85, `flutter build apk
+      --debug` succeeds.
+- [ ] **12.8** On-device verification — **developer, not a future session**
+      (CLAUDE.md §2: never drive the emulator to test): each of the 4 shows
+      up in the level-up popup and its description reads correctly; Ultimate
+      Mirror appears somewhere new on screen every ~6s, fires both ways for
+      ~3s, then actually disappears for ~3s before reappearing; Projectile
+      Ray fires every ~3s and visibly pierces multiple enemies in a line,
+      beam reads thick enough now; Projectile Thunder strikes down on top of
+      enemies (not behind them), reads bigger/brighter, and its
+      cooldown/target-count/damage visibly ramp up to level 4; Defence
+      Crystal's figure-8 reads bigger and the crystal visibly swings in
+      front of then behind the character as it orbits, and damage taken/HP
+      regen both change once picked; none of the 4 breaks an existing
+      character's own kit.
+
+**Exit criterion:** all 4 powers are pickable, function as specced, and
+none regresses an existing attack kit or the level-up flow.
 
 ---
 

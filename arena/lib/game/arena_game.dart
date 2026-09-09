@@ -16,22 +16,24 @@ import '../core/progression.dart';
 import '../core/settings.dart';
 import '../core/stats.dart';
 import '../data/characters.dart';
-import 'anim/character_animations.dart';
-import 'anim/enemy_animations.dart';
-import 'anim/sheet_loader.dart';
+import 'anim/enemy_animations.dart' show EnemySkin;
 import 'components/arena_floor.dart';
 import 'components/aura.dart';
 import 'components/boss.dart';
 import 'components/damageable.dart';
 import 'components/damage_text.dart';
+import 'components/defence_crystal.dart';
 import 'components/enemy.dart';
 import 'components/gem.dart';
 import 'components/hp_bar.dart';
+import 'components/mirror.dart';
 import 'components/player.dart';
 import 'components/potion.dart';
 import 'components/potion_spawner.dart';
+import 'components/ray_beam.dart';
 import 'components/spawner.dart';
 import 'components/tracking_effect.dart';
+import 'game_assets.dart';
 import 'input/movement_input.dart';
 
 /// Owns round state end to end (CLAUDE.md §4.5): elapsed time, kills,
@@ -80,29 +82,35 @@ class ArenaGame extends FlameGame {
   late PlayerComponent player;
   final List<EnemyComponent> enemies = [];
 
-  late CharacterAnimations _animations;
-  late EnemyAnimations _enemyAnimations;
-  late SpriteAnimation _boltAnimation;
-  late SpriteAnimation _sparkAnimation;
-  late SpriteAnimation _auraShieldAnimation;
-  late Sprite _knifeCleanSprite;
-  late Sprite _knifeBloodySprite;
-  late SpriteAnimation _bloodImpactAnimation;
-  late SpriteAnimation _eliteFireAnimation;
-  late SpriteAnimation _pixelFireAnimation;
-  late SpriteAnimation _sparkleAnimation;
-  late SpriteAnimation _impactAnimation;
-  late SpriteAnimation _explosionAnimation;
-  late SpriteAnimation _animaAnimation;
-  late Map<BossAnim, SpriteAnimation> _bossAnimations;
-  late List<SpriteAnimation> _gemAnimations; // indexed by ItemRarity
-  late List<SpriteAnimation> _potionAnimations; // indexed by ItemRarity
+  /// Every loaded `SpriteAnimation`/`Sprite` (DECISIONS D-045/D-048) — was
+  /// ~20 separate fields plus the whole loading block inline in `onLoad()`
+  /// before the split into `game_assets.dart`. The getters below (
+  /// [boltAnimation] etc.) delegate here so no other file had to change.
+  late GameAssets gameAssets;
   final Random _random = Random();
 
   /// The Aura skill's orbiting-ring component (DECISIONS D-027) — null
   /// until the first Aura pick, created once and left in place afterwards;
   /// later picks just raise the stack count it reads each tick.
   AuraComponent? _aura;
+
+  /// The Ultimate Mirror skill (DECISIONS D-049) — one turret per stack,
+  /// spawned as picks come in (`_syncMirrors`), never removed/rebuilt.
+  final List<MirrorComponent> _mirrors = [];
+
+  /// Projectile Ray / Projectile Thunder (DECISIONS D-049) — second and
+  /// third independently-cooling attacks, same "sync once on first pick,
+  /// read the current stack count live every trigger" pattern as Aura
+  /// above, just with a bare timer instead of a live Flame component (there
+  /// being nothing to render between triggers).
+  bool _rayActive = false;
+  double _rayCooldownTimer = 0;
+  bool _thunderActive = false;
+  double _thunderCooldownTimer = 0;
+
+  /// Defence Crystal (DECISIONS D-049) — single-pick, so unlike [_mirrors]
+  /// this is just one nullable component, same shape as [_aura].
+  DefenceCrystalComponent? _defenceCrystal;
 
   /// The boss (DECISIONS D-042) — null when not currently fought. At most
   /// one alive at a time; a spawn queued while one is already up
@@ -131,22 +139,22 @@ class ArenaGame extends FlameGame {
   /// Exposed for [AttackBehavior]s (`attack_behavior.dart`) to build
   /// projectiles from — the animation itself isn't per-character yet, but
   /// the behavior that fires it is (DECISIONS D-024).
-  SpriteAnimation get boltAnimation => _boltAnimation;
+  SpriteAnimation get boltAnimation => gameAssets.boltAnimation;
 
   /// Exposed for [KnifeAttack] (DECISIONS D-029) the same way [boltAnimation]
   /// is for [ProjectileAttack] — the Bruiser's knife swaps between these two
   /// static sprites itself once it draws blood.
-  Sprite get knifeCleanSprite => _knifeCleanSprite;
-  Sprite get knifeBloodySprite => _knifeBloodySprite;
+  Sprite get knifeCleanSprite => gameAssets.knifeCleanSprite;
+  Sprite get knifeBloodySprite => gameAssets.knifeBloodySprite;
 
   /// Exposed for [SpiralFireAttack] (DECISIONS D-034) the same way
   /// [boltAnimation]/[knifeCleanSprite] are for the other kits.
-  SpriteAnimation get pixelFireAnimation => _pixelFireAnimation;
-  SpriteAnimation get sparkleAnimation => _sparkleAnimation;
+  SpriteAnimation get pixelFireAnimation => gameAssets.pixelFireAnimation;
+  SpriteAnimation get sparkleAnimation => gameAssets.sparkleAnimation;
 
   /// Exposed for [BossComponent] (DECISIONS D-042) the same way the above
   /// are for the playable kits.
-  SpriteAnimation get animaAnimation => _animaAnimation;
+  SpriteAnimation get animaAnimation => gameAssets.animaAnimation;
 
   /// Flutter-observable mirror of round-over state, so the movement-input
   /// overlay (a Flutter widget, not a Flame overlay) knows to stop
@@ -200,192 +208,7 @@ class ArenaGame extends FlameGame {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    _animations = await CharacterAnimations.load(
-      character.spriteFolder,
-      character.spritePrefix,
-    );
-    _enemyAnimations = await EnemyAnimations.load();
-    _boltAnimation = await loadSheetAnimation(
-      'vfx/projectiles/projectile-bolt.png',
-      cellWidth: 16,
-      cellHeight: 16,
-      stepTime: 0.08,
-    );
-    _sparkAnimation = await loadSheetAnimation(
-      'vfx/projectiles/projectile-spark.png',
-      cellWidth: 16,
-      cellHeight: 16,
-      stepTime: 0.05,
-      loop: false,
-    );
-    // Aura's shield ring (DECISIONS D-032) -- a 9x7 grid sheet, 60 real
-    // frames padded out to a 63-cell rectangle (the last 3 cells of the
-    // last row are blank), not a single-row strip like every other sheet
-    // in this project.
-    _auraShieldAnimation = await loadSheetAnimation(
-      'vfx/vfx/effect_electric-shield.png',
-      cellWidth: 265,
-      cellHeight: 265,
-      stepTime: 0.03,
-      frameCount: 60,
-      amountPerRow: 9,
-    );
-    // Single static images, not sheets (DECISIONS D-029) -- Sprite.load, not
-    // loadSheetAnimation.
-    _knifeCleanSprite = await Sprite.load('vfx/projectiles/knife_clean.png');
-    _knifeBloodySprite = await Sprite.load('vfx/projectiles/knife_bloody.png');
-    // Player hit-splat (DECISIONS D-033) -- one-shot, doesn't loop.
-    _bloodImpactAnimation = await loadSheetAnimation(
-      'vfx/vfx/effect_blood-impact.png',
-      cellWidth: 60,
-      cellHeight: 63,
-      stepTime: 0.012,
-      frameCount: 48,
-      amountPerRow: 9,
-      loop: false,
-    );
-    // Elite enemy marker (DECISIONS D-035) -- persistent looping glow, lives
-    // as long as the enemy it's tracking does.
-    _eliteFireAnimation = await loadSheetAnimation(
-      'vfx/vfx/effect_dithered-fire.png',
-      cellWidth: 517,
-      cellHeight: 246,
-      stepTime: 0.05,
-      frameCount: 60,
-      amountPerRow: 9,
-    );
-    // Skirmisher's Spiral Fire skill (DECISIONS D-034) -- three sheets:
-    // the projectile itself (loops for however long it's in flight), the
-    // cast sparkle on the caster's body (one-shot), the hit/kill flourishes
-    // (one-shot each, picked by whether that hit was lethal).
-    _pixelFireAnimation = await loadSheetAnimation(
-      'vfx/vfx/effect_pixel-fire.png',
-      cellWidth: 173,
-      cellHeight: 197,
-      stepTime: 0.03,
-      frameCount: 60,
-      amountPerRow: 9,
-    );
-    // Looping (DECISIONS D-036): the Skirmisher's cast sparkle is now an
-    // always-on visual for the whole round, not a one-shot per cast, so it
-    // needs to keep animating indefinitely rather than freeze on its last
-    // frame.
-    _sparkleAnimation = await loadSheetAnimation(
-      'vfx/vfx/effect_sparkles-constelation.png',
-      cellWidth: 309,
-      cellHeight: 313,
-      stepTime: 0.008,
-      frameCount: 60,
-      amountPerRow: 9,
-    );
-    // First real cell is index 1, not 0 -- effect_impact.png's (0,0) cell is
-    // blank on this sheet. Included as frame 0 anyway (one invisible ~12ms
-    // frame at the very start of a one-shot flash is imperceptible) rather
-    // than adding texturePosition-offset support to the loader for it.
-    _impactAnimation = await loadSheetAnimation(
-      'vfx/vfx/effect_impact.png',
-      cellWidth: 305,
-      cellHeight: 383,
-      stepTime: 0.012,
-      frameCount: 29,
-      amountPerRow: 9,
-      loop: false,
-    );
-    // Same leading-blank-cell situation as effect_impact.png above.
-    _explosionAnimation = await loadSheetAnimation(
-      'vfx/vfx/effect_explosion2.png',
-      cellWidth: 355,
-      cellHeight: 365,
-      stepTime: 0.011,
-      frameCount: 53,
-      amountPerRow: 9,
-      loop: false,
-    );
-    // The boss's teleport flourish (DECISIONS D-042) -- plays once at both
-    // the departure and arrival points.
-    _animaAnimation = await loadSheetAnimation(
-      'vfx/vfx/effect_anima.png',
-      cellWidth: 429,
-      cellHeight: 437,
-      stepTime: 0.02,
-      frameCount: 60,
-      amountPerRow: 9,
-      loop: false,
-    );
-    // The boss (DECISIONS D-042) -- one 4-cols x 8-rows sheet holding
-    // idle/walk/fire/death back to back, in that reading order (not one
-    // image per state like every character sheet before it). Frame ranges
-    // found by inspecting the sheet's actual non-blank cells: idle is 6
-    // frames (rows 0-1), walk 3 (row 2), fire 5 (rows 3-4), death 10
-    // (rows 5-7).
-    const bossCellWidth = 256.0;
-    const bossCellHeight = 192.0;
-    _bossAnimations = {
-      BossAnim.idle: await loadSheetAnimation(
-        'characters/enemies/boss_map1.png',
-        cellWidth: bossCellWidth,
-        cellHeight: bossCellHeight,
-        stepTime: 0.15,
-        frameCount: 6,
-        amountPerRow: 4,
-      ),
-      BossAnim.walk: await loadSheetAnimation(
-        'characters/enemies/boss_map1.png',
-        cellWidth: bossCellWidth,
-        cellHeight: bossCellHeight,
-        stepTime: 0.12,
-        frameCount: 3,
-        // No amountPerRow here (unlike the other 3 slices) -- walk fits
-        // entirely within row 2, so there's no next row to wrap onto, and
-        // Flame's own SpriteAnimationData asserts amount >= amountPerRow
-        // when it's given (3 frames can't satisfy amountPerRow: 4).
-        // texturePosition alone is enough to select the row.
-        texturePosition: Vector2(0, 2 * bossCellHeight),
-      ),
-      BossAnim.fire: await loadSheetAnimation(
-        'characters/enemies/boss_map1.png',
-        cellWidth: bossCellWidth,
-        cellHeight: bossCellHeight,
-        stepTime: 0.08,
-        frameCount: 5,
-        amountPerRow: 4,
-        texturePosition: Vector2(0, 3 * bossCellHeight),
-        loop: false,
-      ),
-      BossAnim.death: await loadSheetAnimation(
-        'characters/enemies/boss_map1.png',
-        cellWidth: bossCellWidth,
-        cellHeight: bossCellHeight,
-        stepTime: 0.15,
-        frameCount: 10,
-        amountPerRow: 4,
-        texturePosition: Vector2(0, 5 * bossCellHeight),
-        loop: false,
-      ),
-    };
-    // Gems/potions (DECISIONS D-043) -- 5 rarity tiers, left to right, each
-    // its own vertical animation strip (loadColumnAnimation, not the
-    // row-major loadSheetAnimation every other sheet uses).
-    _gemAnimations = [
-      for (var tier = 0; tier < ItemRarity.values.length; tier++)
-        await loadColumnAnimation(
-          'consumables/gems.png',
-          cellSize: 16,
-          column: tier,
-          rows: 9,
-          stepTime: 0.1,
-        ),
-    ];
-    _potionAnimations = [
-      for (var tier = 0; tier < ItemRarity.values.length; tier++)
-        await loadColumnAnimation(
-          'consumables/potions.png',
-          cellSize: 16,
-          column: tier,
-          rows: 8,
-          stepTime: 0.12,
-        ),
-    ];
+    gameAssets = await GameAssets.load(character);
     resetRound();
   }
 
@@ -424,6 +247,12 @@ class ArenaGame extends FlameGame {
     debugGodMode = false;
     menuOpen.value = false;
     _aura = null; // the old instance was already removed via removeAll above
+    _mirrors.clear(); // ditto -- the components themselves went with removeAll
+    _rayActive = false;
+    _rayCooldownTimer = 0;
+    _thunderActive = false;
+    _thunderCooldownTimer = 0;
+    _defenceCrystal = null;
     _boss = null;
     _nextBossSpawnIndex = 0;
     _pendingBossSpawns = 0;
@@ -437,7 +266,7 @@ class ArenaGame extends FlameGame {
       character: character,
       stats: effectiveStats,
       input: input,
-      animations: _animations,
+      animations: gameAssets.characterAnimations,
       // `ArenaFloor` still only tiles the original size.x/size.y patch
       // (endless floor tiling is a separate follow-up, DECISIONS D-040) --
       // spawning dead center of that patch, same as the old fixed-camera
@@ -490,14 +319,35 @@ class ArenaGame extends FlameGame {
       _fireCooldown = character.attackBehavior.cooldownSeconds(effectiveStats);
       character.attackBehavior.perform(this);
     }
+
+    // Projectile Ray / Projectile Thunder (DECISIONS D-049) -- second and
+    // third independently-cooling attacks, ticked here the same way
+    // character.attackBehavior's cooldown is above, gated on _rayActive/
+    // _thunderActive so an un-picked skill costs nothing but two bool checks.
+    if (_rayActive) {
+      _rayCooldownTimer -= dt;
+      if (_rayCooldownTimer <= 0) {
+        final stacks = upgrades.pickCounts[UpgradeKind.projectileRay] ?? 1;
+        _rayCooldownTimer = UpgradeAmounts.rayCooldownSec(stacks);
+        _fireRayBeam(stacks);
+      }
+    }
+    if (_thunderActive) {
+      _thunderCooldownTimer -= dt;
+      if (_thunderCooldownTimer <= 0) {
+        final stacks = upgrades.pickCounts[UpgradeKind.projectileThunder] ?? 1;
+        _thunderCooldownTimer = UpgradeAmounts.thunderCooldownSec(stacks);
+        _strikeThunder(stacks);
+      }
+    }
   }
 
   void spawnEnemy(Vector2 at) {
     final skin = EnemySkin.values[_random.nextInt(EnemySkin.values.length)];
     final enemy = EnemyComponent(
       startPosition: at,
-      runAnimation: _enemyAnimations.runFor(skin),
-      deathAnimation: _enemyAnimations.deathFor(skin),
+      runAnimation: gameAssets.enemyAnimations.runFor(skin),
+      deathAnimation: gameAssets.enemyAnimations.deathFor(skin),
       // DECISIONS D-026: baked in at spawn, not re-applied later — an
       // enemy that spawned at level 3 keeps level-3 stats even if the
       // player is level 5 by the time it dies. Corruption (D-047) layers on
@@ -524,7 +374,7 @@ class ArenaGame extends FlameGame {
         TrackingSpriteEffect(
           target: enemy,
           offset: Vector2(0, enemy.size.y * 0.3), // toward the feet, not center
-          animation: _eliteFireAnimation,
+          animation: gameAssets.eliteFireAnimation,
           size: Vector2(width, width * kEliteFireAspect),
           priority: ArenaPriority.enemyOverlay,
           removeOnFinish: false, // persists for the enemy's whole lifetime
@@ -550,7 +400,7 @@ class ArenaGame extends FlameGame {
         GemComponent(
           startPosition: deathPosition,
           rarity: rarity,
-          animation: _gemAnimations[rarity.index],
+          animation: gameAssets.gemAnimations[rarity.index],
         ),
       );
     }
@@ -641,7 +491,7 @@ class ArenaGame extends FlameGame {
     );
     final boss = BossComponent(
       startPosition: spawnPoint,
-      animations: _bossAnimations,
+      animations: gameAssets.bossAnimations,
       statMultiplier: bossStatMultiplier(_bossSpawnsCreated),
     );
     _bossSpawnsCreated++;
@@ -668,6 +518,10 @@ class ArenaGame extends FlameGame {
   void resolveLevelUpChoice(UpgradeKind kind) {
     player.grantUpgrade(kind);
     _syncAura();
+    _syncMirrors();
+    _syncRay();
+    _syncThunder();
+    _syncDefenceCrystal();
     _pendingLevelUps--;
     overlays.remove('LevelUp');
     if (_pendingLevelUps > 0) {
@@ -706,8 +560,124 @@ class ArenaGame extends FlameGame {
   void _syncAura() {
     if (_aura != null) return;
     if ((upgrades.pickCounts[UpgradeKind.aura] ?? 0) <= 0) return;
-    _aura = AuraComponent(shieldAnimation: _auraShieldAnimation);
+    _aura = AuraComponent(shieldAnimation: gameAssets.auraShieldAnimation);
     addToWorld(_aura!);
+  }
+
+  /// Ultimate Mirror (DECISIONS D-049) — adds mirrors up to the current
+  /// stack count, never removes any (a stack count can't go down mid-round).
+  /// Each new mirror spawns somewhere the player can currently see
+  /// (`randomVisiblePoint`, `core/game_rules.dart`) rather than off-screen
+  /// like an enemy — the developer's literal "mirrors spawn only on screen
+  /// where player can see."
+  void _syncMirrors() {
+    final stacks =
+        (upgrades.pickCounts[UpgradeKind.ultimateMirror] ?? 0).clamp(0, UpgradeAmounts.mirrorMaxStacks);
+    while (_mirrors.length < stacks) {
+      final mirror = MirrorComponent(
+        startPosition: randomVisiblePoint(_random, camera.visibleWorldRect),
+        animation: gameAssets.mirrorAnimation,
+      );
+      _mirrors.add(mirror);
+      addToWorld(mirror);
+    }
+  }
+
+  /// Projectile Ray (DECISIONS D-049) — starts the timer on the first pick
+  /// only; later picks just raise the stack count [update] reads on the
+  /// next trigger, same "sync once, read live" shape as [_syncAura].
+  void _syncRay() {
+    if (_rayActive) return;
+    if ((upgrades.pickCounts[UpgradeKind.projectileRay] ?? 0) <= 0) return;
+    _rayActive = true;
+    _rayCooldownTimer = UpgradeAmounts.rayCooldownSec(1);
+  }
+
+  /// A piercing beam along the line to the nearest target in range — every
+  /// target [alongLineWithinRange] finds gets hit, not just the nearest one
+  /// (DECISIONS D-049 — "pierces"). No-ops if nothing is in range, same as
+  /// every other attack's targeting no-op.
+  void _fireRayBeam(int stacks) {
+    final stats = effectiveStats;
+    final maxRange = stats.attackRangePx * UpgradeAmounts.rayRangeMultiplier;
+
+    final targets = damageableTargets;
+    final positions = [for (final t in targets) t.position];
+    final index = nearestWithinRange(player.position, positions, maxRange);
+    if (index == -1) return;
+    final direction = targets[index].position - player.position;
+    if (direction.length2 == 0) return; // exactly on top of the target
+    direction.normalize();
+
+    final damage = UpgradeAmounts.rayDamage(stacks);
+    for (final i in alongLineWithinRange(
+      player.position,
+      direction,
+      positions,
+      maxRange,
+      UpgradeAmounts.rayHalfWidthPx,
+    )) {
+      final target = targets[i];
+      if (target.isDying) continue;
+      target.takeDamage(damage);
+      onProjectileHit(target.position.clone(), damage);
+    }
+    addToWorld(
+      RayBeamEffectComponent(
+        origin: player.position.clone(),
+        direction: direction,
+        lengthPx: maxRange,
+        animation: gameAssets.rayBeamAnimation,
+      ),
+    );
+  }
+
+  /// Projectile Thunder (DECISIONS D-049) — same sync-once shape as
+  /// [_syncRay].
+  void _syncThunder() {
+    if (_thunderActive) return;
+    if ((upgrades.pickCounts[UpgradeKind.projectileThunder] ?? 0) <= 0) return;
+    _thunderActive = true;
+    _thunderCooldownTimer = UpgradeAmounts.thunderCooldownSec(1);
+  }
+
+  /// Strikes [UpgradeAmounts.thunderTargetCount] random living targets
+  /// (grunts or the boss) with a lightning-bolt VFX and damage. The VFX
+  /// uses [spawnEffect]'s default `ArenaPriority.hitEffects` — above
+  /// `ArenaPriority.enemy` — so it always reads on top of the enemy sprite,
+  /// never behind it (the developer's explicit ask). `brightness: 1.2` is a
+  /// 2026-09-09 tune (D-050, developer's call: "increase brightness by
+  /// 20%") — size is `kThunderWidthPx` itself (D-050, also +40%).
+  void _strikeThunder(int stacks) {
+    final living = damageableTargets.where((t) => !t.isDying).toList()..shuffle(_random);
+    final count = UpgradeAmounts.thunderTargetCount(stacks).clamp(0, living.length);
+    if (count <= 0) return;
+    final damage = UpgradeAmounts.thunderDamage(stacks);
+    for (var i = 0; i < count; i++) {
+      final target = living[i];
+      target.takeDamage(damage);
+      onProjectileHit(target.position.clone(), damage);
+      spawnEffect(
+        gameAssets.thunderAnimation,
+        // Strikes down onto the target from just above it, rather than
+        // dead-center through the body.
+        target.position - Vector2(0, target.size.y * 0.4),
+        size: Vector2(kThunderWidthPx, kThunderWidthPx * kThunderAspect),
+        brightness: 1.2,
+      );
+    }
+  }
+
+  /// Defence Crystal (DECISIONS D-049) — single-pick, so this only ever
+  /// spawns the one component; the actual resistance/regen bonus is applied
+  /// directly to `upgrades` by `PlayerUpgrades.apply` (called from
+  /// `player.grantUpgrade` just before this runs), not read live off a
+  /// component the way the skills above are.
+  void _syncDefenceCrystal() {
+    if (_defenceCrystal != null) return;
+    if ((upgrades.pickCounts[UpgradeKind.defenceCrystal] ?? 0) <= 0) return;
+    _defenceCrystal = DefenceCrystalComponent(animation: gameAssets.defenceCrystalAnimation);
+    addToWorld(_defenceCrystal!);
   }
 
   void onEnemyContact(EnemyComponent enemy) {
@@ -718,7 +688,7 @@ class ArenaGame extends FlameGame {
     damageDealt += damage;
     addToWorld(
       SpriteAnimationComponent(
-        animation: _sparkAnimation,
+        animation: gameAssets.sparkAnimation,
         position: at,
         size: Vector2.all(16 * kProjectileRenderScale),
         anchor: Anchor.center,
@@ -732,12 +702,17 @@ class ArenaGame extends FlameGame {
   /// A one-shot VFX at a fixed point that removes itself once its animation
   /// finishes — for effects tied to a moment (a hit, a kill), not to a
   /// still-living target's body (that's `TrackingSpriteEffect`, DECISIONS
-  /// D-033/D-034/D-035). [opacity] defaults to fully opaque.
+  /// D-033/D-034/D-035). [opacity] defaults to fully opaque. [brightness] is
+  /// a multiply-up on every channel (1 = untouched, >1 brighter) — same
+  /// color-matrix trick `AuraComponent`'s contrast tune already uses
+  /// (D-032), added here for Projectile Thunder's own brightness tune
+  /// (D-050) rather than duplicating this method.
   void spawnEffect(
     SpriteAnimation animation,
     Vector2 at, {
     required Vector2 size,
     double opacity = 1,
+    double brightness = 1,
     int priority = ArenaPriority.hitEffects,
   }) {
     addToWorld(
@@ -750,9 +725,23 @@ class ArenaGame extends FlameGame {
         priority: priority,
         paint: Paint()
           ..filterQuality = FilterQuality.none // D-011
-          ..color = Color.fromRGBO(255, 255, 255, opacity),
+          ..color = Color.fromRGBO(255, 255, 255, opacity)
+          ..colorFilter = brightness == 1 ? null : ColorFilter.matrix(_brightnessMatrix(brightness)),
       ),
     );
+  }
+
+  /// Scales every RGB channel by [factor], alpha untouched (last row
+  /// `0 0 0 1 0`) — values above 255 clip automatically, which is exactly
+  /// what "brighter" should do. No translate term, unlike `AuraComponent`'s
+  /// contrast matrix: this is a pure multiply, not a pull-toward-grey.
+  static List<double> _brightnessMatrix(double factor) {
+    return [
+      factor, 0, 0, 0, 0,
+      0, factor, 0, 0, 0,
+      0, 0, factor, 0, 0,
+      0, 0, 0, 1, 0,
+    ];
   }
 
   /// Player hit feedback (DECISIONS D-033) — a blood splat somewhere on the
@@ -769,7 +758,7 @@ class ArenaGame extends FlameGame {
           (_random.nextDouble() * 2 - 1) * maxOffsetY,
         );
     spawnEffect(
-      _bloodImpactAnimation,
+      gameAssets.bloodImpactAnimation,
       at,
       size: Vector2(width, width * kBloodImpactAspect),
     );
@@ -779,7 +768,7 @@ class ArenaGame extends FlameGame {
   /// [spawnExplosionEffect] plays instead when that hit was the kill.
   void spawnImpactEffect(Vector2 at) {
     spawnEffect(
-      _impactAnimation,
+      gameAssets.impactAnimation,
       at,
       size: Vector2(kSpiralImpactWidthPx, kSpiralImpactWidthPx * kSpiralImpactAspect),
     );
@@ -787,7 +776,7 @@ class ArenaGame extends FlameGame {
 
   void spawnExplosionEffect(Vector2 at) {
     spawnEffect(
-      _explosionAnimation,
+      gameAssets.explosionAnimation,
       at,
       size: Vector2(
         kSpiralExplosionWidthPx,
@@ -821,7 +810,7 @@ class ArenaGame extends FlameGame {
       PotionComponent(
         startPosition: at,
         rarity: rarity,
-        animation: _potionAnimations[rarity.index],
+        animation: gameAssets.potionAnimations[rarity.index],
       ),
     );
   }

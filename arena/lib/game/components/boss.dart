@@ -125,7 +125,12 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
         maxRangePx: BossStats.fireRangePx * 2,
         animation: game.boltAnimation,
         tint: kBossBoltTint,
-        excludeSelf: this,
+        // DECISIONS D-051: checks the player, not game.damageableTargets --
+        // the bug this fixes. excludeSelf (the D-046 self-hit guard) is
+        // gone with it: it only ever mattered for the damageableTargets
+        // loop this bolt no longer runs, so self-collision is impossible
+        // by construction now, not guarded against.
+        targetsPlayer: true,
       ),
     );
   }

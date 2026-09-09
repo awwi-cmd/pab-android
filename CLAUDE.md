@@ -39,7 +39,9 @@ and the Aura skill) is built** — see DECISIONS D-025/D-026/D-027. **Phase 8
 see D-028. **Phase 9 (roaming world: camera + free movement) is started** —
 see D-040. **Phase 10 (boss fight, SFX, loot economy) is built** — see
 D-042/D-043/D-044. **Phase 11 (persistent meta-progression: SHOP + UPGRADES
-from character select) is built** — see D-047. This is real, ongoing
+from character select) is built** — see D-047. **Phase 12 (four new powers:
+Ultimate Mirror, Projectile Ray, Projectile Thunder, Defence Crystal) is
+built, on-device verification pending** — see D-049. This is real, ongoing
 post-demo work now, not speculative scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
@@ -87,12 +89,23 @@ batch files. Always `set FLUTTER=C:\src\flutter\bin\flutter.bat`.
   run it when the change needs eyes/hands on the actual emulator (feel, touch
   input, animation timing) rather than just a clean build.
 - Never run `flutter clean` casually — it costs minutes of rebuild.
+- **Never drive the emulator UI yourself (adb input tap/swipe, screenshots,
+  uiautomator) to test a change.** Developer's explicit instruction
+  (2026-09-09), after a session burned a long stretch fighting a
+  resource-starved emulator (repeated "System UI isn't responding" ANRs,
+  the app's own task getting killed) trying to tap through to the arena.
+  `flutter analyze`/`test`/`build apk --debug` are still yours to run and
+  verify — that's static/build correctness. On-device play (does it look
+  right, does it feel right, does a new screen actually navigate) is the
+  developer's to check, same as every other on-device item already in this
+  file (TASKS 6.2-6.5, 8.2, 9.2, etc.) — end your message with what to run
+  and what to look for, then stop.
 
 ---
 
 ## 3. Repository layout
 
-Kept current as of Phase 11.3 (2026-09-09) — update this tree when you add a
+Kept current as of Phase 12.6 (2026-09-09) — update this tree when you add a
 file that will confuse the next person if it's missing here, same discipline
 as `TASKS.md`.
 
@@ -133,7 +146,7 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   ├── settings.dart      // Settings model + SharedPreferences I/O
         │   ├── game_rules.dart    // pure gameplay math (targeting, spawn decay, knockback,
         │   │                      //   enemy/boss level-scaling D-026/D-042, randomPerimeterPoint D-041)
-        │   ├── progression.dart   // XP curve, UpgradeKind (incl. Aura), PlayerUpgrades — D-025/D-027
+        │   ├── progression.dart   // XP curve, UpgradeKind (Aura + Mirror/Ray/Thunder/Crystal), PlayerUpgrades — D-025/D-027/D-049
         │   ├── economy.dart       // ItemRarity + gem/coin/potion value tables — D-043
         │   └── meta_progression.dart // MetaStat (STR/VIT/DEX/INT/CORRUPTION), wallet + SharedPreferences I/O — D-047
         ├── data/
@@ -150,10 +163,11 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   └── widgets/                   // buttons, stat bars, shared chrome
         └── game/
             ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling; addToWorld/addToHud split — D-040.
-            │                              //   ~820 lines, split overdue — D-045, TASKS 10.7
+            │                              //   Split from ~820 lines (D-045/D-048): asset loading moved to game_assets.dart
+            ├── game_assets.dart           // GameAssets — every SpriteAnimation/Sprite, loaded once, held by ArenaGame — D-045/D-048
             ├── attack_behavior.dart       // AttackBehavior (+ onEquipped hook) + ProjectileAttack + KnifeAttack + SpiralFireAttack — D-024/D-029/D-034/D-036
             ├── components/
-            │   ├── player.dart              // takeDamage spawns blood-impact VFX (D-033); heal() for potions (D-043); free movement, no bounds clamp (D-040)
+            │   ├── player.dart              // takeDamage applies Defence Crystal resistance + blood-impact VFX (D-033/D-049); heal() for potions (D-043); free movement, no bounds clamp (D-040)
             │   ├── enemy.dart              // hp/contactDamage scaled by level at spawn (D-026); implements Damageable (D-042)
             │   ├── damageable.dart          // shared hit-detection interface, enemy + boss — D-042
             │   ├── boss.dart                // idle/walk/fire/death state machine, teleport-on-approach — D-042
@@ -168,7 +182,10 @@ ArenaDemo/                    <- repo root, open this in your editor
             │   ├── hp_bar.dart               // now on camera.viewport (HUD), not world — D-040
             │   ├── damage_text.dart
             │   ├── arena_floor.dart          // endless tiling from camera.visibleWorldRect, no border — D-041
-            │   └── aura.dart                // Aura skill: shield-ring visual, area-tick damage — D-027/D-032
+            │   ├── aura.dart                // Aura skill: shield-ring visual, area-tick damage — D-027/D-032
+            │   ├── mirror.dart              // Ultimate Mirror skill: stationary turret, fires both sides — D-049
+            │   ├── ray_beam.dart            // Projectile Ray skill: visual only, hit-test lives in ArenaGame — D-049
+            │   └── defence_crystal.dart     // Defence Crystal skill: figure-8 orbit visual only, stat bonus on PlayerUpgrades — D-049
             ├── input/
             │   ├── movement_input.dart    // the 3 control schemes, scheme-agnostic Vector2
             │   └── joystick_overlay.dart  // the 3 schemes' actual Flutter touch capture

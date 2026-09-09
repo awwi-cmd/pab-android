@@ -37,7 +37,26 @@ double xpThresholdForLevel(int level) {
 /// another upgrade is still just a data change here (`UpgradeAmounts`,
 /// `kUpgradeWeights`, `PlayerUpgrades.apply`), not a rewrite of the
 /// level-up flow.
-enum UpgradeKind { vit, dex, str, intellect, aura, knifeMastery }
+///
+/// The 4 newest (DECISIONS D-049) are all real skills like `aura`, not
+/// stat bumps: `ultimateMirror` (a turret that spawns on screen and fires
+/// both ways, more mirrors per level), `projectileRay` (a second,
+/// independently-cooling piercing beam, faster per level),
+/// `projectileThunder` (strikes down on random enemies, more damage/targets
+/// and a shrinking cooldown per level), `defenceCrystal` (a single-pick
+/// passive — damage resistance + a small HP regen, no further levels).
+enum UpgradeKind {
+  vit,
+  dex,
+  str,
+  intellect,
+  aura,
+  knifeMastery,
+  ultimateMirror,
+  projectileRay,
+  projectileThunder,
+  defenceCrystal,
+}
 
 extension UpgradeKindLabels on UpgradeKind {
   String get label {
@@ -54,6 +73,14 @@ extension UpgradeKindLabels on UpgradeKind {
         return 'Aura';
       case UpgradeKind.knifeMastery:
         return 'Knife Mastery';
+      case UpgradeKind.ultimateMirror:
+        return 'Ultimate Mirror';
+      case UpgradeKind.projectileRay:
+        return 'Ray Beam';
+      case UpgradeKind.projectileThunder:
+        return 'Thunder Strike';
+      case UpgradeKind.defenceCrystal:
+        return 'Defence Crystal';
     }
   }
 
@@ -76,6 +103,17 @@ extension UpgradeKindLabels on UpgradeKind {
             'knife damage. Lvl2: throws a second knife from behind. '
             'Lvl3: throws 4 knives at once, one to every side '
             '(max ${UpgradeAmounts.knifeMasteryMaxStacks} levels)';
+      case UpgradeKind.ultimateMirror:
+        return 'A mirror appears on screen and fires bolts from both sides '
+            '(max ${UpgradeAmounts.mirrorMaxStacks} mirrors)';
+      case UpgradeKind.projectileRay:
+        return 'A piercing beam fires every few seconds '
+            '(higher levels attack faster, max ${UpgradeAmounts.rayMaxStacks} levels)';
+      case UpgradeKind.projectileThunder:
+        return 'Lightning strikes random enemies on a shrinking cooldown '
+            '(max ${UpgradeAmounts.thunderMaxStacks} levels)';
+      case UpgradeKind.defenceCrystal:
+        return 'An orbiting crystal grants damage resistance and a small HP regen';
     }
   }
 }
@@ -121,6 +159,77 @@ class UpgradeAmounts {
   // no flat bonus lives on `PlayerUpgrades` itself.
   static const int knifeMasteryMaxStacks = 3;
   static const double knifeMasteryTier1DamageMultiplier = 1.2;
+
+  // Ultimate Mirror (DECISIONS D-049/D-050) — a turret
+  // (`game/components/mirror.dart`) that spawns somewhere on screen and
+  // fires a bolt out each side on a fast, fixed timer. Levels increase how
+  // many mirrors can be up at once (`ArenaGame._syncMirrors` adds the
+  // difference on each new pick, never removes); a mirror's own bolt
+  // damage/pace doesn't scale per stack, matching "levels increase number
+  // of mirrors" and nothing else in the spec.
+  // 2026-09-09 (D-050): the turret never used to go away, which read as
+  // "never de-spawns" — now cycles active/hidden: visible and firing for
+  // `mirrorActiveDurationSec`, then hidden for `mirrorCooldownDurationSec`
+  // ("that's the cooldown," developer's exact words) before reappearing at
+  // a fresh on-screen spot.
+  static const int mirrorMaxStacks = 3;
+  static const double mirrorFireIntervalSec = 0.5;
+  static const double mirrorActiveDurationSec = 3.0;
+  static const double mirrorCooldownDurationSec = 3.0;
+  static const double mirrorBoltDamage = 8;
+  static const double mirrorBoltKnockback = 50;
+  static const double mirrorBoltSpeedPxPerS = 260;
+  static const double mirrorBoltRangePx = 260;
+
+  // Projectile Ray (DECISIONS D-049) — a second, independently-cooling
+  // attack owned directly by `ArenaGame` (not a `CharacterDef.attackBehavior`
+  // — every character can pick this): a piercing beam along the line to the
+  // nearest target in range, base cooldown 3s. Levels increase attack speed
+  // (shorter cooldown); damage rises per tier too, so a faster ray isn't
+  // strictly worse per hit than a slower one.
+  static const int rayMaxStacks = 3;
+  static const double rayRangeMultiplier = 1.3; // vs. the shared attackRangePx
+  static const double rayHalfWidthPx = 18; // beam hit-test thickness
+  static const List<double> _rayCooldownSecByStack = [3.0, 2.2, 1.5];
+  static const List<double> _rayDamageByStack = [24, 32, 42];
+
+  static double rayCooldownSec(int stacks) =>
+      _rayCooldownSecByStack[stacks.clamp(1, rayMaxStacks) - 1];
+  static double rayDamage(int stacks) =>
+      _rayDamageByStack[stacks.clamp(1, rayMaxStacks) - 1];
+
+  // Projectile Thunder (DECISIONS D-049) — strikes down on
+  // `thunderTargetCount(stacks)` random enemies on a cooldown that shrinks
+  // from 4s to 1s over its 4 levels (the developer's literal spec — that's
+  // why this one caps at 4 stacks, not the usual 3); each level also raises
+  // per-strike damage.
+  static const int thunderMaxStacks = 4;
+  static const List<double> _thunderCooldownSecByStack = [4.0, 3.0, 2.0, 1.0];
+  static const List<double> _thunderDamageByStack = [10, 16, 24, 34];
+  static const List<int> _thunderTargetCountByStack = [1, 2, 3, 4];
+
+  static double thunderCooldownSec(int stacks) =>
+      _thunderCooldownSecByStack[stacks.clamp(1, thunderMaxStacks) - 1];
+  static double thunderDamage(int stacks) =>
+      _thunderDamageByStack[stacks.clamp(1, thunderMaxStacks) - 1];
+  static int thunderTargetCount(int stacks) =>
+      _thunderTargetCountByStack[stacks.clamp(1, thunderMaxStacks) - 1];
+
+  // Defence Crystal (DECISIONS D-049) — unlike the 3 skills above, the
+  // developer's spec never says "levels increase" anything for this one
+  // ("if the user picks this power, he has higher damage resistance and low
+  // hp regen") — a single-pick passive, capped at 1 stack rather than the
+  // usual 3, applied as flat bonuses on `PlayerUpgrades` the same way
+  // vit/dex/str/intellect are (DECISIONS D-025 #2), not read live off
+  // `pickCounts` like the 3 skills above.
+  static const int defenceCrystalMaxStacks = 1;
+  static const double defenceCrystalDamageResistance = 0.2; // 20% less damage taken
+  static const double defenceCrystalBonusHpRegenPerSec = 1.0;
+  // 2026-09-09 tune (D-050, developer's call: "make the 8 ... bigger") --
+  // +60% on both axes (was 50/30).
+  static const double defenceCrystalOrbitRadiusXPx = 80;
+  static const double defenceCrystalOrbitRadiusYPx = 48;
+  static const double defenceCrystalOrbitSpeedRadPerSec = 2.5;
 }
 
 /// Relative weights for the level-up roll — placeholder, all equal for now
@@ -133,6 +242,10 @@ const Map<UpgradeKind, double> kUpgradeWeights = {
   UpgradeKind.intellect: 1,
   UpgradeKind.aura: 1,
   UpgradeKind.knifeMastery: 1,
+  UpgradeKind.ultimateMirror: 1,
+  UpgradeKind.projectileRay: 1,
+  UpgradeKind.projectileThunder: 1,
+  UpgradeKind.defenceCrystal: 1,
 };
 
 /// How many times each upgrade may be picked in a round — `null` means
@@ -146,6 +259,10 @@ const Map<UpgradeKind, int?> kUpgradeMaxPicks = {
   UpgradeKind.intellect: null,
   UpgradeKind.aura: UpgradeAmounts.auraMaxStacks,
   UpgradeKind.knifeMastery: UpgradeAmounts.knifeMasteryMaxStacks,
+  UpgradeKind.ultimateMirror: UpgradeAmounts.mirrorMaxStacks,
+  UpgradeKind.projectileRay: UpgradeAmounts.rayMaxStacks,
+  UpgradeKind.projectileThunder: UpgradeAmounts.thunderMaxStacks,
+  UpgradeKind.defenceCrystal: UpgradeAmounts.defenceCrystalMaxStacks,
 };
 
 /// Which `CharacterDef.id` an upgrade is restricted to, if any (DECISIONS
@@ -207,6 +324,13 @@ class PlayerUpgrades {
   double bonusMoveSpeed = 0;
   double bonusDamage = 0;
 
+  /// Defence Crystal only (DECISIONS D-049) — a flat multiplier
+  /// (`PlayerComponent.takeDamage` does `amount * (1 - damageResistance)`)
+  /// and a flat regen add-on (`PlayerComponent`'s hp-regen line), same
+  /// additive-layer pattern as the 3 fields above.
+  double damageResistance = 0;
+  double bonusHpRegenPerSec = 0;
+
   final Map<UpgradeKind, int> pickCounts = {
     for (final kind in UpgradeKind.values) kind: 0,
   };
@@ -241,6 +365,22 @@ class PlayerUpgrades {
         // itself every throw (game/attack_behavior.dart, D-031), same
         // pattern as aura above.
         return 0;
+      case UpgradeKind.ultimateMirror:
+        // No direct stat bonus -- ArenaGame reads pickCounts[ultimateMirror]
+        // to size the mirror squad (game/components/mirror.dart, D-049).
+        return 0;
+      case UpgradeKind.projectileRay:
+        // No direct stat bonus -- ArenaGame's own ray-beam cooldown timer
+        // reads pickCounts[projectileRay] every trigger (D-049).
+        return 0;
+      case UpgradeKind.projectileThunder:
+        // Same pattern -- ArenaGame's thunder timer reads the stack count
+        // live (D-049).
+        return 0;
+      case UpgradeKind.defenceCrystal:
+        damageResistance += UpgradeAmounts.defenceCrystalDamageResistance;
+        bonusHpRegenPerSec += UpgradeAmounts.defenceCrystalBonusHpRegenPerSec;
+        return 0;
     }
   }
 
@@ -248,6 +388,8 @@ class PlayerUpgrades {
     bonusMaxHp = 0;
     bonusMoveSpeed = 0;
     bonusDamage = 0;
+    damageResistance = 0;
+    bonusHpRegenPerSec = 0;
     for (final kind in UpgradeKind.values) {
       pickCounts[kind] = 0;
     }

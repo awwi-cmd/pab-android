@@ -151,4 +151,67 @@ void main() {
       );
     });
   });
+
+  group('randomVisiblePoint (DECISIONS D-049)', () {
+    test('always lands inside the visible rect, inset by the margin', () {
+      const visible = Rect.fromLTWH(0, 0, 360, 800);
+      final random = Random(3);
+      for (var i = 0; i < 200; i++) {
+        final point = randomVisiblePoint(random, visible, marginFactor: 0.1);
+        final inset = visible.deflate(visible.shortestSide * 0.1 - 1); // float slack
+        expect(inset.contains(Offset(point.x, point.y)), isTrue);
+      }
+    });
+
+    test('is deterministic for a given seed', () {
+      const visible = Rect.fromLTWH(0, 0, 360, 800);
+      expect(
+        randomVisiblePoint(Random(9), visible, marginFactor: 0.1),
+        randomVisiblePoint(Random(9), visible, marginFactor: 0.1),
+      );
+    });
+  });
+
+  group('alongLineWithinRange (DECISIONS D-049)', () {
+    test('hits everything on the line within range, order preserved', () {
+      final candidates = [Vector2(50, 0), Vector2(150, 0), Vector2(500, 0)];
+      expect(
+        alongLineWithinRange(Vector2.zero(), Vector2(1, 0), candidates, 200, 10),
+        [0, 1],
+      );
+    });
+
+    test('excludes anything off to the side, past the half-width', () {
+      final candidates = [Vector2(50, 5), Vector2(50, 50)];
+      expect(
+        alongLineWithinRange(Vector2.zero(), Vector2(1, 0), candidates, 200, 10),
+        [0],
+      );
+    });
+
+    test('excludes anything behind the origin', () {
+      final candidates = [Vector2(-50, 0)];
+      expect(
+        alongLineWithinRange(Vector2.zero(), Vector2(1, 0), candidates, 200, 10),
+        isEmpty,
+      );
+    });
+
+    test('excludes anything past maxRange', () {
+      final candidates = [Vector2(250, 0)];
+      expect(
+        alongLineWithinRange(Vector2.zero(), Vector2(1, 0), candidates, 200, 10),
+        isEmpty,
+      );
+    });
+
+    test('works for a non-axis-aligned direction', () {
+      final candidates = [Vector2(30, 30), Vector2(0, 100)];
+      final direction = Vector2(1, 1);
+      expect(
+        alongLineWithinRange(Vector2.zero(), direction, candidates, 100, 5),
+        [0],
+      );
+    });
+  });
 }

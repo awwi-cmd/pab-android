@@ -6,16 +6,19 @@ this before starting the real game on top of the demo.
 
 ---
 
-## Read this first: `arena_game.dart` needs to be split (DECISIONS D-045)
+## `arena_game.dart` was split (DECISIONS D-045, closed by D-048)
 
-It's ~820 lines, well past CLAUDE.md §5's ~300-line guideline, after Phase
-10 (boss/SFX/economy) piled onto Phase 9 (camera) without pausing to fix
-it — a deliberate, logged trade-off (D-045), not an oversight, but it means
-**the very next non-trivial change to this file should be the split, not
-another feature on top of it.** The shape is already visible: pull the ~20
-`SpriteAnimation`/`Sprite` fields and the whole loading block out of
-`onLoad()` into a `VfxLibrary`/`AssetLibrary` class `ArenaGame` just holds
-an instance of. TASKS 10.7 tracks this.
+Done as of Phase 12 — the ~20 `SpriteAnimation`/`Sprite` fields and the
+whole `onLoad()` loading block now live in `game/game_assets.dart`'s
+`GameAssets` class; `ArenaGame` holds one `late GameAssets gameAssets` and
+keeps round state, spawn/kill bookkeeping, `addToWorld`/`addToHud`. Adding
+a new asset is a new field + load call in `game_assets.dart`, not another
+few lines inline in `ArenaGame.onLoad()` — keep it that way, don't let this
+regrow the way it grew the first time. One naming trap worth knowing:
+`assets` was the obvious field name and is already taken — Flame's own
+`Game` base class declares an `assets` member (an `AssetsCache`), so
+`ArenaGame`'s field is `gameAssets` instead. `flutter analyze` catches the
+collision immediately if you forget and reach for `assets` again.
 
 ## The extension points that already exist
 
@@ -132,6 +135,28 @@ rather than being handed a value or rebuilt per pick. The roll itself is
 weighted now (`kUpgradeWeights`, Efraimidis-Spirakis sampling in
 `rollUpgradeChoices`) with placeholder equal weights — the actual balance
 pass is still to come, this just wires the knob.
+
+**The 4 newest skills (DECISIONS D-049) split into two more variants of the
+same "sync once on first pick, read the current stack count live" shape:**
+Ultimate Mirror still owns a live component per stack (`_mirrors`, a
+`List<MirrorComponent>` — `_syncMirrors` tops it up to the current stack
+count rather than spawning exactly one like Aura); Projectile Ray and
+Projectile Thunder own nothing to render between triggers, so they're a
+bare `bool _xActive` + `double _xCooldownTimer` pair ticked in `ArenaGame.
+update()` next to `character.attackBehavior`'s own cooldown, `_syncX()`
+starting the timer only on the first pick. Defence Crystal is the odd one
+out — its spec is a flat, non-scaling effect ("higher damage resistance and
+low hp regen," no "levels increase" language), so it doesn't read
+`pickCounts` live at all; it's back to D-025's original flat-bonus-on-
+`PlayerUpgrades` pattern (now also home to `damageResistance`/
+`bonusHpRegenPerSec`, alongside the original `bonusMaxHp`/`bonusMoveSpeed`/
+`bonusDamage`), applied once at pick time like vit/dex/str/intellect. Which
+shape a new skill needs is really just: does its effect need to be *read*
+every frame by something else (damage resistance — yes, in
+`PlayerComponent.takeDamage`), or does it need to *act* on its own timer
+(everything else)? The former is a `PlayerUpgrades` field; the latter is a
+component or a bare timer depending on whether there's anything to render
+between triggers.
 
 **Character-locked upgrades (DECISIONS D-031).** `kCharacterLockedUpgrades`
 (`UpgradeKind -> CharacterDef.id`) + `upgradeKindsFor(characterId)` in

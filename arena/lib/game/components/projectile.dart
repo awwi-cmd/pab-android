@@ -8,8 +8,18 @@ import 'damageable.dart';
 
 /// Straight-line, constant speed, one enemy per projectile, no pierce, no
 /// homing/leading (PRD §6.3 / DECISIONS D-005). Also the boss's bolt
-/// (DECISIONS D-042) via [tint] — same shape, sprite recoloured green
-/// rather than a whole second component class.
+/// (DECISIONS D-042) and Ultimate Mirror's (DECISIONS D-049) via [tint] —
+/// same shape, sprite recoloured green for the boss, rather than a whole
+/// second component class.
+///
+/// [targetsPlayer] (DECISIONS D-051) picks which side this bolt can hit:
+/// `false` (default) is every player-owned shot — the Apprentice/Warden's
+/// own attack, Ultimate Mirror's bolts — checked against
+/// `game.damageableTargets` (enemies + the boss), same as always. `true` is
+/// the boss's own bolt (`BossComponent._fire`) — it has to check the player
+/// instead, since the player was never in `damageableTargets` (that list
+/// only exists to answer "what can a player attack hit") and a bolt built
+/// with the default would silently never find a target to damage at all.
 class ProjectileComponent extends SpriteAnimationComponent
     with HasGameReference<ArenaGame> {
   ProjectileComponent({
@@ -22,6 +32,7 @@ class ProjectileComponent extends SpriteAnimationComponent
     required SpriteAnimation animation,
     Color? tint,
     this.excludeSelf,
+    this.targetsPlayer = false,
   }) : _direction = direction.normalized(),
        super(
          animation: animation,
@@ -49,6 +60,7 @@ class ProjectileComponent extends SpriteAnimationComponent
   // reported on-device as "boss does the animation but I never see a
   // projectile" (2026-09-09).
   final Damageable? excludeSelf;
+  final bool targetsPlayer;
 
   double _traveled = 0;
   final Vector2 _scratch = Vector2.zero(); // reused every frame
@@ -69,6 +81,31 @@ class ProjectileComponent extends SpriteAnimationComponent
       return;
     }
 
+    if (targetsPlayer) {
+      _checkPlayerHit();
+    } else {
+      _checkDamageableHit();
+    }
+  }
+
+  /// The boss's bolt (DECISIONS D-051) — `PlayerComponent` isn't a
+  /// `Damageable` (no `applyKnockback`; nothing in this project knocks the
+  /// player back, only enemies get shoved by the player's own hits), so
+  /// this is a separate, simpler check than [_checkDamageableHit] rather
+  /// than trying to fit the player through the same interface.
+  void _checkPlayerHit() {
+    final player = game.player;
+    if (!player.isAlive) return;
+    final touching = position.distanceTo(player.position) <
+        (size.x / 2 + player.size.x / 2);
+    if (touching) {
+      player.takeDamage(damage);
+      game.onProjectileHit(position.clone(), damage);
+      removeFromParent();
+    }
+  }
+
+  void _checkDamageableHit() {
     final targets = game.damageableTargets;
     Damageable? hit;
     for (var i = 0; i < targets.length; i++) {
