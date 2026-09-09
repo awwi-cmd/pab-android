@@ -104,11 +104,16 @@ class ProjectileComponent extends SpriteAnimationComponent
         return;
       }
       if (_outOfBounds()) {
-        if (_bouncesLeft <= 0) {
+        if (_bouncesLeft > 0) {
+          _bounce();
+        } else if (_farOutOfBounds()) {
           _expire();
           return;
         }
-        _bounce();
+        // Else: past the visible edge with nothing left to bounce off, but
+        // not "way out" yet (DECISIONS D-061) -- keeps flying straight;
+        // _farOutOfBounds() catches it a few frames later once it truly
+        // clears the screen.
       }
     }
 
@@ -168,6 +173,19 @@ class ProjectileComponent extends SpriteAnimationComponent
   /// computed relative to wherever the camera actually is right now.
   bool _outOfBounds() {
     return !game.camera.visibleWorldRect.contains(position.toOffset());
+  }
+
+  /// DECISIONS D-061 — [_outOfBounds] alone marks the moment this
+  /// projectile's *center* crosses the visible edge, which is exactly right
+  /// as the bounce trigger (that edge IS "the wall" it bounces off, D-052)
+  /// but too early to actually despawn at: half the sprite is still clearly
+  /// on-screen. Once there are no bounces left, this more generous check
+  /// (inflated by [kProjectileDespawnMarginFactor] times this bolt's own
+  /// width) is what the zero-bounce despawn path waits for instead.
+  bool _farOutOfBounds() {
+    return !game.camera.visibleWorldRect
+        .inflate(size.x * kProjectileDespawnMarginFactor)
+        .contains(position.toOffset());
   }
 
   /// Ran out of range or bounces without ever hitting anything (DECISIONS

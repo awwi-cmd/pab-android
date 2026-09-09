@@ -2579,6 +2579,82 @@ mirror point) is the developer's to run.
 
 ---
 
+## D-061 — Chest reveal confetti, and every projectile despawns further off-screen
+
+**Date:** 2026-09-10 · **Status:** Accepted
+**Context:** Two asks. (1) "Throw some confetti from outside the screen,
+from left and right, landing in front and in the back of the card when we
+land it." (2) "Make all projectiles shot by character in general despawn
+when way out outside of screen, for example right now knifes spawn [the
+poof] right when they hit the outside border" — a real visual bug across
+every projectile type, not knife-specific despite the example.
+
+**Decision, confetti:** `_ChestRevealOverlayState` (now
+`TickerProviderStateMixin`, plural — a second `AnimationController`
+alongside the existing landing-bounce one needs its own ticker) gained a
+`_confettiController` started the instant the spin lands, same moment as
+the jump/land bounce. ~26 `_ConfettiParticle`s (color/size/rotation/arc,
+generated once in `initState`) are painted by two `_ConfettiLayer`
+(`CustomPainter`)s sandwiching the actual card/text content in a `Stack` —
+one painted before it (`front: false`, lands behind the card) and one after
+(`front: true`, lands in front) — rather than one layer with z-order
+baked into per-particle draw order, since Flutter's paint order is
+determined by widget tree position, not a z-index property. Each particle's
+`startAlign` uses an `Alignment` x beyond ±1 (`Alignment` resolves values
+past the unit box to positions genuinely outside it) so half start
+off-screen left, half off-screen right, arcing (`sin(π·flightT)`) toward a
+scattered landing point near the card, easing out via `Curves.easeOut` over
+the first 60% of the controller, then fading over the last 30%. No new
+package (CLAUDE.md §4.9 — the intended dependency set is `flame`/
+`flame_audio`/`shared_preferences` and nothing else) and no new art —
+plain rotated rectangles drawn straight to the canvas are enough for a
+one-shot decorative burst. Both confetti layers sit outside the existing
+`SingleChildScrollView` (in the overlay's own `Stack`, not inside the
+scrollable content `Column`) since particles starting genuinely off-screen
+would otherwise get clipped by the scroll view's own viewport — and both
+are wrapped in `IgnorePointer` so a layer painted on top of the CONTINUE
+button can never swallow its taps.
+
+**Decision, projectile despawn margin:** every projectile's zero-bounce
+despawn check now waits until it's cleared the visible edge by
+`size.x * kProjectileDespawnMarginFactor` (new constant, `1.0` — a full
+extra sprite-width of clearance), not just until its center crosses the
+bare edge:
+- `ProjectileComponent` (the shared bolt — Apprentice/Warden/Ultimate
+  Mirror/boss): split the single `_outOfBounds()` check into two. The bare
+  edge (`_outOfBounds`) still triggers a bounce for anything with
+  `maxBounces` left (DECISIONS D-052 — that edge genuinely is "the wall" a
+  bolt bounces off, unchanged and not the reported problem); once bounces
+  are exhausted, the new `_farOutOfBounds()` (margin-inflated) is what the
+  actual `_expire()` waits for instead — the bolt just keeps flying
+  straight in the meantime.
+- `KnifeProjectileComponent`: has no bounce concept at all (D-030), so its
+  one `_outOfBounds()` check is inflated by the margin directly.
+- `SpiralFireProjectileComponent`: already inflated its bounds check by
+  `_orbitRadiusPx` for an unrelated reason (D-038/D-039's wobble-near-edge
+  fix) — the new margin is added on top of that existing one, not in place
+  of it.
+
+**Because:** A confetti *package* would be the first new dependency this
+project has ever taken on for something a `CustomPainter` handles in ~50
+lines — not worth the precedent. Splitting the bounce-trigger check from
+the actual-despawn check (rather than just inflating the one existing
+`_outOfBounds()` everywhere) preserves D-052's already-correct,
+already-approved bounce-off-the-edge look for boss/mirror bolts exactly as
+it was; only the *final* despawn, which had no complaint filed against the
+bounce path, needed the extra margin.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 95/95 (unchanged
+— confetti is pure UI/animation, the despawn margin is a component-level
+distance check, neither is `core/` formula territory), `flutter build apk
+--debug` succeeds. On-device verification (does the confetti actually read
+as coming from off-screen and landing convincingly in front of/behind the
+card, does every projectile type — bolt, knife, spiral fire, mirror bolt —
+now visibly clear the screen before it poofs instead of vanishing mid-edge)
+is the developer's to run.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

@@ -35,6 +35,19 @@ const double kProjectileRenderScale = 2;
 /// Floor/border tiles (`assets/images/scenes/`) are authored at 32×32.
 const double kFloorTileRenderScale = 2;
 
+/// How much further past the visible edge a projectile has to travel
+/// before it's actually considered gone and despawns (DECISIONS D-061,
+/// developer's call: "knives spawn [the poof] right when they hit the
+/// outside border... despawn when way out outside of screen") — expressed
+/// as a multiple of the projectile's own `size.x`, so a bigger sprite (the
+/// knife) gets a proportionally bigger margin than a small one (the bolt),
+/// rather than one flat pixel number. Every projectile type's zero-bounce
+/// despawn check inflates `camera.visibleWorldRect` by `size.x * this`
+/// before testing "is it really gone" — the bare (non-inflated) edge is
+/// still what boss/mirror bolts bounce *off of* (DECISIONS D-052); this
+/// only delays the final despawn once there's nothing left to bounce off.
+const double kProjectileDespawnMarginFactor = 1.0;
+
 /// The Bruiser's knife projectile (`vfx/projectiles/knife_*.png`, DECISIONS
 /// D-029/D-030) is a single 32×32 static image, not a 16×16 sheet cell like
 /// the bolt/spark. Base scale 1 would match the bolt's 32×32 on-screen

@@ -95,8 +95,17 @@ class KnifeProjectileComponent extends SpriteComponent
   /// than the bolt's: since D-030 this is the knife's *only* despawn
   /// condition, so getting it wrong means every knife thrown more than a
   /// screen's width from the world origin would vanish on its first frame.
+  ///
+  /// Inflated by [kProjectileDespawnMarginFactor] times the knife's own
+  /// width (DECISIONS D-061, developer's call: "knives spawn [the poof]
+  /// right when they hit the outside border") — the knife has no bounce to
+  /// wait for like a boss/mirror bolt does, so this margin is the only
+  /// thing standing between "despawns at the bare edge, still half
+  /// visible" and "actually gone off-screen first."
   bool _outOfBounds() {
-    return !game.camera.visibleWorldRect.contains(position.toOffset());
+    return !game.camera.visibleWorldRect
+        .inflate(size.x * kProjectileDespawnMarginFactor)
+        .contains(position.toOffset());
   }
 
   /// Left the screen without ever piercing anything on this exact frame

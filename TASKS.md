@@ -958,6 +958,42 @@ than the old exact-mirror teleport.
 
 ---
 
+## Phase 17 — Chest reveal confetti, projectiles despawn further off-screen
+*Goal: a confetti burst on the chest reveal's landing, and fix every
+projectile type despawning right at the visible edge instead of fully
+clearing the screen first (DECISIONS D-061).*
+
+- [x] **17.1** Chest reveal confetti — ~26 particles (`_ConfettiParticle`),
+      half starting off-screen left and half off-screen right
+      (`Alignment` beyond ±1), arcing in and landing scattered near the
+      card; half painted behind the card, half in front
+      (`_ConfettiLayer`/`_ConfettiPainter`, a `CustomPainter`, no new
+      package). Fires alongside the existing D-058 landing bounce.
+- [x] **17.2** Every projectile now despawns only once it's cleared the
+      visible edge by a full extra sprite-width
+      (`kProjectileDespawnMarginFactor`), not the instant its center
+      crosses the bare edge — real bug fix, not a tune (the knife
+      "spawning [poofing] right at the outside border" was the reported
+      symptom, but the bare-edge check was shared by the bolt/mirror bolt
+      and Spiral Fire too). Boss/mirror bolts still bounce off the exact
+      bare edge as before (DECISIONS D-052, unaffected) — the margin only
+      delays the *final* despawn once bounces are exhausted.
+- [x] **17.3** `flutter analyze` clean, `flutter test` 95/95 (unchanged —
+      confetti is UI/animation, the despawn margin is a component-level
+      distance check, neither is `core/` formula territory), `flutter
+      build apk --debug` succeeds.
+- [ ] **17.4** On-device verification — **developer** (CLAUDE.md §2): the
+      confetti visibly flies in from both screen edges and settles
+      convincingly in front of/behind the card, not just a flash; every
+      projectile type (bolt, knife, spiral fire, mirror bolt) now clears
+      the screen before poofing instead of vanishing mid-edge.
+
+**Exit criterion:** the chest reveal's landing moment reads as a real
+celebration (card + bounce + confetti together); no projectile type visibly
+despawns while still partly on-screen.
+
+---
+
 ## Backlog (post-demo — do not start)
 
 Kept here so ideas have somewhere to go that isn't the current sprint.
