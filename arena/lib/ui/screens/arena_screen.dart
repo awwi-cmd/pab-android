@@ -36,7 +36,7 @@ class _ArenaScreenState extends State<ArenaScreen> {
     if (_game == null) {
       final character =
           ModalRoute.of(context)?.settings.arguments as CharacterDef? ??
-              kCharacters.first;
+          kCharacters.first;
       _load(character);
     }
   }
@@ -281,9 +281,10 @@ class _CoinCounterState extends State<_CoinCounter>
     super.initState();
     _controller = AnimationController(vsync: this, duration: _duration)
       ..forward();
-    _count = IntTween(begin: 0, end: widget.total).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
+    _count = IntTween(
+      begin: 0,
+      end: widget.total,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
     final random = Random();
     // Capped regardless of the real total -- a big round shouldn't try to
@@ -293,7 +294,8 @@ class _CoinCounterState extends State<_CoinCounter>
       final startDelay = i / coinCount * 0.5; // staggered, not simultaneous
       return _FlyingCoinSpec(
         fromLeft: random.nextBool(),
-        startDistance: 1.2 + random.nextDouble() * 0.8, // x half-width, off-widget
+        startDistance:
+            1.2 + random.nextDouble() * 0.8, // x half-width, off-widget
         startYOffset: (random.nextDouble() - 0.5) * 72,
         interval: Interval(
           startDelay,
@@ -381,7 +383,6 @@ class _CoinCounterState extends State<_CoinCounter>
             column: 0, // tier 0 (common) -- just a generic flying coin
             row: 0,
             displaySize: 26, // bumped from 20 -- too small to notice on-device
-
           ),
         ),
       ),
@@ -615,7 +616,7 @@ class _ChestRevealOverlay extends StatefulWidget {
 }
 
 class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static final Random _random = Random();
 
   /// DECISIONS D-058: "add another animation before the current one, that
@@ -658,14 +659,69 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
   );
   late final Animation<double> _jumpOffset = TweenSequence<double>([
     TweenSequenceItem(
-      tween: Tween(begin: 0.0, end: -22.0).chain(CurveTween(curve: Curves.easeOut)),
+      tween: Tween(
+        begin: 0.0,
+        end: -22.0,
+      ).chain(CurveTween(curve: Curves.easeOut)),
       weight: 35,
     ),
     TweenSequenceItem(
-      tween: Tween(begin: -22.0, end: 0.0).chain(CurveTween(curve: Curves.bounceOut)),
+      tween: Tween(
+        begin: -22.0,
+        end: 0.0,
+      ).chain(CurveTween(curve: Curves.bounceOut)),
       weight: 65,
     ),
   ]).animate(_landController);
+
+  /// DECISIONS D-061 ("throw some confetti from outside the screen, from
+  /// left and right, landing in front and in the back of the card when we
+  /// land it") — fires alongside [_landController] the instant the spin
+  /// lands. Built from scratch with a `CustomPainter` rather than a
+  /// confetti package (CLAUDE.md §4.9: no new dependencies) — plain
+  /// rotated rects are enough for a short burst, no image asset exists for
+  /// this either.
+  static const _confettiCount = 26;
+  static const _confettiDurationMs = 950;
+  static const _confettiColors = [
+    Color(0xFFE0526C), // ArenaColors.danger
+    Color(0xFFF5C542), // amber
+    Color(0xFF6CE0B8), // ArenaColors.accent
+    Color(0xFF4FA8E0), // blue
+    Color(0xFFE07BE0), // pink
+  ];
+
+  late final AnimationController _confettiController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: _confettiDurationMs),
+  );
+  late final List<_ConfettiParticle> _confettiParticles = _buildConfetti();
+
+  /// Half the particles start off-screen left, half off-screen right
+  /// (`Alignment` values beyond ±1 resolve outside the box, exactly what
+  /// "from outside the screen" needs); independently, half are [front]
+  /// (painted on top of the card) and half aren't (painted behind it) —
+  /// "landing in front and in the back of the card."
+  List<_ConfettiParticle> _buildConfetti() {
+    return [
+      for (var i = 0; i < _confettiCount; i++)
+        _ConfettiParticle(
+          startAlign: Alignment(
+            (i.isEven ? -1 : 1) * (1.4 + _random.nextDouble() * 0.9),
+            -0.4 + _random.nextDouble() * 0.8,
+          ),
+          endAlign: Alignment(
+            -0.4 + _random.nextDouble() * 0.8,
+            -0.2 + _random.nextDouble() * 0.6,
+          ),
+          color: _confettiColors[_random.nextInt(_confettiColors.length)],
+          size: 7 + _random.nextDouble() * 6,
+          rotationTurns: 1 + _random.nextDouble() * 2.5,
+          arcHeight: 0.12 + _random.nextDouble() * 0.18,
+          front: i.isOdd,
+        ),
+    ];
+  }
 
   @override
   void initState() {
@@ -677,10 +733,12 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
   void dispose() {
     _timer?.cancel();
     _landController.dispose();
+    _confettiController.dispose();
     super.dispose();
   }
 
-  ChestCard _randomFlickerCard() => kChestDeck[_random.nextInt(kChestDeck.length)];
+  ChestCard _randomFlickerCard() =>
+      kChestDeck[_random.nextInt(kChestDeck.length)];
 
   void _scheduleShuffleStep() {
     _step++;
@@ -694,7 +752,9 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
     }
     _timer = Timer(const Duration(milliseconds: _shuffleStepMs), () {
       if (!mounted) return;
-      setState(() => _displayedAsset = _backAssetPaths[_step % _backAssetPaths.length]);
+      setState(
+        () => _displayedAsset = _backAssetPaths[_step % _backAssetPaths.length],
+      );
       _scheduleShuffleStep();
     });
   }
@@ -709,6 +769,7 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
           _spinning = false;
         });
         _landController.forward(from: 0);
+        _confettiController.forward(from: 0);
       });
       return;
     }
@@ -725,103 +786,258 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
   Widget build(BuildContext context) {
     return Container(
       color: Colors.black.withValues(alpha: 0.82),
-      child: Center(
-        // DECISIONS D-058 bugfix: on a short screen the fixed-height reward
-        // slot below pushed the total past the available height ("bottom
-        // overflowed by 4.0 pixels") -- scrollable so it never can again,
-        // while still centering normally whenever it already fits.
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'CHEST OPENED!',
-                style: TextStyle(
-                  color: ArenaColors.accent,
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
-                ),
+      // Confetti sits in its own full-screen Stack layers, not inside the
+      // scrollable content Column below -- it has to fly in from genuinely
+      // off-screen (DECISIONS D-061), and the SingleChildScrollView would
+      // clip anything positioned outside its own viewport.
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: IgnorePointer(
+              child: _ConfettiLayer(
+                controller: _confettiController,
+                particles: _confettiParticles,
+                front: false,
               ),
-              const SizedBox(height: 20),
-              AnimatedBuilder(
-                animation: _jumpOffset,
-                builder: (context, child) => Transform.translate(
-                  offset: Offset(0, _jumpOffset.value),
-                  child: child,
-                ),
-                child: _PlayingCardImage(assetPath: _displayedAsset),
-              ),
-              const SizedBox(height: 12),
-              // A *minimum* height so the "..." placeholder doesn't leave a
-              // jarring gap while still spinning/shuffling -- DECISIONS
-              // D-060 bugfix: this used to be a fixed `SizedBox(height: 46)`
-              // clipping its child, which the 2-line reward text (label +
-              // "+N gems", each with real font line-height) was a few
-              // pixels taller than -- "BOTTOM OVERFLOWED BY 4.0 PIXELS",
-              // reproducing every time regardless of the outer
-              // SingleChildScrollView (that fixes the *overlay* overflowing
-              // its screen; this was a separate, smaller `RenderFlex`
-              // overflowing its own fixed box further down the tree).
-              // `minHeight` can only grow this box to fit its real content,
-              // never clip it, so it can't overflow again even if the copy
-              // or font changes later.
-              ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 46),
-                child: Center(
-                  child: (_shuffling || _spinning)
-                      ? const Text(
-                          '...',
-                          style: TextStyle(color: ArenaColors.textDim, fontSize: 18),
-                        )
-                      : Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _finalCard.label,
-                              style: const TextStyle(
-                                color: ArenaColors.accent,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '+${_finalCard.gemReward} gems',
-                              style: const TextStyle(
-                                color: ArenaColors.textPrimary,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: ArenaColors.accent),
-                  ),
-                  // Disabled mid-shuffle/spin so the popup can't be dismissed
-                  // before the real card (and its payout) has actually landed.
-                  onPressed: (_shuffling || _spinning) ? null : widget.game.closeChestReveal,
-                  child: Text(
-                    'CONTINUE',
-                    style: TextStyle(
-                      color: (_shuffling || _spinning) ? ArenaColors.textDim : ArenaColors.accent,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
+          _buildContent(),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: _ConfettiLayer(
+                controller: _confettiController,
+                particles: _confettiParticles,
+                front: true,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    return Center(
+      // DECISIONS D-058 bugfix: on a short screen the fixed-height reward
+      // slot below pushed the total past the available height ("bottom
+      // overflowed by 4.0 pixels") -- scrollable so it never can again,
+      // while still centering normally whenever it already fits.
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'CHEST OPENED!',
+              style: TextStyle(
+                color: ArenaColors.accent,
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(height: 20),
+            AnimatedBuilder(
+              animation: _jumpOffset,
+              builder: (context, child) => Transform.translate(
+                offset: Offset(0, _jumpOffset.value),
+                child: child,
+              ),
+              child: _PlayingCardImage(assetPath: _displayedAsset),
+            ),
+            const SizedBox(height: 12),
+            // A *minimum* height so the "..." placeholder doesn't leave a
+            // jarring gap while still spinning/shuffling -- DECISIONS
+            // D-060 bugfix: this used to be a fixed `SizedBox(height: 46)`
+            // clipping its child, which the 2-line reward text (label +
+            // "+N gems", each with real font line-height) was a few
+            // pixels taller than -- "BOTTOM OVERFLOWED BY 4.0 PIXELS",
+            // reproducing every time regardless of the outer
+            // SingleChildScrollView (that fixes the *overlay* overflowing
+            // its screen; this was a separate, smaller `RenderFlex`
+            // overflowing its own fixed box further down the tree).
+            // `minHeight` can only grow this box to fit its real content,
+            // never clip it, so it can't overflow again even if the copy
+            // or font changes later.
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 46),
+              child: Center(
+                child: (_shuffling || _spinning)
+                    ? const Text(
+                        '...',
+                        style: TextStyle(
+                          color: ArenaColors.textDim,
+                          fontSize: 18,
+                        ),
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _finalCard.label,
+                            style: const TextStyle(
+                              color: ArenaColors.accent,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '+${_finalCard.gemReward} gems',
+                            style: const TextStyle(
+                              color: ArenaColors.textPrimary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: ArenaColors.accent),
+                ),
+                // Disabled mid-shuffle/spin so the popup can't be dismissed
+                // before the real card (and its payout) has actually landed.
+                onPressed: (_shuffling || _spinning)
+                    ? null
+                    : widget.game.closeChestReveal,
+                child: Text(
+                  'CONTINUE',
+                  style: TextStyle(
+                    color: (_shuffling || _spinning)
+                        ? ArenaColors.textDim
+                        : ArenaColors.accent,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+class _ConfettiParticle {
+  const _ConfettiParticle({
+    required this.startAlign,
+    required this.endAlign,
+    required this.color,
+    required this.size,
+    required this.rotationTurns,
+    required this.arcHeight,
+    required this.front,
+  });
+
+  final Alignment startAlign;
+  final Alignment endAlign;
+  final Color color;
+  final double size;
+  final double rotationTurns;
+  final double arcHeight;
+  final bool front;
+}
+
+/// One side of the chest reveal's confetti burst (DECISIONS D-061) — [front]
+/// picks whether this layer paints the particles that land in front of the
+/// card or behind it; two of these (one each) sandwich the actual card
+/// content in `_ChestRevealOverlayState.build`. Repaints every tick off
+/// [controller] via `CustomPainter`, not per-particle widgets — cheap for
+/// ~13 particles per layer and gives direct, explicit control over
+/// position/rotation/opacity that `Transform`/`Align` widgets would need a
+/// lot more boilerplate to match.
+class _ConfettiLayer extends StatelessWidget {
+  const _ConfettiLayer({
+    required this.controller,
+    required this.particles,
+    required this.front,
+  });
+
+  final Animation<double> controller;
+  final List<_ConfettiParticle> particles;
+  final bool front;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) => CustomPaint(
+        painter: _ConfettiPainter(
+          particles: particles,
+          t: controller.value,
+          front: front,
+        ),
+      ),
+    );
+  }
+}
+
+class _ConfettiPainter extends CustomPainter {
+  _ConfettiPainter({
+    required this.particles,
+    required this.t,
+    required this.front,
+  });
+
+  final List<_ConfettiParticle> particles;
+  final double t;
+  final bool front;
+
+  /// The flight itself finishes by 60% of the way through the controller
+  /// (`Curves.easeOut`, so it decelerates into arrival) -- the remaining
+  /// 40% is the particles sitting at rest before [_fadeStart] starts
+  /// fading them out, rather than the burst just cutting off abruptly.
+  static const _flightFraction = 0.6;
+  static const _fadeStart = 0.7;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final flightT = Curves.easeOut.transform(
+      (t / _flightFraction).clamp(0.0, 1.0),
+    );
+    final opacity = t < _fadeStart
+        ? 1.0
+        : (1 - (t - _fadeStart) / (1 - _fadeStart)).clamp(0.0, 1.0);
+    if (opacity <= 0) return;
+
+    for (final p in particles) {
+      if (p.front != front) continue;
+      final start = _toOffset(p.startAlign, size);
+      final end = _toOffset(p.endAlign, size);
+      final pos = Offset.lerp(start, end, flightT)!;
+      final arc = p.arcHeight * size.height * sin(pi * flightT);
+      final rotation = p.rotationTurns * 2 * pi * flightT;
+
+      canvas.save();
+      canvas.translate(pos.dx, pos.dy - arc);
+      canvas.rotate(rotation);
+      final paint = Paint()..color = p.color.withValues(alpha: opacity);
+      canvas.drawRect(
+        Rect.fromCenter(
+          center: Offset.zero,
+          width: p.size,
+          height: p.size * 0.4,
+        ),
+        paint,
+      );
+      canvas.restore();
+    }
+  }
+
+  Offset _toOffset(Alignment align, Size size) {
+    return Offset(
+      (align.x + 1) / 2 * size.width,
+      (align.y + 1) / 2 * size.height,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ConfettiPainter oldDelegate) =>
+      oldDelegate.t != t;
 }
 
 /// One playing-card image (`assets/images/cards`, DECISIONS D-057/D-058),
