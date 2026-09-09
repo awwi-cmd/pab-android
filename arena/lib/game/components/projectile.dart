@@ -5,6 +5,7 @@ import 'package:flame/components.dart';
 import '../../core/constants.dart';
 import '../arena_game.dart';
 import 'damageable.dart';
+import 'projectile_poof.dart';
 
 /// Straight-line, constant speed, one enemy per projectile, no pierce, no
 /// homing/leading (PRD §6.3 / DECISIONS D-005). Also the boss's bolt
@@ -20,6 +21,14 @@ import 'damageable.dart';
 /// instead, since the player was never in `damageableTargets` (that list
 /// only exists to answer "what can a player attack hit") and a bolt built
 /// with the default would silently never find a target to damage at all.
+///
+/// [maxBounces] (DECISIONS D-052) — `0` (default, every existing use)
+/// despawns on leaving `camera.visibleWorldRect` same as always. A positive
+/// count reflects off that same edge instead, up to that many times, before
+/// finally despawning on the next one — this project has no fixed arena
+/// wall to bounce off since D-040 (roaming world, no bounds), so "the wall"
+/// is read as the edge of what's currently visible, the existing stand-in
+/// for "off-screen" everywhere else in this file.
 class ProjectileComponent extends SpriteAnimationComponent
     with HasGameReference<ArenaGame> {
   ProjectileComponent({
@@ -33,7 +42,9 @@ class ProjectileComponent extends SpriteAnimationComponent
     Color? tint,
     this.excludeSelf,
     this.targetsPlayer = false,
+    int maxBounces = 0,
   }) : _direction = direction.normalized(),
+       _bouncesLeft = maxBounces,
        super(
          animation: animation,
          position: startPosition,
@@ -61,6 +72,7 @@ class ProjectileComponent extends SpriteAnimationComponent
   // projectile" (2026-09-09).
   final Damageable? excludeSelf;
   final bool targetsPlayer;
+  int _bouncesLeft;
 
   double _traveled = 0;
   final Vector2 _scratch = Vector2.zero(); // reused every frame
@@ -76,9 +88,16 @@ class ProjectileComponent extends SpriteAnimationComponent
     position.add(_scratch);
     _traveled += step;
 
-    if (_traveled >= maxRangePx || _outOfBounds()) {
-      removeFromParent();
+    if (_traveled >= maxRangePx) {
+      _expire();
       return;
+    }
+    if (_outOfBounds()) {
+      if (_bouncesLeft <= 0) {
+        _expire();
+        return;
+      }
+      _bounce();
     }
 
     if (targetsPlayer) {
@@ -137,5 +156,41 @@ class ProjectileComponent extends SpriteAnimationComponent
   /// computed relative to wherever the camera actually is right now.
   bool _outOfBounds() {
     return !game.camera.visibleWorldRect.contains(position.toOffset());
+  }
+
+  /// Ran out of range or bounces without ever hitting anything (DECISIONS
+  /// D-053) — hands off to a shrink-and-drift "poof" instead of just
+  /// vanishing. Not called from the hit paths above; those already have
+  /// their own feedback ([ArenaGame.onProjectileHit]).
+  void _expire() {
+    game.addToWorld(
+      ProjectilePoofComponent(
+        startPosition: position.clone(),
+        startSize: size.clone(),
+        animation: animation,
+        paint: paint,
+      ),
+    );
+    removeFromParent();
+  }
+
+  /// Reflects off whichever edge(s) of [camera.visibleWorldRect] were
+  /// crossed (DECISIONS D-052) — checks each axis independently so a
+  /// corner-clip flips both x and y in the same call, same as a real
+  /// bounce. Clamps back inside afterwards so a fast-moving bolt doesn't
+  /// re-trigger a second bounce next frame while it's still technically
+  /// outside.
+  void _bounce() {
+    _bouncesLeft--;
+    final visible = game.camera.visibleWorldRect;
+    if (position.x < visible.left || position.x > visible.right) {
+      _direction.x = -_direction.x;
+    }
+    if (position.y < visible.top || position.y > visible.bottom) {
+      _direction.y = -_direction.y;
+    }
+    position
+      ..x = position.x.clamp(visible.left, visible.right)
+      ..y = position.y.clamp(visible.top, visible.bottom);
   }
 }

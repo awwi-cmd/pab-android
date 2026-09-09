@@ -20,6 +20,8 @@ import 'anim/enemy_animations.dart' show EnemySkin;
 import 'components/arena_floor.dart';
 import 'components/aura.dart';
 import 'components/boss.dart';
+import 'components/chest.dart';
+import 'components/chest_spawner.dart';
 import 'components/damageable.dart';
 import 'components/damage_text.dart';
 import 'components/defence_crystal.dart';
@@ -136,6 +138,19 @@ class ArenaGame extends FlameGame {
   int coinsEarned = 0;
   int potionCount = 0;
 
+  /// Chests (DECISIONS D-055) -- same "how many currently live" cap pattern
+  /// as [potionCount].
+  int chestCount = 0;
+
+  /// The most recently opened chest's gem haul, shown by the ChestReveal
+  /// overlay (`ArenaScreen`) until [closeChestReveal] is called — `null`
+  /// when nothing is pending. Deferred behind [_maybeShowChestReveal]'s
+  /// gate the same way a level-up is (DECISIONS D-025's `_pendingLevelUps`
+  /// pattern), so a chest that finishes opening while the Pause Menu or a
+  /// level-up popup is already showing doesn't fight it for the screen.
+  List<ItemRarity>? _pendingChestGems;
+  List<ItemRarity>? get pendingChestGems => _pendingChestGems;
+
   /// Exposed for [AttackBehavior]s (`attack_behavior.dart`) to build
   /// projectiles from — the animation itself isn't per-character yet, but
   /// the behavior that fires it is (DECISIONS D-024).
@@ -191,6 +206,10 @@ class ArenaGame extends FlameGame {
   double? _roundEndDelay;
   static const _roundEndDelaySec = 0.6;
 
+  /// True only via a real death (`onPlayerDied`), never `debugDie()` —
+  /// gates the death SFX in `_endRound` (DECISIONS D-054).
+  bool _realDeath = false;
+
   @override
   Color backgroundColor() => ArenaColors.background;
 
@@ -237,6 +256,7 @@ class ArenaGame extends FlameGame {
     damageDealt = 0;
     _fireCooldown = 0;
     _roundEndDelay = null;
+    _realDeath = false;
 
     level = 1;
     xp = 0;
@@ -260,6 +280,8 @@ class ArenaGame extends FlameGame {
     gemsCollected = 0;
     coinsEarned = 0;
     potionCount = 0;
+    chestCount = 0;
+    _pendingChestGems = null;
 
     addToWorld(ArenaFloor());
     player = PlayerComponent(
@@ -287,6 +309,7 @@ class ArenaGame extends FlameGame {
     addToHud(HpBarComponent());
     addToWorld(Spawner());
     addToWorld(PotionSpawner());
+    addToWorld(ChestSpawner());
 
     if (settings.showFps) {
       // Below the HP bar (top-left, 24,24 + 14 tall) so they don't overlap.
@@ -524,12 +547,7 @@ class ArenaGame extends FlameGame {
     _syncDefenceCrystal();
     _pendingLevelUps--;
     overlays.remove('LevelUp');
-    if (_pendingLevelUps > 0) {
-      _maybeShowNextLevelUp();
-    } else {
-      menuOpen.value = false;
-      resumeEngine();
-    }
+    _afterMenuClosed();
   }
 
   void openPauseMenu() {
@@ -545,12 +563,27 @@ class ArenaGame extends FlameGame {
   /// resuming gameplay first (developer's spec).
   void closePauseMenu() {
     overlays.remove('PauseMenu');
+    _afterMenuClosed();
+  }
+
+  /// Shared by every overlay-close path above (DECISIONS D-055 generalized
+  /// this from level-up-only to also cover the ChestReveal popup): pending
+  /// level-ups take priority, then a pending chest reveal, and only once
+  /// neither has anything queued does the round actually resume. Each of
+  /// [_maybeShowNextLevelUp]/[_maybeShowChestReveal] is a no-op if it has
+  /// nothing pending, so falling through all three checks here is exactly
+  /// "nothing left to show."
+  void _afterMenuClosed() {
     if (_pendingLevelUps > 0) {
       _maybeShowNextLevelUp();
-    } else {
-      menuOpen.value = false;
-      resumeEngine();
+      return;
     }
+    if (_pendingChestGems != null) {
+      _maybeShowChestReveal();
+      return;
+    }
+    menuOpen.value = false;
+    resumeEngine();
   }
 
   /// Spawns the Aura's ring component on the first pick (DECISIONS D-027).
@@ -815,6 +848,46 @@ class ArenaGame extends FlameGame {
     );
   }
 
+  /// Called by [ChestSpawner] on its own timer.
+  void spawnChest(Vector2 at) {
+    chestCount++;
+    addToWorld(
+      ChestComponent(startPosition: at, idleAnimation: gameAssets.chestIdleAnimation),
+    );
+  }
+
+  /// Called by [ChestComponent] once its opening sequence finishes
+  /// (DECISIONS D-055). The gems fold into the same round-scoped
+  /// [gemsCollected] Round Over already shows (chests and enemy drops
+  /// aren't tracked separately); the reveal popup itself is deferred behind
+  /// [_maybeShowChestReveal]'s gate, same as a level-up's, so it can't pop
+  /// up on top of the Pause Menu or Level Up.
+  void onChestOpened(List<ItemRarity> gems) {
+    gemsCollected += gems.length;
+    chestCount--;
+    _pendingChestGems = gems;
+    _maybeShowChestReveal();
+  }
+
+  void _maybeShowChestReveal() {
+    if (roundOver.value || _pendingChestGems == null) return;
+    if (overlays.isActive('PauseMenu') ||
+        overlays.isActive('LevelUp') ||
+        overlays.isActive('ChestReveal')) {
+      return;
+    }
+    overlays.add('ChestReveal');
+    menuOpen.value = true;
+    pauseEngine();
+  }
+
+  /// Called by the ChestReveal overlay's own dismiss button.
+  void closeChestReveal() {
+    overlays.remove('ChestReveal');
+    _pendingChestGems = null;
+    _afterMenuClosed();
+  }
+
   /// One-shot SFX at a volume derived from the player's own SFX slider
   /// (`Settings.sfxVolume`, 0-100), capped low regardless — "make sure they
   /// are not that loud" (DECISIONS D-044).
@@ -825,11 +898,11 @@ class ArenaGame extends FlameGame {
   }
 
   /// PRD §6.5: freeze after the death frame, then show Round Over. Debug
-  /// stand-in `debugDie()` shares this same path -- but skips the SFX
-  /// (`_roundEndDelay == null` guards it to once), since a debug kill isn't
-  /// a real death.
+  /// stand-in `debugDie()` shares this same path -- but never sets
+  /// [_realDeath], since a debug kill isn't a real death and shouldn't play
+  /// the death SFX.
   void onPlayerDied() {
-    if (_roundEndDelay == null) _playSfx('core/sfx-you-died.wav');
+    _realDeath = true;
     _roundEndDelay ??= _roundEndDelaySec;
   }
 
@@ -845,11 +918,20 @@ class ArenaGame extends FlameGame {
     roundOver.value = true;
     overlays.add('RoundOver');
     pauseEngine();
-    // The round's coin haul crosses over into the persistent Upgrades-shop
-    // wallet exactly once, here (DECISIONS D-047) — `coinsEarned` itself
-    // stays the round-scoped display value the RoundOver overlay reads,
-    // untouched by this. Fire-and-forget: nothing on screen is waiting on
-    // this write landing.
-    unawaited(MetaProgressionRepository().addCoins(coinsEarned));
+    // DECISIONS D-054: fires here, once the dark Round Over overlay is
+    // actually up -- was firing the instant HP hit 0 (`onPlayerDied`,
+    // still under the death animation, well before the overlay appears).
+    // `debugDie()` never sets `_realDeath`, so a debug kill still stays
+    // silent.
+    if (_realDeath) _playSfx('core/sfx-you-died.wav');
+    // The round's coin/gem haul and kill count cross over into the
+    // persistent wallet exactly once, here (DECISIONS D-047/D-055) —
+    // `coinsEarned`/`gemsCollected`/`kills` themselves stay the
+    // round-scoped display values Round Over reads, untouched by this.
+    // Fire-and-forget: nothing on screen is waiting on these writes landing.
+    final repo = MetaProgressionRepository();
+    unawaited(repo.addCoins(coinsEarned));
+    unawaited(repo.addGems(gemsCollected));
+    unawaited(repo.addLifetimeKills(kills));
   }
 }

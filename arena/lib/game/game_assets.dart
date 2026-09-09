@@ -38,6 +38,8 @@ class GameAssets {
     required this.bossAnimations,
     required this.gemAnimations,
     required this.potionAnimations,
+    required this.chestIdleAnimation,
+    required this.chestOpeningAnimation,
   });
 
   final CharacterAnimations characterAnimations;
@@ -64,6 +66,14 @@ class GameAssets {
   final Map<BossAnim, SpriteAnimation> bossAnimations;
   final List<SpriteAnimation> gemAnimations; // indexed by ItemRarity
   final List<SpriteAnimation> potionAnimations; // indexed by ItemRarity
+
+  /// Chests (DECISIONS D-055) — [chestIdleAnimation] is a single frame
+  /// (`chest_01.png`, the closed chest, also the opening sequence's own
+  /// first frame) shown while sitting in the world; [chestOpeningAnimation]
+  /// is the full `chest_01.png`..`chest_12.png` sequence, played once when a
+  /// player walks up to it.
+  final SpriteAnimation chestIdleAnimation;
+  final SpriteAnimation chestOpeningAnimation;
 
   /// Loads everything up front — the exact body of `ArenaGame.onLoad()`
   /// before the split, unchanged apart from the 4 new sheets at the end.
@@ -293,6 +303,20 @@ class GameAssets {
           stepTime: 0.12,
         ),
     ];
+    // Chests (DECISIONS D-055) -- 12 separate whole-image files, not a
+    // sheet (`loadFileSequenceAnimation`, sheet_loader.dart), each 32x32.
+    final chestFramePaths = [
+      for (var i = 1; i <= 12; i++)
+        'consumables/chest_${i.toString().padLeft(2, '0')}.png',
+    ];
+    final chestIdleAnimation = await loadFileSequenceAnimation(
+      [chestFramePaths.first],
+    );
+    final chestOpeningAnimation = await loadFileSequenceAnimation(
+      chestFramePaths,
+      stepTime: 0.06,
+      loop: false,
+    );
 
     return GameAssets._(
       characterAnimations: characterAnimations,
@@ -316,6 +340,8 @@ class GameAssets {
       bossAnimations: bossAnimations,
       gemAnimations: gemAnimations,
       potionAnimations: potionAnimations,
+      chestIdleAnimation: chestIdleAnimation,
+      chestOpeningAnimation: chestOpeningAnimation,
     );
   }
 }

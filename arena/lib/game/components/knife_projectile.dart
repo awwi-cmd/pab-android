@@ -5,6 +5,7 @@ import 'package:flame/components.dart';
 import '../../core/constants.dart';
 import '../arena_game.dart';
 import 'damageable.dart';
+import 'projectile_poof.dart';
 
 /// The Bruiser's knife (DECISIONS D-029): straight-line, constant speed,
 /// same as [ProjectileComponent] except it **pierces** — it keeps flying and
@@ -60,7 +61,7 @@ class KnifeProjectileComponent extends SpriteComponent
     angle += _rotationSpeedRadPerSec * dt;
 
     if (_outOfBounds()) {
-      removeFromParent();
+      _expire();
       return;
     }
 
@@ -96,5 +97,22 @@ class KnifeProjectileComponent extends SpriteComponent
   /// screen's width from the world origin would vanish on its first frame.
   bool _outOfBounds() {
     return !game.camera.visibleWorldRect.contains(position.toOffset());
+  }
+
+  /// Left the screen without ever piercing anything on this exact frame
+  /// (or its last pierce already happened earlier in its flight) —
+  /// DECISIONS D-053. Whichever sprite it was showing (clean or bloody,
+  /// [_bloodied]) is what the poof shrinks away.
+  void _expire() {
+    game.addToWorld(
+      ProjectilePoofComponent(
+        startPosition: position.clone(),
+        startSize: size.clone(),
+        sprite: sprite,
+        paint: paint,
+        angle: angle,
+      ),
+    );
+    removeFromParent();
   }
 }

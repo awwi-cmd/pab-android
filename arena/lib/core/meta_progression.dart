@@ -69,6 +69,8 @@ int metaUpgradeCost(int currentLevel) {
 class MetaProgression {
   MetaProgression({
     this.coins = 0,
+    this.gems = 0,
+    this.lifetimeKills = 0,
     this.strLevel = 0,
     this.vitLevel = 0,
     this.dexLevel = 0,
@@ -77,6 +79,21 @@ class MetaProgression {
   });
 
   int coins;
+
+  /// A second, separate persistent currency (DECISIONS D-055) — gems
+  /// dropped by enemies and found in chests, credited at round-over exactly
+  /// like [coins] (`ArenaGame._endRound`), from the same round-scoped
+  /// `ArenaGame.gemsCollected` count Round Over already displays. Not
+  /// spendable on anything yet (no gem-priced item exists) — the wallet
+  /// exists so the number is real and persists, same as `ShopScreen`
+  /// shipping empty on purpose (D-047).
+  int gems;
+
+  /// Lifetime kills across every round ever played (DECISIONS D-055) — the
+  /// character-unlock metric (`CharacterDef.unlockKillThreshold`). Credited
+  /// at round-over from `ArenaGame.kills`, alongside coins/gems.
+  int lifetimeKills;
+
   int strLevel;
   int vitLevel;
   int dexLevel;
@@ -145,6 +162,8 @@ class MetaProgression {
 /// `SettingsRepository` (`core/settings.dart`).
 class MetaProgressionRepository {
   static const _kCoins = 'meta.coins';
+  static const _kGems = 'meta.gems';
+  static const _kLifetimeKills = 'meta.lifetimeKills';
   static const _kStr = 'meta.str';
   static const _kVit = 'meta.vit';
   static const _kDex = 'meta.dex';
@@ -155,6 +174,8 @@ class MetaProgressionRepository {
     final prefs = await SharedPreferences.getInstance();
     return MetaProgression(
       coins: prefs.getInt(_kCoins) ?? 0,
+      gems: prefs.getInt(_kGems) ?? 0,
+      lifetimeKills: prefs.getInt(_kLifetimeKills) ?? 0,
       strLevel: prefs.getInt(_kStr) ?? 0,
       vitLevel: prefs.getInt(_kVit) ?? 0,
       dexLevel: prefs.getInt(_kDex) ?? 0,
@@ -166,6 +187,8 @@ class MetaProgressionRepository {
   Future<void> save(MetaProgression meta) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kCoins, meta.coins);
+    await prefs.setInt(_kGems, meta.gems);
+    await prefs.setInt(_kLifetimeKills, meta.lifetimeKills);
     await prefs.setInt(_kStr, meta.strLevel);
     await prefs.setInt(_kVit, meta.vitLevel);
     await prefs.setInt(_kDex, meta.dexLevel);
@@ -181,6 +204,26 @@ class MetaProgressionRepository {
     if (amount <= 0) return;
     final current = await load();
     current.coins += amount;
+    await save(current);
+  }
+
+  /// Same shape as [addCoins] (DECISIONS D-055) — gems earned this round
+  /// (`ArenaGame.gemsCollected`, enemy drops + chests together) crossing
+  /// over into the persistent wallet.
+  Future<void> addGems(int amount) async {
+    if (amount <= 0) return;
+    final current = await load();
+    current.gems += amount;
+    await save(current);
+  }
+
+  /// Same shape again (DECISIONS D-055) — this round's kill count
+  /// (`ArenaGame.kills`) crossing over into the lifetime total that gates
+  /// character unlocks.
+  Future<void> addLifetimeKills(int amount) async {
+    if (amount <= 0) return;
+    final current = await load();
+    current.lifetimeKills += amount;
     await save(current);
   }
 }

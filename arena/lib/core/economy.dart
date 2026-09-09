@@ -75,3 +75,16 @@ const Map<ItemRarity, double> kPotionHealByRarity = {
 };
 
 double potionHealAmount(ItemRarity rarity) => kPotionHealByRarity[rarity]!;
+
+/// Chests (DECISIONS D-055) — a bigger, rarer payout than a single dropped
+/// gem: a handful of gems at once, each still rolled independently through
+/// [rollRarity] (same weighted scale gems/coins/potions already share, per
+/// the developer's original "same value logic" ask, D-043 — not a new
+/// probability scheme just for chests).
+const int kChestMinGems = 3;
+const int kChestMaxGems = 6;
+
+List<ItemRarity> rollChestGems(Random random) {
+  final count = kChestMinGems + random.nextInt(kChestMaxGems - kChestMinGems + 1);
+  return [for (var i = 0; i < count; i++) rollRarity(random)];
+}

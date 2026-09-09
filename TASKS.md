@@ -352,11 +352,15 @@ full sprite sheets for the Bruiser/Skirmisher/Warden slots (DECISIONS D-028).*
         caster's body at all times (not just mid-cast) at 50% opacity,
         impact vs. explosion picks correctly (explosion only on a kill),
         overall damage output feels right vs. the other 2 kits
-- [ ] **8.4** Real unlock-by-progression: lock slots 2-4 again and gate them
-      behind a persistent unlock condition (kills/rounds/levels — TBD).
-      Needs a persistence story beyond `SharedPreferences` settings (round
-      state resets every round by design, CLAUDE.md §4.5 — unlocks can't).
-      Ask before picking the unlock condition/mechanism; don't guess.
+- [x] **8.4** Real unlock-by-progression (closed by DECISIONS D-055,
+      Phase 13) — asked rather than guessed (per this item's own note):
+      lifetime kills across every round, persisted via `MetaProgression.
+      lifetimeKills`/`MetaProgressionRepository.addLifetimeKills`, same
+      shape as the coin wallet. `CharacterDef.unlockKillThreshold` gates
+      slots 2-4 (Bruiser 50, Skirmisher 150, Warden 300); the Apprentice's
+      is `null` (always unlocked). See TASKS Phase 13 for the full slice
+      (also folded in a character-select redesign and a chest economy from
+      the same developer message).
 - [x] **8.5** Player hit feedback — `effect_blood-impact` plays somewhere on
       the player's own body (a random spot each time, not a fixed decal)
       whenever damage actually lands, any character (DECISIONS D-033).
@@ -536,6 +540,39 @@ Developer delivered `boss_map1.png`, `audio/core/`, and
       clean, `flutter test` 85/85, `flutter build apk --debug` succeeds.
       On-device confirmation that the boss's bolt now actually lands is
       **developer's** to check (CLAUDE.md §2).
+- [x] **10.9** Boss bolt: 3-shot burst, bounces, +30% speed (DECISIONS
+      D-052, developer's spec). Fires 3 bolts in quick succession
+      (`BossStats.boltBurstCount`/`boltBurstIntervalSec`), each re-aimed at
+      the player's live position at the moment it fires; the fire-cooldown
+      now gates the whole burst, not each shot. New
+      `ProjectileComponent.maxBounces` (generic, default 0 — every other
+      caller unaffected) reflects off the edge of `camera.visibleWorldRect`
+      ("the wall," reinterpreted for a world with no fixed bounds since
+      D-040) instead of despawning, up to `BossStats.boltBounceCount` (3)
+      times. `boltSpeedPxPerS` +30%. `flutter analyze` clean, `flutter
+      test` 85/85, `flutter build apk --debug` succeeds. On-device feel
+      (burst reads as 3 shots, bounce looks intentional) is
+      **developer's** to check.
+- [x] **10.10** Boss bolt +5s lifetime, 9-bolt live cap; shrink+drift "poof"
+      despawn shared by every projectile (DECISIONS D-053, developer's
+      spec — poof scope confirmed via a clarifying question rather than
+      guessed). `BossStats.boltMaxRangePx` folds in 5 extra seconds of
+      travel at the bolt's own speed; `BossComponent._liveBolts` caps
+      concurrent boss bolts at `BossStats.boltMaxLiveCount` (9), skipping
+      over-cap burst shots rather than stalling the burst. New
+      `game/components/projectile_poof.dart` (`ProjectilePoofComponent`) —
+      100%→0% shrink drifting downward over 0.35s — wired into every
+      projectile's "expired without hitting anything" path
+      (`ProjectileComponent`, `KnifeProjectileComponent`,
+      `SpiralFireProjectileComponent`), not the hit path (already has its
+      own feedback). `flutter analyze` clean, `flutter test` 85/85,
+      `flutter build apk --debug` succeeds. On-device feel is
+      **developer's** to check.
+- [x] **10.11** Death SFX now fires with the Round Over overlay, not the
+      instant HP hits 0 (DECISIONS D-054, developer's spec). Moved from
+      `onPlayerDied()` into `_endRound()`, gated by a new `_realDeath` bool
+      instead of reusing `_roundEndDelay`'s null-ness as the "was this a
+      real death" signal. `flutter analyze` clean.
 
 **Exit criterion:** a full round can include a boss encounter with working
 audio feedback, gems/potions appearing and being collected in the world,
@@ -659,6 +696,72 @@ Thunder, Defence Crystal. Developer delivered
 
 **Exit criterion:** all 4 powers are pickable, function as specced, and
 none regresses an existing attack kit or the level-up flow.
+
+---
+
+## Phase 13 — Character unlocks, swipe-carousel select, chest economy
+*Goal: real progression-gated character unlocking (closing out TASKS 8.4), a
+character-select screen that doesn't look silly with 4 idle animations
+running at once, and a chest economy with its own persistent gem wallet.
+Developer specced all three in one message; the unlock metric, carousel
+scope, and gem-wallet-vs-coins questions were asked and confirmed rather
+than guessed (DECISIONS D-055).*
+
+- [x] **13.1** Character unlocks — `CharacterDef.unlockKillThreshold`
+      (`int?`, `null` = always unlocked) replaces the old flat
+      `unlocked: true` placeholder (D-028). Apprentice `null`, Bruiser 50,
+      Skirmisher 150, Warden 300 lifetime kills. `MetaProgression`/
+      `MetaProgressionRepository` gained `lifetimeKills`/
+      `addLifetimeKills`, credited once per round from `ArenaGame._endRound`
+      alongside coins/gems. Closes TASKS 8.4.
+- [x] **13.2** Character select rewritten as a swipe carousel
+      (`PageView.builder`, one `_CharacterPage` per character) — replaces
+      the 2x2 grid that had all 4 idle-animating at once. Only the current
+      page's portrait animates. Locked pages show a `_LockedPanel` (the
+      `bar-empty`/`bar-filling`/`star-empty` assets — turned out to already
+      be exactly "the locked panel asset" the developer asked for) instead
+      of ENTER ARENA, with real stats still visible, dimmed. Wallet readout
+      now shows gems (`star-full.png`) next to coins. SHOP/UPGRADES stay
+      pinned above the carousel — `ShopScreen` itself is untouched, already
+      the empty-placeholder-with-back-button D-047 asked for.
+- [x] **13.3** Chest economy — `ChestSpawner`/`ChestComponent`
+      (`game/components/`), same random-drop shape as `PotionSpawner`
+      (D-043) but rarer (40s interval, 2 live cap). Opening sequence: the
+      boss's teleport flourish (`animaAnimation`) first, then
+      `spawnExplosionEffect` (SFX included) 0.35s later, swapping to the
+      real `chest_01`-`chest_12` 12-file opening animation
+      (`loadFileSequenceAnimation`, new in `sheet_loader.dart`) at the same
+      moment. Rolls 3-6 gems (`rollChestGems`, `core/economy.dart`) into
+      the same round-scoped `gemsCollected` Round Over already shows.
+- [x] **13.4** Persistent gem wallet + ChestReveal popup —
+      `MetaProgression.gems`/`addGems`, same shape as coins, credited at
+      round-over. New `ChestReveal` Flame overlay (4th one, alongside
+      RoundOver/LevelUp/PauseMenu) — "a fancy chest opening pop-up and
+      reveal of gems & gem count," genuinely pausing the round, grouped by
+      rarity. `ArenaGame._afterMenuClosed()` generalizes the level-up
+      chaining logic into a 3-way priority (level-up, then chest reveal,
+      then actually resume) so it can't collide with either.
+- [x] **13.5** `flutter analyze` clean, `flutter test` 92/92 (7 new —
+      `test/data/characters_test.dart`'s 4 `isUnlockedFor`/`kCharacters`
+      cases, `economy_test.dart`'s 3 `rollChestGems` cases), `flutter build
+      apk --debug` succeeds.
+- [ ] **13.6** On-device verification — **developer** (CLAUDE.md §2, this
+      session was asked not to drive the emulator itself): swiping actually
+      feels smooth and reads as intentional, not laggy; a locked character's
+      progress bar/kill count are legible and update after a round; unlocked
+      state actually flips once the threshold is crossed (no stale lock
+      after enough kills); chests are visible and walkable-to in the world,
+      the anima→explosion→opening beat reads as one sequence not three
+      disconnected flashes; the ChestReveal popup shows the right gem
+      count/rarities and CONTINUE actually resumes the round; the gem
+      count on character select matches what Round Over showed after
+      collecting them; nothing about the new chest spawns/opens breaks an
+      existing character's own kit or the level-up flow.
+
+**Exit criterion:** a full playthrough can unlock a character by kills, the
+select screen never shows more than one character idle-animating at once,
+and chests spawn, open, and pay out gems into a wallet that survives to the
+next round.
 
 ---
 

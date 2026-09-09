@@ -117,6 +117,13 @@ const double kItemRenderScale = 2.5;
 /// How close the player has to walk to a gem/potion to collect it.
 const double kItemPickupRadiusPx = 28;
 
+/// Chests (`consumables/chest_01.png`..`chest_12.png`, DECISIONS D-055) —
+/// native 32x32 cell, rendered bigger than a gem/potion (a chest is a
+/// bigger, rarer prize) but smaller than the player. Its own pickup radius,
+/// slightly larger than [kItemPickupRadiusPx], to match the bigger sprite.
+const double kChestRenderScale = 3;
+const double kChestPickupRadiusPx = 36;
+
 /// The 4 new skill VFX (DECISIONS D-049) — same "width here, height derived
 /// from the sheet's own native cell aspect ratio" convention as the D-033/
 /// D-034/D-035 block above. Damage/cooldown/count numbers for these live in

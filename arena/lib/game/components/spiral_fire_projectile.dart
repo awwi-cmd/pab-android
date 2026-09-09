@@ -6,6 +6,7 @@ import 'package:flame/components.dart';
 import '../../core/constants.dart';
 import '../arena_game.dart';
 import 'damageable.dart';
+import 'projectile_poof.dart';
 
 /// One half of the Skirmisher's Spiral Fire skill (DECISIONS D-034/D-039):
 /// two of these are always launched together, [phase] apart by pi radians,
@@ -73,7 +74,7 @@ class SpiralFireProjectileComponent extends SpriteAnimationComponent
     _angle += _spinSpeedRadPerSec * dt;
 
     if (_outOfBounds()) {
-      removeFromParent();
+      _expire();
       return;
     }
 
@@ -144,5 +145,23 @@ class SpiralFireProjectileComponent extends SpriteAnimationComponent
   bool _outOfBounds() {
     final visible = game.camera.visibleWorldRect.inflate(_boundsMargin);
     return !visible.contains(position.toOffset());
+  }
+
+  /// Left the screen without ever converging on a target — DECISIONS
+  /// D-053. A hit ends this component a different way entirely (the
+  /// `removeFromParent()` right after `spawnExplosionEffect`/
+  /// `spawnImpactEffect` above), so this only ever fires for the
+  /// out-of-bounds case.
+  void _expire() {
+    game.addToWorld(
+      ProjectilePoofComponent(
+        startPosition: position.clone(),
+        startSize: size.clone(),
+        animation: animation,
+        paint: paint,
+        angle: angle,
+      ),
+    );
+    removeFromParent();
   }
 }

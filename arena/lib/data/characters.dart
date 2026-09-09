@@ -13,7 +13,7 @@ class CharacterDef {
     required this.spriteFolder,
     required this.spritePrefix,
     required this.attackBehavior,
-    required this.unlocked,
+    this.unlockKillThreshold,
   });
 
   final String id;
@@ -35,15 +35,24 @@ class CharacterDef {
   /// other kind of character doesn't require rewriting `ArenaGame`.
   final AttackBehavior attackBehavior;
 
-  final bool unlocked;
+  /// Lifetime kills (`MetaProgression.lifetimeKills`, DECISIONS D-055)
+  /// needed to unlock this slot. `null` means always unlocked (the
+  /// Apprentice) — supersedes the old flat `unlocked` bool from D-028's
+  /// "everyone starts unlocked" placeholder, now that real progression-gated
+  /// unlocking (TASKS 8.4) is built.
+  final int? unlockKillThreshold;
+
+  bool isUnlockedFor(int lifetimeKills) =>
+      unlockKillThreshold == null || lifetimeKills >= unlockKillThreshold!;
 }
 
-/// The 4 select-screen slots (PRD §5.2). All 4 are unlocked and playable as
-/// of TASKS Phase 8 — real unlock-via-progression gating is planned but not
-/// built yet, so every slot defaults open for now. The Bruiser has its own
-/// `KnifeAttack` (D-029) and the Skirmisher has `SpiralFireAttack` (D-034);
-/// the Warden still shares the Apprentice's `ProjectileAttack` as a
-/// placeholder until it gets its own `AttackBehavior` (CLAUDE.md §4.12).
+/// The 4 select-screen slots (PRD §5.2). Real unlock-via-progression gating
+/// (TASKS 8.4, DECISIONS D-055) as of Phase 13 — the Apprentice is always
+/// open, the other 3 gate on lifetime kills (`unlockKillThreshold`,
+/// steeper per slot). The Bruiser has its own `KnifeAttack` (D-029) and the
+/// Skirmisher has `SpiralFireAttack` (D-034); the Warden still shares the
+/// Apprentice's `ProjectileAttack` as a placeholder until it gets its own
+/// `AttackBehavior` (CLAUDE.md §4.12).
 const List<CharacterDef> kCharacters = [
   CharacterDef(
     id: 'apprentice',
@@ -53,7 +62,7 @@ const List<CharacterDef> kCharacters = [
     spriteFolder: 'assets/images/characters/main',
     spritePrefix: 'main',
     attackBehavior: ProjectileAttack(),
-    unlocked: true,
+    // unlockKillThreshold omitted -- always unlocked, the starting character.
   ),
   CharacterDef(
     id: 'bruiser',
@@ -66,7 +75,7 @@ const List<CharacterDef> kCharacters = [
     // enemy in its path instead of stopping at the first, unlike everyone
     // else's ProjectileAttack.
     attackBehavior: KnifeAttack(),
-    unlocked: true,
+    unlockKillThreshold: 50,
   ),
   CharacterDef(
     id: 'skirmisher',
@@ -78,7 +87,7 @@ const List<CharacterDef> kCharacters = [
     // Second distinct kit (TASKS 8.3, DECISIONS D-034) -- two projectiles
     // orbiting a shared advancing point, converging on the target.
     attackBehavior: SpiralFireAttack(),
-    unlocked: true,
+    unlockKillThreshold: 150,
   ),
   CharacterDef(
     id: 'warden',
@@ -88,6 +97,6 @@ const List<CharacterDef> kCharacters = [
     spriteFolder: 'assets/images/characters/fourth',
     spritePrefix: 'fourth',
     attackBehavior: ProjectileAttack(),
-    unlocked: true,
+    unlockKillThreshold: 300,
   ),
 ];
