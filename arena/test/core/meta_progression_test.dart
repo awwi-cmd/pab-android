@@ -1,5 +1,6 @@
 import 'package:arena/core/meta_progression.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('metaUpgradeCost', () {
@@ -42,5 +43,49 @@ void main() {
       expect(meta.bonusStr, 2);
       expect(meta.bonusVit, 0);
     });
+
+    test(
+      'haste/fortune/resolve (DECISIONS D-067) buy and level up independently',
+      () {
+        final meta = MetaProgression(coins: 1000000);
+        expect(meta.buy(MetaStat.haste), isTrue);
+        expect(meta.buy(MetaStat.fortune), isTrue);
+        expect(meta.buy(MetaStat.resolve), isTrue);
+        expect(meta.levelOf(MetaStat.haste), 1);
+        expect(meta.levelOf(MetaStat.fortune), 1);
+        expect(meta.levelOf(MetaStat.resolve), 1);
+        // Not accidentally aliased to Corruption or each other.
+        expect(meta.corruptionLevel, 0);
+      },
+    );
+  });
+
+  group('MetaProgressionRepository persistence', () {
+    test(
+      'save then load round-trips every track, new dials included',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final repo = MetaProgressionRepository();
+        final meta = MetaProgression(
+          coins: 42,
+          gems: 7,
+          lifetimeKills: 99,
+          strLevel: 1,
+          vitLevel: 2,
+          dexLevel: 3,
+          intLevel: 4,
+          corruptionLevel: 5,
+          hasteLevel: 6,
+          fortuneLevel: 7,
+          resolveLevel: 8,
+        );
+        await repo.save(meta);
+        final loaded = await repo.load();
+        expect(loaded.hasteLevel, 6);
+        expect(loaded.fortuneLevel, 7);
+        expect(loaded.resolveLevel, 8);
+        expect(loaded.corruptionLevel, 5);
+      },
+    );
   });
 }

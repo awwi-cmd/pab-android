@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flame/components.dart';
 
 import '../../core/constants.dart';
+import '../../core/game_rules.dart';
 import '../../core/progression.dart';
 import '../../core/stats.dart';
 import '../../data/characters.dart';
@@ -33,7 +34,8 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
            CharacterAnimations.cellHeight * kCharacterRenderScale,
          ),
          anchor: Anchor.center,
-         paint: Paint()..filterQuality = FilterQuality.none, // D-011: never smoothed
+         paint: Paint()
+           ..filterQuality = FilterQuality.none, // D-011: never smoothed
          priority: ArenaPriority.player,
        );
 
@@ -79,11 +81,16 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
       }
     }
 
-    // Defence Crystal (DECISIONS D-049) adds a flat regen bonus, same
-    // additive-layer pattern as effectiveMaxHp/effectiveMoveSpeed above.
+    // Defence Crystal (in-round, DECISIONS D-049) and Resolve (persistent,
+    // DECISIONS D-067) both add a flat regen bonus, same additive-layer
+    // pattern as effectiveMaxHp/effectiveMoveSpeed above.
     hp = min(
       effectiveMaxHp,
-      hp + (stats.hpRegenPerSec + game.upgrades.bonusHpRegenPerSec) * dt,
+      hp +
+          (stats.hpRegenPerSec +
+                  game.upgrades.bonusHpRegenPerSec +
+                  resolveHpRegenPerSec(game.meta.resolveLevel)) *
+              dt,
     );
 
     if (_invulnTimer > 0) {
@@ -130,11 +137,14 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
   void takeDamage(double amount) {
     if (game.debugGodMode) return;
     if (_invulnTimer > 0 || current == AnimState.death) return;
-    // Defence Crystal (DECISIONS D-049) — a flat damage-resistance
-    // multiplier, clamped so a future bug/overstack can't invert it into
-    // bonus damage.
+    // Defence Crystal (in-round, DECISIONS D-049) and Resolve (persistent,
+    // DECISIONS D-067) both add flat damage resistance, clamped together so
+    // a future bug/overstack can't invert it into bonus damage.
     final resistanceMultiplier =
-        (1 - game.upgrades.damageResistance).clamp(0.0, 1.0);
+        (1 -
+                game.upgrades.damageResistance -
+                resolveDamageResistance(game.meta.resolveLevel))
+            .clamp(0.0, 1.0);
     hp = (hp - amount * resistanceMultiplier).clamp(0, effectiveMaxHp);
     _invulnTimer = _invulnDurationSec;
     game.spawnBloodImpact(); // DECISIONS D-033: only on damage that lands

@@ -15,7 +15,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// a difficulty/reward dial (`core/game_rules.dart`'s
 /// `corruptionSpawnIntervalMultiplier`/`corruptionEnemyStatMultiplier`/
 /// `corruptionRewardMultiplier` read the level straight off this).
-enum MetaStat { str, vit, dex, intellect, corruption }
+///
+/// `haste`/`fortune`/`resolve` (DECISIONS D-067) are 3 more of that same
+/// "dial," not raw attribute adds like STR/VIT/DEX/INT — each reads
+/// straight off `core/game_rules.dart`'s own per-level formula
+/// (`hasteAttackSpeedMultiplier`/`fortuneRewardMultiplier`/
+/// `resolveDamageResistance`+`resolveHpRegenPerSec`), same shape as
+/// Corruption's own multipliers. The Upgrades screen's page 2
+/// (`UpgradesScreen`) is exactly `[corruption, haste, fortune, resolve]` —
+/// this enum's declaration order *is* that page's row order, so a future
+/// 4th dial on that page is an enum member here, not a separate list
+/// somewhere else.
+enum MetaStat { str, vit, dex, intellect, corruption, haste, fortune, resolve }
 
 extension MetaStatLabels on MetaStat {
   String get label {
@@ -30,6 +41,12 @@ extension MetaStatLabels on MetaStat {
         return 'INT';
       case MetaStat.corruption:
         return 'CORRUPTION';
+      case MetaStat.haste:
+        return 'HASTE';
+      case MetaStat.fortune:
+        return 'FORTUNE';
+      case MetaStat.resolve:
+        return 'RESOLVE';
     }
   }
 
@@ -42,6 +59,12 @@ extension MetaStatLabels on MetaStat {
         return '+1 $label per level, every run.';
       case MetaStat.corruption:
         return 'Tougher, faster enemies. Bigger rewards.';
+      case MetaStat.haste:
+        return '+5% attack speed per level, every run.';
+      case MetaStat.fortune:
+        return '+10% coin value per level, every run.';
+      case MetaStat.resolve:
+        return 'Less damage taken, faster HP regen, every run.';
     }
   }
 }
@@ -76,6 +99,9 @@ class MetaProgression {
     this.dexLevel = 0,
     this.intLevel = 0,
     this.corruptionLevel = 0,
+    this.hasteLevel = 0,
+    this.fortuneLevel = 0,
+    this.resolveLevel = 0,
   });
 
   int coins;
@@ -99,6 +125,9 @@ class MetaProgression {
   int dexLevel;
   int intLevel;
   int corruptionLevel;
+  int hasteLevel;
+  int fortuneLevel;
+  int resolveLevel;
 
   int levelOf(MetaStat stat) {
     switch (stat) {
@@ -112,6 +141,12 @@ class MetaProgression {
         return intLevel;
       case MetaStat.corruption:
         return corruptionLevel;
+      case MetaStat.haste:
+        return hasteLevel;
+      case MetaStat.fortune:
+        return fortuneLevel;
+      case MetaStat.resolve:
+        return resolveLevel;
     }
   }
 
@@ -131,6 +166,15 @@ class MetaProgression {
         return;
       case MetaStat.corruption:
         corruptionLevel = value;
+        return;
+      case MetaStat.haste:
+        hasteLevel = value;
+        return;
+      case MetaStat.fortune:
+        fortuneLevel = value;
+        return;
+      case MetaStat.resolve:
+        resolveLevel = value;
         return;
     }
   }
@@ -169,6 +213,9 @@ class MetaProgressionRepository {
   static const _kDex = 'meta.dex';
   static const _kInt = 'meta.int';
   static const _kCorruption = 'meta.corruption';
+  static const _kHaste = 'meta.haste';
+  static const _kFortune = 'meta.fortune';
+  static const _kResolve = 'meta.resolve';
 
   Future<MetaProgression> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -181,6 +228,9 @@ class MetaProgressionRepository {
       dexLevel: prefs.getInt(_kDex) ?? 0,
       intLevel: prefs.getInt(_kInt) ?? 0,
       corruptionLevel: prefs.getInt(_kCorruption) ?? 0,
+      hasteLevel: prefs.getInt(_kHaste) ?? 0,
+      fortuneLevel: prefs.getInt(_kFortune) ?? 0,
+      resolveLevel: prefs.getInt(_kResolve) ?? 0,
     );
   }
 
@@ -194,6 +244,9 @@ class MetaProgressionRepository {
     await prefs.setInt(_kDex, meta.dexLevel);
     await prefs.setInt(_kInt, meta.intLevel);
     await prefs.setInt(_kCorruption, meta.corruptionLevel);
+    await prefs.setInt(_kHaste, meta.hasteLevel);
+    await prefs.setInt(_kFortune, meta.fortuneLevel);
+    await prefs.setInt(_kResolve, meta.resolveLevel);
   }
 
   /// Round-over credit (DECISIONS D-047) — read-modify-write against

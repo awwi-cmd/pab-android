@@ -65,11 +65,11 @@ class ArenaGame extends FlameGame {
   /// free. Read this everywhere combat code used to read `character.stats`
   /// directly (CLAUDE.md §4.3 — still the one place these get combined).
   StatBlock get effectiveStats => StatBlock(
-        str: character.stats.str + meta.bonusStr,
-        vit: character.stats.vit + meta.bonusVit,
-        dex: character.stats.dex + meta.bonusDex,
-        intellect: character.stats.intellect + meta.bonusIntellect,
-      );
+    str: character.stats.str + meta.bonusStr,
+    vit: character.stats.vit + meta.bonusVit,
+    dex: character.stats.dex + meta.bonusDex,
+    intellect: character.stats.intellect + meta.bonusIntellect,
+  );
 
   /// Captured once at arena entry (device notch / gesture-bar insets).
   /// The app is portrait-locked, so this doesn't need to track rotation.
@@ -128,10 +128,7 @@ class ArenaGame extends FlameGame {
   /// Everything a player attack can hit (DECISIONS D-042) — grunts plus the
   /// boss, if one is currently up. Every attack's hit-detection loop reads
   /// this instead of [enemies] directly.
-  List<Damageable> get damageableTargets => [
-        ...enemies,
-        ?_boss,
-      ];
+  List<Damageable> get damageableTargets => [...enemies, ?_boss];
 
   // Economy (DECISIONS D-043) -- resets every round like everything else.
   int gemsCollected = 0;
@@ -342,7 +339,14 @@ class ArenaGame extends FlameGame {
     if (_fireCooldown <= 0) {
       // Cooldown always resets on schedule, whether or not perform()
       // actually found a target -- matches the pre-D-024 behavior exactly.
-      _fireCooldown = character.attackBehavior.cooldownSeconds(effectiveStats);
+      // Haste (DECISIONS D-067) shrinks the base attack's own cooldown only
+      // -- it doesn't reach into every skill's independent timer (aura
+      // ticks, ray/thunder cooldowns), same deliberately narrow scope as
+      // Corruption only ever touching spawn/enemy-stat/reward, not
+      // everything in the round.
+      _fireCooldown =
+          character.attackBehavior.cooldownSeconds(effectiveStats) /
+          hasteAttackSpeedMultiplier(meta.hasteLevel);
       character.attackBehavior.perform(this);
     }
 
@@ -379,7 +383,8 @@ class ArenaGame extends FlameGame {
       // player is level 5 by the time it dies. Corruption (D-047) layers on
       // top of the level scaling, not instead of it.
       statMultiplier:
-          enemyStatMultiplier(level) * corruptionEnemyStatMultiplier(meta.corruptionLevel),
+          enemyStatMultiplier(level) *
+          corruptionEnemyStatMultiplier(meta.corruptionLevel),
     );
     enemies.add(enemy);
     addToWorld(enemy);
@@ -433,11 +438,13 @@ class ArenaGame extends FlameGame {
     coinsEarned += _rollCoins();
   }
 
-  /// A single coin roll, scaled by Corruption's reward bonus (DECISIONS
-  /// D-047) — shared by grunt and boss kills so the multiplier can't drift
-  /// between the two call sites.
+  /// A single coin roll, scaled by Corruption's and Fortune's reward
+  /// bonuses (DECISIONS D-047/D-067) — shared by grunt and boss kills so
+  /// the multipliers can't drift between the two call sites.
   int _rollCoins() {
-    return (rollCoinValue(_random) * corruptionRewardMultiplier(meta.corruptionLevel))
+    return (rollCoinValue(_random) *
+            corruptionRewardMultiplier(meta.corruptionLevel) *
+            fortuneRewardMultiplier(meta.fortuneLevel))
         .round();
   }
 
@@ -607,8 +614,10 @@ class ArenaGame extends FlameGame {
   /// like an enemy — the developer's literal "mirrors spawn only on screen
   /// where player can see."
   void _syncMirrors() {
-    final stacks =
-        (upgrades.pickCounts[UpgradeKind.ultimateMirror] ?? 0).clamp(0, UpgradeAmounts.mirrorMaxStacks);
+    final stacks = (upgrades.pickCounts[UpgradeKind.ultimateMirror] ?? 0).clamp(
+      0,
+      UpgradeAmounts.mirrorMaxStacks,
+    );
     while (_mirrors.length < stacks) {
       final mirror = MirrorComponent(
         startPosition: randomVisiblePoint(_random, camera.visibleWorldRect),
@@ -689,8 +698,10 @@ class ArenaGame extends FlameGame {
   /// 2026-09-09 tune (D-050, developer's call: "increase brightness by
   /// 20%") — size is `kThunderWidthPx` itself (D-050, also +40%).
   void _strikeThunder(int stacks) {
-    final living = damageableTargets.where((t) => !t.isDying).toList()..shuffle(_random);
-    final count = UpgradeAmounts.thunderTargetCount(stacks).clamp(0, living.length);
+    final living = damageableTargets.where((t) => !t.isDying).toList()
+      ..shuffle(_random);
+    final count = UpgradeAmounts.thunderTargetCount(stacks)
+        .clamp(0, living.length);
     if (count <= 0) return;
     final damage = UpgradeAmounts.thunderDamage(stacks);
     for (var i = 0; i < count; i++) {
@@ -716,7 +727,9 @@ class ArenaGame extends FlameGame {
   void _syncDefenceCrystal() {
     if (_defenceCrystal != null) return;
     if ((upgrades.pickCounts[UpgradeKind.defenceCrystal] ?? 0) <= 0) return;
-    _defenceCrystal = DefenceCrystalComponent(animation: gameAssets.defenceCrystalAnimation);
+    _defenceCrystal = DefenceCrystalComponent(
+      animation: gameAssets.defenceCrystalAnimation,
+    );
     addToWorld(_defenceCrystal!);
   }
 
@@ -764,9 +777,12 @@ class ArenaGame extends FlameGame {
         removeOnFinish: true,
         priority: priority,
         paint: Paint()
-          ..filterQuality = FilterQuality.none // D-011
+          ..filterQuality = FilterQuality
+              .none // D-011
           ..color = Color.fromRGBO(255, 255, 255, opacity)
-          ..colorFilter = brightness == 1 ? null : ColorFilter.matrix(_brightnessMatrix(brightness)),
+          ..colorFilter = brightness == 1
+              ? null
+              : ColorFilter.matrix(_brightnessMatrix(brightness)),
       ),
     );
   }
@@ -777,10 +793,26 @@ class ArenaGame extends FlameGame {
   /// contrast matrix: this is a pure multiply, not a pull-toward-grey.
   static List<double> _brightnessMatrix(double factor) {
     return [
-      factor, 0, 0, 0, 0,
-      0, factor, 0, 0, 0,
-      0, 0, factor, 0, 0,
-      0, 0, 0, 1, 0,
+      factor,
+      0,
+      0,
+      0,
+      0,
+      0,
+      factor,
+      0,
+      0,
+      0,
+      0,
+      0,
+      factor,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
     ];
   }
 
@@ -792,7 +824,8 @@ class ArenaGame extends FlameGame {
     final width = player.size.x * kBloodImpactWidthFactor;
     final maxOffsetX = player.size.x * 0.3;
     final maxOffsetY = player.size.y * 0.3;
-    final at = player.position +
+    final at =
+        player.position +
         Vector2(
           (_random.nextDouble() * 2 - 1) * maxOffsetX,
           (_random.nextDouble() * 2 - 1) * maxOffsetY,
@@ -810,7 +843,10 @@ class ArenaGame extends FlameGame {
     spawnEffect(
       gameAssets.impactAnimation,
       at,
-      size: Vector2(kSpiralImpactWidthPx, kSpiralImpactWidthPx * kSpiralImpactAspect),
+      size: Vector2(
+        kSpiralImpactWidthPx,
+        kSpiralImpactWidthPx * kSpiralImpactAspect,
+      ),
     );
   }
 
@@ -859,7 +895,10 @@ class ArenaGame extends FlameGame {
   void spawnChest(Vector2 at) {
     chestCount++;
     addToWorld(
-      ChestComponent(startPosition: at, idleAnimation: gameAssets.chestIdleAnimation),
+      ChestComponent(
+        startPosition: at,
+        idleAnimation: gameAssets.chestIdleAnimation,
+      ),
     );
   }
 

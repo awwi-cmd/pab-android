@@ -2991,6 +2991,70 @@ On-device verification is the developer's to run.
 
 ---
 
+## D-067 — Upgrades screen redesigned into a non-scrolling carousel; 3 new persistent dials
+
+**Date:** 2026-09-10 · **Status:** Accepted
+**Context:** Developer, with a screenshot of the old one-long-scrolling-list
+Upgrades screen (which also showed a real pre-existing bug: `StatBar`'s
+label column wrapped "CORRUPTION" into 3 stacked lines): "get rid of the
+scrolling... must not allow scrolling"; "use the same model from character
+select with arrow keys; have normal stats (STR/VIT/DEX/INT) on first page,
+corruption + come up with 3 new upgrades like corruption on the second
+page + placeholder third page with coming soon."
+
+**Decision, layout:** `UpgradesScreen` is now a `PageView` of 3 fixed
+(non-scrolling) pages, paged by the same `CarouselArrowRow`/`PageDots`
+carousel Character Select uses — both were pulled out of
+`character_select_screen.dart` into `ui/widgets/carousel_arrow.dart` as
+shared, public widgets rather than duplicated a second time. Page 1 is the
+4 raw attributes (STR/VIT/DEX/INT); page 2 is Corruption plus the 3 new
+dials below; page 3 is a `COMING SOON` placeholder, same empty-state
+pattern as `ShopScreen`. Each page lays its 4 rows out with `Expanded`
+(no `SingleChildScrollView`/`ListView` anywhere) so the page always
+exactly fills whatever height the carousel gives it — the literal fix for
+"must not allow scrolling." `MetaStat`'s own declaration order is now the
+row order for both pages (`UpgradesScreen._statPages` just slices
+`MetaStat.values`), so a future dial is an enum member, not a second list
+to keep in sync.
+
+**Decision, the 3 new dials (HASTE/FORTUNE/RESOLVE):** developer explicitly
+delegated the design ("come up with 3 new upgrades like corruption") —
+structurally, "like Corruption" means a persistent *global multiplier*
+dial (`core/game_rules.dart`), not a raw per-point attribute add like
+STR/VIT/DEX/INT. Unlike Corruption, none of the 3 trade anything away —
+they're the "pure reward" counterparts, bought instead of traded for:
+- **HASTE** — `hasteAttackSpeedMultiplier`, +5%/level, shrinks
+  `ArenaGame`'s own `_fireCooldown` calc for the base attack only
+  (deliberately not reaching into every skill's independent cooldown —
+  same narrow-scope precedent as Corruption only ever touching spawn/
+  enemy-stat/reward).
+- **FORTUNE** — `fortuneRewardMultiplier`, +10%/level, layers onto
+  `ArenaGame._rollCoins()` alongside (not instead of)
+  `corruptionRewardMultiplier`.
+- **RESOLVE** — `resolveDamageResistance`/`resolveHpRegenPerSec`, +2%
+  damage resistance and +0.05 HP/s per level, same additive-layer shape as
+  Defence Crystal's in-round bonus (`PlayerComponent.takeDamage`/
+  `update`) but persistent instead of an in-round pick, clamped together
+  with it so a future overstack still can't invert into bonus damage.
+
+All 3 get their own `MetaProgression` field/`SharedPreferences` key,
+buyable 0-10 through the existing `buy`/`metaUpgradeCost` machinery
+unchanged.
+
+**Decision, the wrap bug:** `StatBar`'s label column widened from a fixed
+36px (fine for 3-letter STR/VIT/DEX/INT, not "CORRUPTION"/"FORTUNE") to
+80px, plus `maxLines: 1`/`softWrap: false`/`TextOverflow.ellipsis` so a
+future long label degrades to an ellipsis instead of wrapping into
+stacked single letters again.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 100/100 (+5 new:
+`game_rules_test.dart`'s haste/fortune/resolve multiplier tests,
+`meta_progression_test.dart`'s buy-independently and save/load-round-trip
+tests), `flutter build apk --debug` succeeds. On-device verification is
+the developer's to run.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

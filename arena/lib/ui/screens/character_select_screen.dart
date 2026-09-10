@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants.dart';
 import '../../core/meta_progression.dart';
 import '../../data/characters.dart';
+import '../widgets/carousel_arrow.dart';
 import '../widgets/coin_icon.dart';
 import '../widgets/pixel_button.dart';
 import '../widgets/screen_scaffold.dart';
@@ -99,7 +100,8 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
                       child: PixelButton(
                         label: 'SHOP',
                         onPressed: () async {
-                          await Navigator.of(context).pushNamed(ShopScreen.route);
+                          await Navigator.of(context)
+                              .pushNamed(ShopScreen.route);
                           _loadMeta();
                         },
                       ),
@@ -109,7 +111,8 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
                       child: PixelButton(
                         label: 'UPGRADES',
                         onPressed: () async {
-                          await Navigator.of(context).pushNamed(UpgradesScreen.route);
+                          await Navigator.of(context)
+                              .pushNamed(UpgradesScreen.route);
                           _loadMeta();
                         },
                       ),
@@ -117,7 +120,7 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                _PageDots(count: kCharacters.length, index: _pageIndex),
+                PageDots(count: kCharacters.length, index: _pageIndex),
               ],
             ),
           ),
@@ -129,34 +132,19 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
               itemBuilder: (context, i) => _CharacterPage(
                 character: kCharacters[i],
                 lifetimeKills: _lifetimeKills,
-                onEnterArena: () => Navigator.of(context).pushNamed(
-                  ArenaScreen.route,
-                  arguments: kCharacters[i],
-                ),
+                onEnterArena: () => Navigator.of(context)
+                    .pushNamed(ArenaScreen.route, arguments: kCharacters[i]),
               ),
             ),
           ),
           // Fixed row under the page (below ENTER ARENA, not floating over
           // the character art anymore) -- sits in the same thumb-reach band
           // as the joystick/HUD controls in the arena itself.
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _CarouselArrow(
-                  direction: _ArrowDirection.left,
-                  enabled: _pageIndex > 0,
-                  onPressed: _goPrev,
-                ),
-                const SizedBox(width: 40),
-                _CarouselArrow(
-                  direction: _ArrowDirection.right,
-                  enabled: _pageIndex < kCharacters.length - 1,
-                  onPressed: _goNext,
-                ),
-              ],
-            ),
+          CarouselArrowRow(
+            canGoPrev: _pageIndex > 0,
+            canGoNext: _pageIndex < kCharacters.length - 1,
+            onPrev: _goPrev,
+            onNext: _goNext,
           ),
         ],
       ),
@@ -201,78 +189,6 @@ class _WalletRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// One dot per character, filled for the current page — a lightweight
-/// position indicator now that the grid (which doubled as one) is gone.
-class _PageDots extends StatelessWidget {
-  const _PageDots({required this.count, required this.index});
-
-  final int count;
-  final int index;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        for (var i = 0; i < count; i++)
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            width: 8,
-            height: 8,
-            color: i == index ? ArenaColors.accent : ArenaColors.surfaceAlt,
-          ),
-      ],
-    );
-  }
-}
-
-enum _ArrowDirection { left, right }
-
-/// Tap alternative to swiping (developer request) — a fixed row under the
-/// PageView (below ENTER ARENA, not floating over the character art), in
-/// the same thumb-reach band as the arena's own HUD controls. A small
-/// semi-transparent circle rather than a square panel, so it still reads
-/// as an overlay-style control. No dedicated pixel-art asset for this
-/// exists yet.
-class _CarouselArrow extends StatelessWidget {
-  const _CarouselArrow({
-    required this.direction,
-    required this.enabled,
-    required this.onPressed,
-  });
-
-  final _ArrowDirection direction;
-  final bool enabled;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final fg = enabled ? ArenaColors.textPrimary : ArenaColors.textDim;
-    // +15% over the original 44/28 floating-button sizing (developer ask).
-    return SizedBox(
-      width: 51,
-      height: 51,
-      child: Material(
-        color: ArenaColors.surfaceAlt.withValues(alpha: enabled ? 0.55 : 0.3),
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: enabled ? onPressed : null,
-          child: Center(
-            child: Icon(
-              direction == _ArrowDirection.left
-                  ? Icons.chevron_left
-                  : Icons.chevron_right,
-              color: fg,
-              size: 32,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -362,7 +278,9 @@ class _LockedPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     const barHeight = 22.0;
     final threshold = character.unlockKillThreshold ?? 0;
-    final fraction = threshold <= 0 ? 0.0 : (lifetimeKills / threshold).clamp(0.0, 1.0);
+    final fraction = threshold <= 0
+        ? 0.0
+        : (lifetimeKills / threshold).clamp(0.0, 1.0);
     return Column(
       children: [
         Image.asset(
