@@ -132,6 +132,28 @@ void main() {
     });
   });
 
+  group('haste/fortune/resolve dials (DECISIONS D-067)', () {
+    test('are neutral at level 0', () {
+      expect(hasteAttackSpeedMultiplier(0), 1.0);
+      expect(fortuneRewardMultiplier(0), 1.0);
+      expect(resolveDamageResistance(0), 0.0);
+      expect(resolveHpRegenPerSec(0), 0.0);
+    });
+
+    test('scale linearly with level', () {
+      expect(hasteAttackSpeedMultiplier(5), closeTo(1.25, 1e-9));
+      expect(fortuneRewardMultiplier(5), closeTo(1.5, 1e-9));
+      expect(resolveDamageResistance(5), closeTo(0.1, 1e-9));
+      expect(resolveHpRegenPerSec(5), closeTo(0.25, 1e-9));
+    });
+
+    test('max level (10) lands on the documented caps', () {
+      expect(hasteAttackSpeedMultiplier(10), closeTo(1.5, 1e-9));
+      expect(fortuneRewardMultiplier(10), closeTo(2.0, 1e-9));
+      expect(resolveDamageResistance(10), closeTo(0.2, 1e-9));
+    });
+  });
+
   group('randomPerimeterPoint', () {
     test('always lands outside the visible rect, inflated by the margin', () {
       const visible = Rect.fromLTWH(0, 0, 360, 800);
@@ -158,7 +180,9 @@ void main() {
       final random = Random(3);
       for (var i = 0; i < 200; i++) {
         final point = randomVisiblePoint(random, visible, marginFactor: 0.1);
-        final inset = visible.deflate(visible.shortestSide * 0.1 - 1); // float slack
+        final inset = visible.deflate(
+          visible.shortestSide * 0.1 - 1,
+        ); // float slack
         expect(inset.contains(Offset(point.x, point.y)), isTrue);
       }
     });
@@ -176,7 +200,13 @@ void main() {
     test('hits everything on the line within range, order preserved', () {
       final candidates = [Vector2(50, 0), Vector2(150, 0), Vector2(500, 0)];
       expect(
-        alongLineWithinRange(Vector2.zero(), Vector2(1, 0), candidates, 200, 10),
+        alongLineWithinRange(
+          Vector2.zero(),
+          Vector2(1, 0),
+          candidates,
+          200,
+          10,
+        ),
         [0, 1],
       );
     });
@@ -184,7 +214,13 @@ void main() {
     test('excludes anything off to the side, past the half-width', () {
       final candidates = [Vector2(50, 5), Vector2(50, 50)];
       expect(
-        alongLineWithinRange(Vector2.zero(), Vector2(1, 0), candidates, 200, 10),
+        alongLineWithinRange(
+          Vector2.zero(),
+          Vector2(1, 0),
+          candidates,
+          200,
+          10,
+        ),
         [0],
       );
     });
@@ -192,7 +228,13 @@ void main() {
     test('excludes anything behind the origin', () {
       final candidates = [Vector2(-50, 0)];
       expect(
-        alongLineWithinRange(Vector2.zero(), Vector2(1, 0), candidates, 200, 10),
+        alongLineWithinRange(
+          Vector2.zero(),
+          Vector2(1, 0),
+          candidates,
+          200,
+          10,
+        ),
         isEmpty,
       );
     });
@@ -200,7 +242,13 @@ void main() {
     test('excludes anything past maxRange', () {
       final candidates = [Vector2(250, 0)];
       expect(
-        alongLineWithinRange(Vector2.zero(), Vector2(1, 0), candidates, 200, 10),
+        alongLineWithinRange(
+          Vector2.zero(),
+          Vector2(1, 0),
+          candidates,
+          200,
+          10,
+        ),
         isEmpty,
       );
     });

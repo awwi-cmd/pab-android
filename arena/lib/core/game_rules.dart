@@ -16,7 +16,11 @@ import 'package:flame/game.dart' show Vector2;
 /// Index of the closest point in [candidates] to [from] that's within
 /// [maxRange], or -1 if none qualify. Ties keep whichever candidate was
 /// found first. PRD §6.2: auto-attack targets the nearest enemy in range.
-int nearestWithinRange(Vector2 from, List<Vector2> candidates, double maxRange) {
+int nearestWithinRange(
+  Vector2 from,
+  List<Vector2> candidates,
+  double maxRange,
+) {
   var bestIndex = -1;
   var bestDistance = maxRange;
   for (var i = 0; i < candidates.length; i++) {
@@ -33,7 +37,11 @@ int nearestWithinRange(Vector2 from, List<Vector2> candidates, double maxRange) 
 /// [nearestWithinRange] (single target, for the auto-attack), this is for
 /// area-effect abilities that hit everything in a radius (e.g. the Aura
 /// skill, DECISIONS D-027).
-List<int> allWithinRange(Vector2 from, List<Vector2> candidates, double maxRange) {
+List<int> allWithinRange(
+  Vector2 from,
+  List<Vector2> candidates,
+  double maxRange,
+) {
   final result = <int>[];
   for (var i = 0; i < candidates.length; i++) {
     if (candidates[i].distanceTo(from) <= maxRange) {
@@ -118,6 +126,44 @@ double corruptionEnemyStatMultiplier(int corruptionLevel) {
 /// the trade-off.
 double corruptionRewardMultiplier(int corruptionLevel) {
   return 1 + corruptionLevel * kCorruptionRewardPerLevel;
+}
+
+/// 3 more Upgrades-screen dials (DECISIONS D-067), same shape as Corruption
+/// above — a per-level multiplier/bonus read straight off `MetaProgression`,
+/// not a raw attribute add like STR/VIT/DEX/INT. Unlike Corruption none of
+/// these trade anything away; they're the "pure reward" half of the same
+/// dial idea. First-guess placeholders, not tuned on-device.
+const double kHasteAttackSpeedPerLevel = 0.05;
+const double kFortuneRewardPerLevel = 0.10;
+const double kResolveDamageResistancePerLevel = 0.02;
+const double kResolveHpRegenPerLevel = 0.05;
+
+/// Multiplies the player's attack cooldown (`ArenaGame`'s own
+/// `_fireCooldown` calc) — above 1 means faster attacks. +50% at max level.
+double hasteAttackSpeedMultiplier(int hasteLevel) {
+  return 1 + hasteLevel * kHasteAttackSpeedPerLevel;
+}
+
+/// Multiplies coin rewards per kill, layered on top of (not instead of)
+/// [corruptionRewardMultiplier] — a permanent version of the same reward
+/// bump, bought instead of traded for.
+double fortuneRewardMultiplier(int fortuneLevel) {
+  return 1 + fortuneLevel * kFortuneRewardPerLevel;
+}
+
+/// A flat damage-resistance fraction, same shape as Defence Crystal's
+/// in-round bonus (`core/progression.dart`'s `damageResistance`) but
+/// persistent across every run instead of an in-round pick. Clamped at the
+/// call site alongside Defence Crystal's own bonus, same reasoning: a
+/// future overstack can't invert it into bonus damage. 20% at max level.
+double resolveDamageResistance(int resolveLevel) {
+  return resolveLevel * kResolveDamageResistancePerLevel;
+}
+
+/// A flat HP-regen-per-second bonus, same additive-layer shape as Defence
+/// Crystal's `bonusHpRegenPerSec`.
+double resolveHpRegenPerSec(int resolveLevel) {
+  return resolveLevel * kResolveHpRegenPerLevel;
 }
 
 /// A random point *inside* [visible], inset by [marginFactor] of its own

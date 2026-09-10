@@ -1143,6 +1143,63 @@ in progress without going through the Pause Menu's own MAIN MENU button.
 
 ---
 
+## Phase 22 — Upgrades screen redesign: non-scrolling carousel, 3 new dials
+*Goal: developer-requested redesign of the Upgrades screen, from a
+screenshot showing both the scrolling and a real label-wrap bug
+(DECISIONS D-067).*
+
+- [x] **22.1** `ui/widgets/carousel_arrow.dart` — `CarouselArrow`/
+      `CarouselArrowRow`/`PageDots` extracted out of
+      `character_select_screen.dart` into shared, public widgets;
+      `CharacterSelectScreen` updated to use them (no behavior change
+      there).
+- [x] **22.2** `UpgradesScreen` rebuilt as a 3-page `PageView` (STR/VIT/
+      DEX/INT — Corruption + 3 new dials — COMING SOON placeholder),
+      paged with the same carousel widgets. Every page lays its rows out
+      with `Expanded`, no scroll view anywhere — can't overflow-scroll
+      regardless of screen height.
+- [x] **22.3** 3 new persistent `MetaStat` dials — HASTE (+5% attack speed/
+      level), FORTUNE (+10% coin value/level), RESOLVE (+2% damage
+      resistance/level, +0.05 HP regen/level) — `core/game_rules.dart`
+      formulas, `MetaProgression` fields + `SharedPreferences` persistence,
+      wired into `ArenaGame`'s fire-cooldown/coin-roll and
+      `PlayerComponent`'s regen/damage-resistance calcs.
+- [x] **22.4** Fixed `StatBar`'s real label-wrap bug (the screenshot's
+      "COR / RUP / TION" stack) — wider label column + `maxLines: 1`/
+      `TextOverflow.ellipsis`.
+- [x] **22.5** `flutter analyze` clean, `flutter test` 100/100 (+5 new:
+      haste/fortune/resolve multiplier tests, MetaProgression buy/persist
+      tests), `flutter build apk --debug` succeeds.
+- [ ] **22.6** On-device verification — **developer**: Upgrades screen
+      never scrolls on any page; arrows/dots page through all 3 pages;
+      CORRUPTION/HASTE/FORTUNE/RESOLVE labels render on one line, not
+      stacked; buying a level of each of the 3 new dials visibly does
+      something in a round (faster attacks, bigger coin drops, less
+      damage taken / faster regen).
+
+**Exit criterion:** the Upgrades screen never scrolls; STR/VIT/DEX/INT are
+page 1, CORRUPTION+HASTE+FORTUNE+RESOLVE are page 2, page 3 reads COMING
+SOON; every label renders on one line.
+
+---
+
+## Phase 23 — Locked-character panel's progress bar removed
+*Goal: one developer-requested trim (DECISIONS D-068).*
+
+- [x] **23.1** `_LockedPanel` (`character_select_screen.dart`) drops the
+      bar-empty/bar-filling progress bar; keeps `star-empty.png` plus the
+      existing kill-count text.
+- [x] **23.2** `flutter analyze` clean, `flutter test` 100/100 (unchanged),
+      `flutter build apk --debug` succeeds.
+- [ ] **23.3** On-device verification — **developer**: locked character
+      slots show just the hollow star + "X / Y kills to unlock" text, no
+      bar underneath it.
+
+**Exit criterion:** locked-character panel shows the hollow star and kill
+count only, no progress bar.
+
+---
+
 ## Backlog (post-demo — do not start)
 
 Kept here so ideas have somewhere to go that isn't the current sprint.
