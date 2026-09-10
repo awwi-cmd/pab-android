@@ -245,6 +245,19 @@ class MetaProgressionRepository {
     await save(current);
   }
 
+  /// Debug-only direct override of the character-unlock metric — sets
+  /// `lifetimeKills` to at least [value] (never lowers it, so this can't be
+  /// used to accidentally re-lock a character that real play already
+  /// unlocked). Settings' caller passes the highest `unlockKillThreshold`
+  /// across `kCharacters` to unlock everything in one tap.
+  Future<void> debugSetLifetimeKills(int value) async {
+    final current = await load();
+    if (value > current.lifetimeKills) {
+      current.lifetimeKills = value;
+      await save(current);
+    }
+  }
+
   /// Zeroes coins/gems only (DECISIONS D-059) — `lifetimeKills` (the
   /// character-unlock metric) and the STR/VIT/DEX/INT/CORRUPTION levels
   /// already bought are progress, not spendable currency, so a "reset

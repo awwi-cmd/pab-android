@@ -60,52 +60,94 @@ class _ArenaScreenState extends State<ArenaScreen> {
     });
   }
 
+  /// Android back / edge-swipe used to pop `ArenaScreen` straight off the
+  /// Navigator mid-round -- `_endRound` (the only place coins/gems/lifetime
+  /// kills get credited, DECISIONS D-047/D-055) never got a chance to run,
+  /// so a round in progress could be exited with zero reward, no
+  /// confirmation, from a single accidental back press (developer report).
+  /// `canPop: false` blocks that default pop; back is redirected to
+  /// whatever the deliberate exit path already is for the current state,
+  /// same as a tap would do:
+  /// - round already over (RoundOver overlay showing, rewards already
+  ///   banked) -- back leaves, exactly like its own MAIN MENU button.
+  /// - Pause Menu open -- back resumes (mirrors RESUME), doesn't leave.
+  /// - LevelUp/ChestReveal open -- back does nothing; those need an
+  ///   explicit choice, there's nothing safe to redirect it to.
+  /// - actively playing -- back opens the Pause Menu instead of exiting,
+  ///   same as tapping the pause button; leaving from there is still one
+  ///   deliberate MAIN MENU tap away, just never a bare back press.
+  void _handleBack() {
+    final game = _game;
+    if (game == null) return;
+    if (game.roundOver.value) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
+    }
+    if (game.overlays.isActive('PauseMenu')) {
+      game.closePauseMenu();
+      return;
+    }
+    if (game.overlays.isActive('LevelUp') ||
+        game.overlays.isActive('ChestReveal')) {
+      return;
+    }
+    game.openPauseMenu();
+  }
+
   @override
   Widget build(BuildContext context) {
     final game = _game;
     if (game == null) {
       return const Scaffold(backgroundColor: ArenaColors.background);
     }
-    return Scaffold(
-      backgroundColor: ArenaColors.background,
-      body: Stack(
-        children: [
-          GameWidget<ArenaGame>(
-            game: game,
-            overlayBuilderMap: {
-              'RoundOver': (context, game) => _RoundOverOverlay(game: game),
-              'LevelUp': (context, game) => _LevelUpOverlay(game: game),
-              'PauseMenu': (context, game) => _PauseMenuOverlay(game: game),
-              'ChestReveal': (context, game) => _ChestRevealOverlay(game: game),
-            },
-          ),
-          // Hidden once the round ends OR a menu/popup owns the screen
-          // (DECISIONS D-025) -- neither the joystick nor these buttons
-          // should be reachable underneath an overlay.
-          ValueListenableBuilder<bool>(
-            valueListenable: game.roundOver,
-            builder: (context, isOver, _) {
-              if (isOver) return const SizedBox.shrink();
-              return ValueListenableBuilder<bool>(
-                valueListenable: game.menuOpen,
-                builder: (context, isMenuOpen, _) {
-                  if (isMenuOpen) return const SizedBox.shrink();
-                  return Stack(
-                    children: [
-                      MovementInputOverlay(
-                        input: game.input,
-                        scheme: game.settings.controlScheme,
-                        joystickSide: game.settings.joystickSide,
-                      ),
-                      _DebugDieButton(game: game),
-                      _PauseButton(game: game),
-                    ],
-                  );
-                },
-              );
-            },
-          ),
-        ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: Scaffold(
+        backgroundColor: ArenaColors.background,
+        body: Stack(
+          children: [
+            GameWidget<ArenaGame>(
+              game: game,
+              overlayBuilderMap: {
+                'RoundOver': (context, game) => _RoundOverOverlay(game: game),
+                'LevelUp': (context, game) => _LevelUpOverlay(game: game),
+                'PauseMenu': (context, game) => _PauseMenuOverlay(game: game),
+                'ChestReveal': (context, game) =>
+                    _ChestRevealOverlay(game: game),
+              },
+            ),
+            // Hidden once the round ends OR a menu/popup owns the screen
+            // (DECISIONS D-025) -- neither the joystick nor these buttons
+            // should be reachable underneath an overlay.
+            ValueListenableBuilder<bool>(
+              valueListenable: game.roundOver,
+              builder: (context, isOver, _) {
+                if (isOver) return const SizedBox.shrink();
+                return ValueListenableBuilder<bool>(
+                  valueListenable: game.menuOpen,
+                  builder: (context, isMenuOpen, _) {
+                    if (isMenuOpen) return const SizedBox.shrink();
+                    return Stack(
+                      children: [
+                        MovementInputOverlay(
+                          input: game.input,
+                          scheme: game.settings.controlScheme,
+                          joystickSide: game.settings.joystickSide,
+                        ),
+                        _DebugDieButton(game: game),
+                        _PauseButton(game: game),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1042,11 +1084,8 @@ class _ConfettiPainter extends CustomPainter {
       if (p.front != front) continue;
       if (t < p.startDelayFraction) continue; // hasn't launched yet
 
-      final localT =
-          ((t - p.startDelayFraction) / (1 - p.startDelayFraction)).clamp(
-            0.0,
-            1.0,
-          );
+      final localT = ((t - p.startDelayFraction) / (1 - p.startDelayFraction))
+          .clamp(0.0, 1.0);
       final eased = Curves.easeIn.transform(localT);
       final opacity = localT < _fadeStart
           ? 1.0

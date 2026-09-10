@@ -63,6 +63,24 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
     });
   }
 
+  static const _pageAnimDuration = Duration(milliseconds: 250);
+
+  void _goPrev() {
+    if (_pageIndex <= 0) return;
+    _pageController.previousPage(
+      duration: _pageAnimDuration,
+      curve: Curves.easeOut,
+    );
+  }
+
+  void _goNext() {
+    if (_pageIndex >= kCharacters.length - 1) return;
+    _pageController.nextPage(
+      duration: _pageAnimDuration,
+      curve: Curves.easeOut,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ScreenScaffold(
@@ -116,6 +134,28 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
                   arguments: kCharacters[i],
                 ),
               ),
+            ),
+          ),
+          // Fixed row under the page (below ENTER ARENA, not floating over
+          // the character art anymore) -- sits in the same thumb-reach band
+          // as the joystick/HUD controls in the arena itself.
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _CarouselArrow(
+                  direction: _ArrowDirection.left,
+                  enabled: _pageIndex > 0,
+                  onPressed: _goPrev,
+                ),
+                const SizedBox(width: 40),
+                _CarouselArrow(
+                  direction: _ArrowDirection.right,
+                  enabled: _pageIndex < kCharacters.length - 1,
+                  onPressed: _goNext,
+                ),
+              ],
             ),
           ),
         ],
@@ -186,6 +226,53 @@ class _PageDots extends StatelessWidget {
             color: i == index ? ArenaColors.accent : ArenaColors.surfaceAlt,
           ),
       ],
+    );
+  }
+}
+
+enum _ArrowDirection { left, right }
+
+/// Tap alternative to swiping (developer request) — a fixed row under the
+/// PageView (below ENTER ARENA, not floating over the character art), in
+/// the same thumb-reach band as the arena's own HUD controls. A small
+/// semi-transparent circle rather than a square panel, so it still reads
+/// as an overlay-style control. No dedicated pixel-art asset for this
+/// exists yet.
+class _CarouselArrow extends StatelessWidget {
+  const _CarouselArrow({
+    required this.direction,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final _ArrowDirection direction;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = enabled ? ArenaColors.textPrimary : ArenaColors.textDim;
+    // +15% over the original 44/28 floating-button sizing (developer ask).
+    return SizedBox(
+      width: 51,
+      height: 51,
+      child: Material(
+        color: ArenaColors.surfaceAlt.withValues(alpha: enabled ? 0.55 : 0.3),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: enabled ? onPressed : null,
+          child: Center(
+            child: Icon(
+              direction == _ArrowDirection.left
+                  ? Icons.chevron_left
+                  : Icons.chevron_right,
+              color: fg,
+              size: 32,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
