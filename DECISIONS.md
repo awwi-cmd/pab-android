@@ -2810,6 +2810,121 @@ instead of parking mid-air) is the developer's to run.
 
 ---
 
+## D-064 — Layered BGM reverted to a single track; character-select unlock bar-fill height bug; coin icon replaced with the real coin asset
+
+**Date:** 2026-09-10 · **Status:** Accepted
+**Context:** Three unrelated developer asks in one pass: "Remove all of the
+BGM, and leave only the main one." / "The filling of the progressbar in
+character select screen, is different sizes for all of the characters -
+its correct up until where its filled, but the sizing its wrong." / "We
+need to modify the coin-icon with our actual coin asset in the game,
+character select, upgrades, end of match screen" (new asset delivered:
+`assets/images/consumables/coin-icon.png`, a 240x16 single-row, 15-frame
+coin-spin sheet).
+
+**Decision, BGM:** D-062's layered Core/boss/death stack (3.wav/1.wav/
+4.wav) is removed outright, not disabled — `BgmController` now only owns
+the permanent base layer (`2.wav`) plus `start()`/`setMasterVolume()`.
+Every trigger call (`enterCore`/`bossSpawned`/`bossCleared`/`died`/
+`leaveArena`) is deleted from its call sites (`ArenaGame.resetRound`/
+`onBossKilled`/`_maybeSpawnBoss`/`_endRound`, both `arena_screen.dart` MAIN
+MENU buttons) rather than left as unused no-ops — D-062 was two commits
+old and never verified on-device (TASKS 18.6 was still open), so there was
+no in-flight behavior worth preserving behind a flag. The 3 extra WAV
+files stay on disk (not asked to delete assets) but nothing references
+them anymore.
+
+**Decision, unlock bar:** `_LockedPanel` (`character_select_screen.dart`)
+stacks `bar-empty.png` (full-width background) under `bar-filling.png`
+(width clipped to the unlock fraction via `FractionallySizedBox`). Neither
+`Image.asset` had an explicit `height` — `bar-empty` always got `width:
+double.infinity`, so its derived height (via the sheet's own aspect ratio,
+since nothing pinned it) came out constant by accident; `bar-filling`'s
+width is `widthFactor: fraction`, which is a *different* value per
+character (each has its own kills-to-unlock ratio), so its derived height
+came out different per character too — the exact symptom described
+("correct up until where its filled, but the sizing is wrong"). Fix: both
+images now get an explicit `height: barHeight` (22, matching the
+surrounding `SizedBox`) so only width varies and height is pinned
+regardless of fraction.
+
+**Decision, coin icon:** new `CoinIcon` widget (`ui/widgets/coin_icon.dart`)
+crops frame 0 of `coin-icon.png` — same crop-a-cell-from-a-sheet technique
+`_SpriteCell` (`arena_screen.dart`, D-043) already used for the round-over
+flying coins, pulled out shared rather than duplicated a third time.
+Replaces `ui/currency-counter.png` (the old placeholder badge) in all 3
+places it was a standalone wallet icon: `character_select_screen.dart`'s
+and `upgrades_screen.dart`'s `_WalletRow`, and Round Over's `_CoinCounter`
+badge. The flying coins themselves (`_SpriteCell`, "in the game") also
+switch from `money.png`'s tier-0 cell to `coin-icon.png`'s frame 0, so
+every coin shown anywhere is now the same real asset. Round Over's badge
+used to be `currency-counter.png` (a plaque shaped to hold a number)
+stacked with the count on top of it (D-043's own fix for the count reading
+"outside the panel") — `coin-icon.png` is just a coin, not a plaque, so
+that spot is now an icon+text `Row` instead, the same shape every other
+wallet display already uses; text color switched from the plaque-matched
+`0xFF6B2E00` to `ArenaColors.accent` for the same reason.
+
+**Decision, `_SpriteCell` NaN fix:** `_SpriteCell`'s alignment math
+(`2 * (row * cellSize) / (sheetHeight - cellSize) - 1`) divides by 0 when
+a sheet is exactly one cell tall — true of every prior sheet it was used
+on (`money.png` is 192 tall) but not `coin-icon.png` (16 tall, single
+row), which produced a NaN `Alignment` and would have rendered nothing.
+Guarded both axes: `sheetWidth == cellSize` / `sheetHeight == cellSize`
+short-circuit to `0` instead of dividing, since a single row/column has
+only one cell to crop along that axis regardless of alignment value.
+
+**Because:** The BGM ask was explicit and unambiguous ("leave only the
+main one") — deleting the layering is more honest than leaving dead code
+that looks wired but never fires. The bar bug and the coin-icon swap were
+both concrete, reproducible UI defects/asks with a single root cause each
+once traced.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 95/95
+(unchanged — no `core/` formula touched), `flutter build apk --debug`
+succeeds. On-device verification (bar fills to a consistent height across
+all 3 locked characters; the coin icon renders correctly everywhere,
+including the flying coins and the round-over badge; only the base track
+plays, with no Core/boss/death layers ever kicking in) is the developer's
+to run. TASKS 18 (D-062/D-063) is superseded by this entry for the BGM
+half — its layering claims no longer describe the code.
+
+**Follow-up, same day:** developer reported "can't see the coin icon at
+all" after this landed. Root cause, found by reading Flutter's own SDK
+source (`decoration_image.dart`'s `paintImage`, not guessable from the
+Dart docs alone): `Image`'s `fit` defaults to `BoxFit.scaleDown` when
+unset, and `scaleDown` **never scales up** — only down, or not at all.
+Both `CoinIcon` and the pre-existing `_SpriteCell` (D-043's flying-coin
+crop, this class copied its shape) give `Image.asset` an explicit `width`/
+`height` bigger than the source sheet, without an explicit `fit`, expecting
+it to stretch to that size the way the crop math (`OverflowBox` sized to
+the *scaled* sheet, positioned by `alignment`) assumes. Instead the image
+drew at native pixel size, centered in the middle of that oversized box —
+nowhere near the small window `ClipRect` actually shows, so the crop was
+blank. This is a latent bug in `_SpriteCell` too, present since D-043: the
+round-over flying coins have likely never been visible either, just easy
+to miss on a small, 1.6s, edge-of-screen animation. Fixed both call sites
+with an explicit `fit: BoxFit.fill` (stretch exactly to width/height,
+matching what `scale` already assumes) — confirmed by simulating the same
+resize-then-crop in a standalone script against the real asset (not
+guessed): the coin renders correctly.
+
+**Because:** a Flutter widget-test render couldn't confirm this directly —
+real image decode through the asset bundle hangs under the fake-async test
+clock (the same root cause as CLAUDE.md rule 11's `GameWidget` limitation,
+now confirmed to reach plain `Image.asset` too, not just Flame's image
+cache) even wrapped in `tester.runAsync`. Reading the framework source
+directly, then verifying the fix against the real PNG bytes outside the
+widget tree, was the reliable path to an actual root cause instead of a
+guess.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 95/95 (unchanged),
+`flutter build apk --debug` succeeds. On-device verification (the coin icon
+now actually shows in all 4 places, plus the round-over flying coins,
+never confirmed visible before this fix either) is the developer's to run.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

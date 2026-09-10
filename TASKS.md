@@ -1040,6 +1040,58 @@ layered track from menu → Core → boss → (death or menu), with no audible
 seam at any layer transition; the confetti burst reads as a real scatter,
 not a synchronized clump that freezes.
 
+**Superseded by Phase 19 below** — the layered BGM this phase built was
+pulled back out before 18.6's on-device pass ever happened; the layering
+claims above no longer describe the code (DECISIONS D-064).
+
+---
+
+## Phase 19 — BGM reverted to one track; unlock bar-fill height bug; real coin icon
+*Goal: three developer-reported fixes in one pass — deleting the D-062
+layered BGM stack the developer decided against, a genuine sizing bug on
+the character-select unlock bar, and swapping the placeholder coin badge
+for the real coin asset the developer delivered (DECISIONS D-064).*
+
+- [x] **19.1** `BgmController` cut down to just the permanent base layer
+      (`2.wav`) + `setMasterVolume` — the Core/boss/death layers (3/1/4.wav)
+      and every trigger call site (`ArenaGame`, both `arena_screen.dart`
+      MAIN MENU buttons) are deleted, not disabled.
+- [x] **19.2** `_LockedPanel` (`character_select_screen.dart`): both
+      `bar-empty.png` and `bar-filling.png` now get an explicit
+      `height: barHeight` — previously only `bar-empty` (always
+      full-width) accidentally kept a constant derived height,
+      `bar-filling`'s width varies per character so its un-pinned height
+      did too.
+- [x] **19.3** `CoinIcon` (`ui/widgets/coin_icon.dart`) crops frame 0 of
+      the real `consumables/coin-icon.png` sheet; replaces
+      `ui/currency-counter.png` in `character_select_screen.dart`'s and
+      `upgrades_screen.dart`'s wallet rows and Round Over's `_CoinCounter`
+      badge (now an icon+text row instead of a plaque). The flying coins
+      in that same Round Over reveal switch from `money.png`'s tier-0 cell
+      to `coin-icon.png` too. Fixed a latent NaN-alignment bug in
+      `_SpriteCell` along the way (divide-by-zero on a single-row sheet).
+- [x] **19.4** `flutter analyze` clean, `flutter test` 95/95 (unchanged —
+      no `core/` formula touched), `flutter build apk --debug` succeeds.
+- [x] **19.5** Coin icon was actually invisible on-device (developer
+      report) — root cause was `Image`'s default `fit` (`BoxFit.
+      scaleDown`, never scales up) drawing the sheet at native pixel size
+      centered in the oversized crop box instead of stretched to it, so
+      the visible crop window showed nothing. Both `CoinIcon` and the
+      pre-existing `_SpriteCell` (D-043's flying coins, likely never
+      visible either) now pass `fit: BoxFit.fill` explicitly. See D-064's
+      follow-up.
+- [ ] **19.6** On-device verification — **developer**: only the base
+      track plays through a full round (menu → Core → boss → death/menu),
+      no layers ever kick in; the unlock bar fills to the same visual
+      height for every locked character, just different widths; the coin
+      icon actually shows now (not stretched/cropped wrong) in the wallet
+      rows, the round-over badge, and the flying-coin reveal.
+
+**Exit criterion:** one BGM track, no layering; the unlock bar-fill height
+matches `bar-empty` for every character regardless of fill fraction; the
+real coin asset is the only coin graphic shown anywhere coins are
+displayed.
+
 ---
 
 ## Backlog (post-demo — do not start)
