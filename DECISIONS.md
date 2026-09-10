@@ -3055,6 +3055,26 @@ the developer's to run.
 
 ---
 
+## D-068 — Locked-character panel's progress bar removed, just the hollow star stays
+
+**Date:** 2026-09-10 · **Status:** Accepted
+**Context:** Developer: "Get rid of the progressbar, keep just the hollow
+star" — the bar-empty/bar-filling unlock-progress bar under a locked
+character's star icon in `_LockedPanel` (`character_select_screen.dart`,
+DECISIONS D-055/D-064's fill-height fix).
+
+**Decision:** `_LockedPanel` drops the `bar-empty`/`bar-filling` `Stack`
+entirely — just `star-empty.png` (the hollow star) plus the existing
+`'$lifetimeKills / $threshold kills to unlock'` text underneath it, same
+as before. The raw kill-count text already carried the same information
+the bar did, so nothing about "how close am I" is actually lost.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 100/100
+(unchanged), `flutter build apk --debug` succeeds. On-device verification
+is the developer's to run.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

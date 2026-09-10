@@ -1183,6 +1183,23 @@ SOON; every label renders on one line.
 
 ---
 
+## Phase 23 — Locked-character panel's progress bar removed
+*Goal: one developer-requested trim (DECISIONS D-068).*
+
+- [x] **23.1** `_LockedPanel` (`character_select_screen.dart`) drops the
+      bar-empty/bar-filling progress bar; keeps `star-empty.png` plus the
+      existing kill-count text.
+- [x] **23.2** `flutter analyze` clean, `flutter test` 100/100 (unchanged),
+      `flutter build apk --debug` succeeds.
+- [ ] **23.3** On-device verification — **developer**: locked character
+      slots show just the hollow star + "X / Y kills to unlock" text, no
+      bar underneath it.
+
+**Exit criterion:** locked-character panel shows the hollow star and kill
+count only, no progress bar.
+
+---
+
 ## Backlog (post-demo — do not start)
 
 Kept here so ideas have somewhere to go that isn't the current sprint.
