@@ -4,6 +4,7 @@ import '../../core/bgm_controller.dart';
 import '../../core/constants.dart';
 import '../../core/meta_progression.dart';
 import '../../core/settings.dart';
+import '../../data/characters.dart';
 import '../../game/arena_game.dart';
 import '../widgets/pixel_button.dart';
 import '../widgets/screen_scaffold.dart';
@@ -74,6 +75,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _resetWallet() async {
     await _metaRepo.debugResetWallet();
+    _loadMeta();
+  }
+
+  /// Highest `unlockKillThreshold` across `kCharacters` clears every gate in
+  /// one tap (`MetaProgressionRepository.debugSetLifetimeKills` never lowers
+  /// the real count, so this can't re-lock anything).
+  Future<void> _unlockAllCharacters() async {
+    final maxThreshold = kCharacters
+        .map((c) => c.unlockKillThreshold ?? 0)
+        .fold(0, (a, b) => a > b ? a : b);
+    await _metaRepo.debugSetLifetimeKills(maxThreshold);
     _loadMeta();
   }
 
@@ -233,6 +245,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: PixelButton(
+                    label: 'UNLOCK ALL CHARACTERS',
+                    onPressed: _unlockAllCharacters,
+                  ),
+                ),
+              ],
+            ),
+            Text(
+              'Lifetime kills: ${meta.lifetimeKills} '
+              '(unlock thresholds up to '
+              '${kCharacters.map((c) => c.unlockKillThreshold ?? 0).fold(0, (a, b) => a > b ? a : b)})',
+              style: const TextStyle(color: ArenaColors.textDim, fontSize: 12),
             ),
           ],
           if (debugGame != null) ...[

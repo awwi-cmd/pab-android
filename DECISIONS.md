@@ -2925,6 +2925,72 @@ never confirmed visible before this fix either) is the developer's to run.
 
 ---
 
+## D-065 — Debug "unlock all characters" button; character-select tap arrows
+
+**Date:** 2026-09-10 · **Status:** Accepted
+**Context:** Two developer asks: a debug way to unlock every character
+without grinding lifetime kills (testing convenience, same spirit as the
+existing coin/gem debug tools), and a non-swipe way to page the
+character-select carousel. Asked which "arrow keys" meant (on-screen tap
+buttons vs. physical keyboard input) — developer picked on-screen buttons.
+
+**Decision, unlock debug:** `MetaProgressionRepository.
+debugSetLifetimeKills(value)` raises `lifetimeKills` to `max(current,
+value)` — never lowers it, so it can't accidentally re-lock a character
+real play already unlocked. Settings' DEBUG section (loaded unconditionally,
+same as the existing coin/gem debug rows — reachable from the main menu,
+not just the arena's Pause Menu) gets one more button, "UNLOCK ALL
+CHARACTERS", which passes the highest `unlockKillThreshold` across
+`kCharacters` computed inline rather than adding a second exported
+constant next to it.
+
+**Decision, carousel arrows:** `_CarouselArrow` (`character_select_screen.
+dart`) is a small flat tap target (`PixelButton`'s look — no rounded
+corners/gradients — but not `PixelButton` itself, which is always
+`double.infinity` wide) flanking the `PageView` on both sides, calling
+`PageController.previousPage`/`nextPage`. Disabled (dimmed, no tap) at
+either end of `kCharacters` instead of wrapping around. No dedicated
+pixel-art asset exists for this yet, so it uses a plain Material
+`Icons.chevron_left`/`chevron_right` rather than blocking on new art —
+swap for a real sprite if/when one gets delivered.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 95/95 (unchanged
+— no `core/` formula touched), `flutter build apk --debug` succeeds.
+On-device verification is the developer's to run.
+
+---
+
+## D-066 — Android back button could exit a round with no reward
+
+**Date:** 2026-09-10 · **Status:** Accepted
+**Context:** Developer report: "user is able to exit round without rewards
+if he presses android back button." `ArenaGame._endRound` is the only place
+`MetaProgressionRepository.addCoins`/`addGems`/`addLifetimeKills` get
+called, and it only ever runs on death. `ArenaScreen` had no back-press
+handling, so the platform default (pop the current route) let a single
+back press or edge-swipe drop the whole arena route mid-round, `_endRound`
+never running — silent, no confirmation, from any state including mid-fight
+with no menu open.
+
+**Decision:** `ArenaScreen` wraps its `Scaffold` in `PopScope(canPop:
+false, ...)` and handles back explicitly in `_handleBack()`, mirroring
+whatever the deliberate exit/resume action already is for the current
+state rather than inventing a new one: round already over (`roundOver`
+true, reward already banked) — leaves, same as RoundOver's own MAIN MENU
+button; Pause Menu open — resumes, same as RESUME; LevelUp/ChestReveal
+open — no-op, those need an explicit choice and there's nothing safe to
+redirect back to; actively playing, nothing open — opens the Pause Menu,
+same as tapping the pause button. Leaving mid-round (no reward) is still
+possible from the Pause Menu's own MAIN MENU button — that's an existing,
+deliberate action, not the bug; what's fixed is a bare back press no
+longer bypasses it.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 95/95 (unchanged
+— no `core/` formula touched), `flutter build apk --debug` succeeds.
+On-device verification is the developer's to run.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

@@ -1094,6 +1094,55 @@ displayed.
 
 ---
 
+## Phase 20 — Debug character unlock; character-select tap arrows
+*Goal: two developer-requested dev-convenience/UX additions, unrelated to
+each other, in one pass (DECISIONS D-065).*
+
+- [x] **20.1** `MetaProgressionRepository.debugSetLifetimeKills` — raises
+      `lifetimeKills` to at least the given value (never lowers it).
+      Settings' DEBUG section (main-menu reachable, same as the currency
+      debug rows) gets an "UNLOCK ALL CHARACTERS" button that passes the
+      highest `unlockKillThreshold` across `kCharacters`.
+- [x] **20.2** `_CarouselArrow` (`character_select_screen.dart`) — tap
+      buttons flanking the character-select `PageView`, paging via
+      `PageController.previousPage`/`nextPage`; disabled at either end of
+      `kCharacters`. Placeholder `Icons.chevron_left`/`chevron_right`, no
+      dedicated pixel-art asset yet.
+- [x] **20.3** `flutter analyze` clean, `flutter test` 95/95 (unchanged),
+      `flutter build apk --debug` succeeds.
+- [ ] **20.4** On-device verification — **developer**: UNLOCK ALL
+      CHARACTERS (Settings, reachable from the main menu) makes all 4
+      character-select slots selectable immediately; the left/right arrows
+      beside the character page it, disabled/dimmed at the first and last
+      character.
+
+**Exit criterion:** every character-select slot can be unlocked from
+Settings without playing; the carousel can be paged by tapping the arrows
+as well as swiping.
+
+---
+
+## Phase 21 — Android back button could skip round rewards
+*Goal: one developer-reported bug fix (DECISIONS D-066).*
+
+- [x] **21.1** `ArenaScreen` wrapped in `PopScope(canPop: false, ...)`;
+      `_handleBack()` redirects back to the existing deliberate action for
+      the current state (leave if round's over and rewards are already
+      banked, resume if Pause Menu's open, no-op on LevelUp/ChestReveal,
+      otherwise open the Pause Menu) instead of letting the platform pop
+      the arena route straight off the Navigator.
+- [x] **21.2** `flutter analyze` clean, `flutter test` 95/95 (unchanged),
+      `flutter build apk --debug` succeeds.
+- [ ] **21.3** On-device verification — **developer**: mid-round back
+      press/edge-swipe opens the Pause Menu instead of exiting; back while
+      Pause Menu is open resumes; back after death (Round Over showing)
+      still leaves normally.
+
+**Exit criterion:** a bare Android back press can no longer exit a round
+in progress without going through the Pause Menu's own MAIN MENU button.
+
+---
+
 ## Backlog (post-demo — do not start)
 
 Kept here so ideas have somewhere to go that isn't the current sprint.
