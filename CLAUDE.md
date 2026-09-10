@@ -62,8 +62,12 @@ visible edge are built, on-device verification pending** — see D-061.
 **Layered, beat-synced background music (`core/bgm_controller.dart` —
 2/3/1/4.wav base/Core/boss/death layers) and a confetti independent-timing/
 falls-off-screen fix are built, on-device verification pending** —
-see D-062/D-063. This is real, ongoing post-demo work now, not speculative
-scope;
+see D-062/D-063. **The BGM layering was then reverted back to a single
+track (`2.wav` only, developer's explicit call), a character-select
+unlock bar-fill sizing bug is fixed, and the coin-icon placeholder is
+replaced with the real coin asset everywhere it's shown, on-device
+verification pending** — see D-064. This is real, ongoing post-demo work
+now, not speculative scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
 The Backlog is still binding for what hasn't been explicitly asked for — keep
@@ -153,12 +157,12 @@ ArenaDemo/                    <- repo root, open this in your editor
     │   │   ├── vfx/projectiles/       // bolt + hit-spark + Bruiser's knife (D-029)
     │   │   ├── vfx/vfx/                // shield/blood/fire/pixel-fire/sparkle/impact/explosion/
     │   │   │                            //   anima — 9x7 grid PNGs — D-032/D-033/D-034/D-035/D-042
-    │   │   ├── consumables/            // gems/money/potions.png, 5 rarity cols x N anim rows (D-043)
-    │   │   ├── ui/                     // currency-counter.png (round-over "big red coin", D-043)
+    │   │   ├── consumables/            // gems/money/potions.png, 5 rarity cols x N anim rows (D-043); coin-icon.png real coin sheet, 15-frame single row (D-064)
+    │   │   ├── ui/                     // currency-counter.png (old placeholder badge, superseded by coin-icon.png — D-064)
     │   │   ├── cards/                  // real 52-card deck + 2 Jokers + backs, chest reveal draw (D-057)
     │   │   └── scenes/                // floor tile variants + border tile (D-023)
     │   └── audio/
-    │       └── core/                  // sfx-explosion.wav, sfx-you-died.wav (D-044); 1-4.wav layered BGM tracks (D-062)
+    │       └── core/                  // sfx-explosion.wav, sfx-you-died.wav (D-044); 1-4.wav delivered as layered BGM tracks (D-062), only 2.wav still wired after D-064's revert
     └── lib/
         ├── main.dart              // runApp only
         ├── app.dart               // MaterialApp, routes, theme; starts BgmController once (D-062)
@@ -166,7 +170,7 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   ├── constants.dart     // design size, colors, layer priorities, render scales
         │   ├── stats.dart         // StatBlock + ALL derived-stat formulas, EnemyStats
         │   ├── settings.dart      // Settings model + SharedPreferences I/O
-        │   ├── bgm_controller.dart // app-wide singleton: layered/beat-synced BGM (2/3/1/4.wav base/Core/boss/death) — D-062
+        │   ├── bgm_controller.dart // app-wide singleton: single base-layer BGM (2.wav) — D-062, layering reverted by D-064
         │   ├── game_rules.dart    // pure gameplay math (targeting, spawn decay, knockback,
         │   │                      //   enemy/boss level-scaling D-026/D-042, randomPerimeterPoint D-041)
         │   ├── progression.dart   // XP curve, UpgradeKind (Aura + Mirror/Ray/Thunder/Crystal), PlayerUpgrades — D-025/D-027/D-049
@@ -179,11 +183,11 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   │   ├── main_menu_screen.dart
         │   │   ├── settings_screen.dart        // currency debug always shown; god mode/grant-level-up/end-round only when opened from pause (D-025/D-059); Music Volume live-drives BgmController (D-062)
         │   │   ├── credits_screen.dart
-        │   │   ├── character_select_screen.dart // swipe carousel, one character at a time; locked slots show a bar-fill unlock panel — D-055
+        │   │   ├── character_select_screen.dart // swipe carousel, one character at a time; locked slots show a bar-fill unlock panel, fill height bug fixed — D-055/D-064
         │   │   ├── shop_screen.dart       // empty placeholder, back button only — D-047
         │   │   ├── upgrades_screen.dart   // 5 MetaStat rows, buy buttons — D-047
         │   │   └── arena_screen.dart      // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu/ChestReveal); ChestReveal confetti — D-061/D-063
-        │   └── widgets/                   // buttons, stat bars, shared chrome
+        │   └── widgets/                   // buttons, stat bars, shared chrome; coin_icon.dart crops the real coin asset (D-064)
         └── game/
             ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling; addToWorld/addToHud split — D-040.
             │                              //   Split from ~820 lines (D-045/D-048): asset loading moved to game_assets.dart

@@ -4,7 +4,6 @@ import 'dart:math';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/bgm_controller.dart';
 import '../../core/constants.dart';
 import '../../core/economy.dart';
 import '../../core/meta_progression.dart';
@@ -13,6 +12,7 @@ import '../../core/settings.dart';
 import '../../data/characters.dart';
 import '../../game/arena_game.dart';
 import '../../game/input/joystick_overlay.dart';
+import '../widgets/coin_icon.dart';
 import 'settings_screen.dart';
 
 /// Hosts the single `GameWidget` for the arena (CLAUDE.md §4.1 — Flame owns
@@ -215,12 +215,6 @@ class _RoundOverOverlay extends StatelessWidget {
                     side: const BorderSide(color: ArenaColors.accent),
                   ),
                   onPressed: () {
-                    // DECISIONS D-062: idempotent with _endRound's own
-                    // died()/leaveArena() call -- this just guarantees the
-                    // BGM stack is back down to the base layer by the time
-                    // a menu screen is actually showing, however we got
-                    // here.
-                    BgmController.instance.leaveArena();
                     Navigator.of(context).popUntil((route) => route.isFirst);
                   },
                   child: const Text(
@@ -258,14 +252,15 @@ class _StatRow extends StatelessWidget {
   }
 }
 
-/// Round Over's money reveal (DECISIONS D-043) — a big red coin
-/// (`ui/currency-counter.png`) with the round's total counting up from 0
-/// next to it, while a handful of small coins fly in from outside the
-/// widget and shrink to nothing right as they reach it (developer's
-/// explicit vision: "jumping in the big red coin, with this size reducing
-/// like fade out... right exactly when they would hit the coin"). Purely
-/// decorative — [ArenaGame.coinsEarned] is already final by the time this
-/// builds (round state stops changing once `RoundOver` is showing).
+/// Round Over's money reveal (DECISIONS D-043, icon swapped to the real
+/// coin asset by D-064) — the real coin icon (`CoinIcon`) with the round's
+/// total counting up from 0 next to it, while a handful of small coins fly
+/// in from outside the widget and shrink to nothing right as they reach it
+/// (developer's explicit vision: "jumping in the big red coin, with this
+/// size reducing like fade out... right exactly when they would hit the
+/// coin"). Purely decorative — [ArenaGame.coinsEarned] is already final by
+/// the time this builds (round state stops changing once `RoundOver` is
+/// showing).
 class _CoinCounter extends StatefulWidget {
   const _CoinCounter({required this.total});
 
@@ -334,28 +329,22 @@ class _CoinCounterState extends State<_CoinCounter>
               children: [
                 for (final coin in _flyingCoins)
                   _buildFlyingCoin(coin, constraints.maxWidth),
-                // The asset itself reads as a badge/plaque meant to hold a
-                // number, not a standalone icon next to one -- the earlier
-                // Image+Text Row put the count beside it, which on-device
-                // read as "the number is outside the UI panel for it"
-                // (2026-09-09). Stacked and centered instead, so the count
-                // sits inside the plaque like the art implies.
+                // D-064: the old placeholder was a plaque asset with the
+                // count stacked inside it; the real coin icon is just a
+                // coin, so this is an icon+text row like every other
+                // wallet display (character select, upgrades) instead.
                 SizedBox(
                   width: 128,
                   height: 64,
-                  child: Stack(
-                    alignment: Alignment.center,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Image.asset(
-                        'assets/images/ui/currency-counter.png',
-                        width: 128,
-                        height: 64,
-                        filterQuality: FilterQuality.none,
-                      ),
+                      const CoinIcon(size: 48),
+                      const SizedBox(width: 10),
                       Text(
                         '${_count.value}',
                         style: const TextStyle(
-                          color: Color(0xFF6B2E00),
+                          color: ArenaColors.accent,
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                         ),
@@ -384,11 +373,13 @@ class _CoinCounterState extends State<_CoinCounter>
         child: Transform.scale(
           scale: remaining,
           child: const _SpriteCell(
-            asset: 'assets/images/consumables/money.png',
-            sheetWidth: 80,
-            sheetHeight: 192,
+            // D-064: the real coin icon asset, not the generic tier-0
+            // money sprite -- same single-row sheet `CoinIcon` crops.
+            asset: 'assets/images/consumables/coin-icon.png',
+            sheetWidth: 240,
+            sheetHeight: 16,
             cellSize: 16,
-            column: 0, // tier 0 (common) -- just a generic flying coin
+            column: 0,
             row: 0,
             displaySize: 26, // bumped from 20 -- too small to notice on-device
           ),
@@ -447,14 +438,32 @@ class _SpriteCell extends StatelessWidget {
         child: OverflowBox(
           maxWidth: sheetWidth * scale,
           maxHeight: sheetHeight * scale,
+          // A single-row or single-column sheet (D-064's coin-icon.png:
+          // one row) makes the denominator 0 -- there's nothing to
+          // interpolate between when there's only one cell along that
+          // axis, and any alignment value crops the same pixels, so pin
+          // it to 0 instead of dividing by 0 (NaN, a broken Alignment).
           alignment: Alignment(
-            2 * (column * cellSize) / (sheetWidth - cellSize) - 1,
-            2 * (row * cellSize) / (sheetHeight - cellSize) - 1,
+            sheetWidth == cellSize
+                ? 0
+                : 2 * (column * cellSize) / (sheetWidth - cellSize) - 1,
+            sheetHeight == cellSize
+                ? 0
+                : 2 * (row * cellSize) / (sheetHeight - cellSize) - 1,
           ),
           child: Image.asset(
             asset,
             width: sheetWidth * scale,
             height: sheetHeight * scale,
+            // D-064: without an explicit fit, `Image`'s default
+            // (`BoxFit.scaleDown`) never scales UP -- since every sheet
+            // here is smaller than this scaled-up box, it drew at native
+            // pixel size centered in it, nowhere near the small cropped
+            // window this widget actually shows through (the coin/gem/
+            // potion cell rendered invisible this whole time, D-043
+            // onward). `fill` stretches it to exactly width/height,
+            // matching the `scale` this crop math assumes.
+            fit: BoxFit.fill,
             filterQuality: FilterQuality.none,
           ),
         ),
@@ -1152,10 +1161,7 @@ class _PauseMenuOverlay extends StatelessWidget {
               _menuButton(
                 context,
                 label: 'MAIN MENU',
-                // DECISIONS D-062: the one real "leave core" path _endRound
-                // never sees -- quitting mid-round via the Pause Menu.
                 onPressed: () {
-                  BgmController.instance.leaveArena();
                   Navigator.of(context).popUntil((route) => route.isFirst);
                 },
               ),

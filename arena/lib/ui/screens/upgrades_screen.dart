@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
 import '../../core/meta_progression.dart';
+import '../widgets/coin_icon.dart';
 import '../widgets/pixel_button.dart';
 import '../widgets/screen_scaffold.dart';
 import '../widgets/stat_bar.dart';
@@ -84,11 +85,7 @@ class _WalletRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Image.asset(
-          'assets/images/ui/currency-counter.png',
-          height: 40,
-          filterQuality: FilterQuality.none,
-        ),
+        const CoinIcon(size: 40),
         const SizedBox(width: 10),
         Text(
           '$coins',

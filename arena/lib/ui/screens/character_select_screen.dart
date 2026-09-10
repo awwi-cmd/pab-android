@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants.dart';
 import '../../core/meta_progression.dart';
 import '../../data/characters.dart';
+import '../widgets/coin_icon.dart';
 import '../widgets/pixel_button.dart';
 import '../widgets/screen_scaffold.dart';
 import '../widgets/stat_bar.dart';
@@ -134,11 +135,7 @@ class _WalletRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Image.asset(
-          'assets/images/ui/currency-counter.png',
-          height: 28,
-          filterQuality: FilterQuality.none,
-        ),
+        const CoinIcon(size: 28),
         const SizedBox(width: 8),
         Text(
           '$coins',
@@ -276,6 +273,7 @@ class _LockedPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const barHeight = 22.0;
     final threshold = character.unlockKillThreshold ?? 0;
     final fraction = threshold <= 0 ? 0.0 : (lifetimeKills / threshold).clamp(0.0, 1.0);
     return Column(
@@ -287,7 +285,7 @@ class _LockedPanel extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         SizedBox(
-          height: 22,
+          height: barHeight,
           child: Stack(
             alignment: Alignment.centerLeft,
             children: [
@@ -295,6 +293,13 @@ class _LockedPanel extends StatelessWidget {
                 'assets/images/ui/bar-empty.png',
                 fit: BoxFit.fill,
                 width: double.infinity,
+                // Explicit height, matching the outer SizedBox -- without
+                // it, Image sizes itself off the sheet's own aspect ratio
+                // (it's a bare asset, no intrinsic-height constraint from
+                // the Stack), which happened to look right here only
+                // because this one's width is always double.infinity, so
+                // its derived height never varied.
+                height: barHeight,
                 filterQuality: FilterQuality.none,
               ),
               FractionallySizedBox(
@@ -302,6 +307,14 @@ class _LockedPanel extends StatelessWidget {
                 child: Image.asset(
                   'assets/images/ui/bar-filling.png',
                   fit: BoxFit.fill,
+                  // This one's width comes from `widthFactor` and differs
+                  // per character (each has its own kill fraction) -- left
+                  // unconstrained, its height was derived from *that*
+                  // varying width via the sheet's own aspect ratio, so the
+                  // fill bar rendered a different height per character
+                  // instead of matching `bar-empty` behind it. Pin it to
+                  // the same explicit height so only the width varies.
+                  height: barHeight,
                   filterQuality: FilterQuality.none,
                 ),
               ),
