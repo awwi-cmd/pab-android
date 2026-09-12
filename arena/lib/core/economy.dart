@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'game_config.dart';
+
 /// Loot/currency economy (DECISIONS D-043): gems, money, and potions all
 /// share one 5-tier rarity scale — left-to-right in their sprite sheets,
 /// least to most rare — one weight table, one roll function, reused by all
@@ -70,8 +72,9 @@ int rollCoinValue(Random random) => kCoinValueByRarity[rollRarity(random)]!;
 
 /// The boss's kill is worth a flat multiple of a normal roll — same
 /// "feels like a milestone" reasoning as `kBossXpReward`
-/// (`core/progression.dart`).
-const int kBossCoinMultiplier = 10;
+/// (`core/progression.dart`). `GameConfig`-backed (DECISIONS D-090)
+/// instead of a raw `const`.
+int get kBossCoinMultiplier => GameConfig.instance.bossCoinMultiplier;
 
 /// Potion heal amount per tier (DECISIONS D-043) — flat HP, not a
 /// percentage of max HP; "we will add more logic later" per the developer,

@@ -1,3 +1,5 @@
+import 'game_config.dart';
+
 /// The four playable stats and every derived-combat formula (PRD §5.1).
 ///
 /// This is the ONLY place a damage value, speed, HP number or fire rate may
@@ -36,12 +38,18 @@ class StatBlock {
 /// The "grunt" — the one enemy type in the demo (PRD §6.4). Flat constants,
 /// not derived from a `StatBlock` (that's for playable characters only),
 /// but still the single place these numbers live (CLAUDE.md §4.3).
+///
+/// [maxHp]/[moveSpeedPxPerS]/[contactDamage] are `GameConfig`-backed
+/// (DECISIONS D-090) — a developer-editable tuning file
+/// (`assets/config/game_config.json`), not a raw literal, so they're no
+/// longer `const`. `contactCooldownSec`/`radiusPx` stay plain `const` —
+/// unrequested scope for this pass.
 class EnemyStats {
   EnemyStats._();
 
-  static const double maxHp = 20;
-  static const double moveSpeedPxPerS = 70;
-  static const double contactDamage = 8;
+  static double get maxHp => GameConfig.instance.enemyMaxHp;
+  static double get moveSpeedPxPerS => GameConfig.instance.enemyMoveSpeedPxPerS;
+  static double get contactDamage => GameConfig.instance.enemyContactDamage;
   static const double contactCooldownSec = 1.0;
   static const double radiusPx = 12;
 }
@@ -54,14 +62,16 @@ class EnemyStats {
 class BossStats {
   BossStats._();
 
-  static const double maxHp = 400;
+  /// `GameConfig`-backed (DECISIONS D-090), same reasoning as
+  /// [EnemyStats.maxHp]/etc.
+  static double get maxHp => GameConfig.instance.bossMaxHp;
   static const double moveSpeedPxPerS = 55; // slower than a grunt -- lumbering, not a threat to outrun
-  static const double contactDamage = 15;
+  static double get contactDamage => GameConfig.instance.bossContactDamage;
   static const double contactCooldownSec = 1.0;
 
   static const double fireRangePx = 260;
   static const double fireCooldownSec = 2.2;
-  static const double boltDamage = 12;
+  static double get boltDamage => GameConfig.instance.bossBoltDamage;
   // 2026-09-09 tune (DECISIONS D-052, developer's call): +30% (was 220).
   static const double boltSpeedPxPerS = 220 * 1.3;
   static const double boltKnockback = 40;

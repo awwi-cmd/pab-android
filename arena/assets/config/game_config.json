@@ -1,0 +1,57 @@
+{
+  "_readme": "ARENA tuning config (DECISIONS D-090). Edit this file, then rebuild the APK (rebuildinstall.bat / flutter build apk) -- it's read once at app startup, every launch, straight out of the built app, so a rebuild is required for changes to take effect. Every value below is the current shipped default; delete a key (or the whole file) to fall back to that same default safely -- nothing here can crash the app by being missing. Field names/comments in DECISIONS D-090 explain what each number actually does in-game.",
+  "economy": {
+    "coinValueMultiplier": 1.0,
+    "gemDropChanceBonus": 0.0,
+    "bossCoinMultiplier": 10
+  },
+  "enemyAI": {
+    "spawnStartingIntervalSec": 1.5,
+    "spawnMinIntervalSec": 0.25,
+    "spawnDecayFactor": 0.96,
+    "maxLiveEnemies": 60,
+    "enemyMaxHp": 20,
+    "enemyMoveSpeedPxPerS": 70,
+    "enemyContactDamage": 8,
+    "enemyStatScalePerLevel": 0.12,
+    "eliteChance": 0.15,
+    "bossMaxHp": 400,
+    "bossContactDamage": 15,
+    "bossBoltDamage": 12
+  },
+  "characters": {
+    "apprentice": {
+      "str": 4,
+      "vit": 4,
+      "dex": 5,
+      "intellect": 7
+    },
+    "bruiser": {
+      "str": 8,
+      "vit": 7,
+      "dex": 3,
+      "intellect": 2
+    },
+    "skirmisher": {
+      "str": 4,
+      "vit": 3,
+      "dex": 9,
+      "intellect": 4
+    },
+    "warden": {
+      "str": 3,
+      "vit": 9,
+      "dex": 4,
+      "intellect": 4
+    }
+  },
+  "progression": {
+    "xpPerKill": 18,
+    "baseXpToNextLevel": 150,
+    "xpGrowthFactor": 1.3
+  },
+  "audio": {
+    "startingSfxVolume": 25,
+    "startingMusicVolume": 5
+  }
+}

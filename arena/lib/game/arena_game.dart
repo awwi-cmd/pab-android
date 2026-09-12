@@ -4,12 +4,12 @@ import 'dart:ui';
 
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
-import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter/widgets.dart' show EdgeInsets;
 
 import '../core/constants.dart';
 import '../core/economy.dart';
+import '../core/game_config.dart';
 import '../core/game_rules.dart';
 import '../core/meta_progression.dart';
 import '../core/progression.dart';
@@ -452,7 +452,11 @@ class ArenaGame extends FlameGame {
     if (rollGemDrop(
       _random,
       level,
-      bonusChance: luckGemDropBonus(meta.luckLevel) + meta.gemDropBonusFromShop,
+      // DECISIONS D-090: GameConfig.gemDropChanceBonus layers on the same
+      // additive axis LUCK/SHOP already use, not a separate multiplier.
+      bonusChance: luckGemDropBonus(meta.luckLevel) +
+          meta.gemDropBonusFromShop +
+          GameConfig.instance.gemDropChanceBonus,
     )) {
       final rarity = rollRarity(_random);
       addToWorld(
@@ -478,7 +482,10 @@ class ArenaGame extends FlameGame {
     return (rollCoinValue(_random) *
             corruptionRewardMultiplier(meta.corruptionLevel) *
             fortuneRewardMultiplier(meta.fortuneLevel) *
-            meta.coinMultiplierFromShop)
+            meta.coinMultiplierFromShop *
+            // DECISIONS D-090: developer-editable tuning knob, same axis as
+            // the multipliers above.
+            GameConfig.instance.coinValueMultiplier)
         .round();
   }
 
@@ -946,7 +953,11 @@ class ArenaGame extends FlameGame {
     );
     // DECISIONS D-044: "when we kill boss, when any explosion effect is
     // played" -- one hook covers both, since a boss kill also calls this.
-    _playSfx('core/sfx-explosion.wav');
+    // D-081-style pooled playback (SfxPlayer), not a raw FlameAudio.play --
+    // this fires often enough (every spiral-fire kill, every chest, every
+    // boss death) that the old unpooled path leaked exactly like the other
+    // one-shots D-079/D-081 fixed.
+    SfxPlayer.instance.playExplosion();
   }
 
   /// DECISIONS D-043 — called by [GemComponent] when the player walks close
@@ -1022,15 +1033,6 @@ class ArenaGame extends FlameGame {
     _afterMenuClosed();
   }
 
-  /// One-shot SFX at a volume derived from the player's own SFX slider
-  /// (`Settings.sfxVolume`, 0-100), capped low regardless — "make sure they
-  /// are not that loud" (DECISIONS D-044).
-  void _playSfx(String file) {
-    final volume = (settings.sfxVolume / 100) * kSfxVolumeCap;
-    if (volume <= 0) return;
-    FlameAudio.play(file, volume: volume);
-  }
-
   /// PRD §6.5: freeze after the death frame, then show Round Over. Debug
   /// stand-in `debugDie()` shares this same path -- but never sets
   /// [_realDeath], since a debug kill isn't a real death and shouldn't play
@@ -1076,16 +1078,27 @@ class ArenaGame extends FlameGame {
     // `debugDie()` never sets `_realDeath`, so a debug kill still stays
     // silent.
     if (_realDeath) {
-      _playSfx('core/sfx-you-died.wav');
+      SfxPlayer.instance.playPlayerDeath();
     }
     // The round's coin/gem haul and kill count cross over into the
     // persistent wallet exactly once, here (DECISIONS D-047/D-055) —
     // `coinsEarned`/`gemsCollected`/`kills` themselves stay the
     // round-scoped display values Round Over reads, untouched by this.
-    // Fire-and-forget: nothing on screen is waiting on these writes landing.
+    // Fire-and-forget from the caller's side: nothing on screen is waiting
+    // on these writes landing. DECISIONS D-089: the three `addX` calls
+    // *inside* [_persistRoundRewards] must still run sequentially, not
+    // concurrently like this used to fire them — each is its own
+    // load-modify-save cycle against `SharedPreferences`, and three of
+    // those racing meant whichever `save()` landed last clobbered the
+    // other two fields back to their pre-round values (reported: "coins
+    // and gems not saved... only kills").
+    unawaited(_persistRoundRewards());
+  }
+
+  Future<void> _persistRoundRewards() async {
     final repo = MetaProgressionRepository();
-    unawaited(repo.addCoins(coinsEarned));
-    unawaited(repo.addGems(gemsCollected));
-    unawaited(repo.addLifetimeKills(kills));
+    await repo.addCoins(coinsEarned);
+    await repo.addGems(gemsCollected);
+    await repo.addLifetimeKills(kills);
   }
 }

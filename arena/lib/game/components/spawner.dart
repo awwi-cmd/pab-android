@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flame/components.dart';
 
+import '../../core/game_config.dart';
 import '../../core/game_rules.dart';
 import '../arena_game.dart';
 import 'enemy.dart';
@@ -25,11 +26,14 @@ import 'enemy.dart';
 /// which is exactly what caused spawning to visibly stop entirely far from
 /// the start (developer-reported bug, not a hypothetical).
 class Spawner extends Component with HasGameReference<ArenaGame> {
-  static const _startingIntervalSec = 1.5;
-  static const _minIntervalSec = 0.25;
+  // `GameConfig`-backed (DECISIONS D-090) instead of raw `const`s — a
+  // developer-editable tuning knob in `assets/config/game_config.json`.
+  static double get _startingIntervalSec =>
+      GameConfig.instance.spawnStartingIntervalSec;
+  static double get _minIntervalSec => GameConfig.instance.spawnMinIntervalSec;
   static const _decayEvery = 10.0;
-  static const _decayFactor = 0.96;
-  static const _maxLiveEnemies = 60;
+  static double get _decayFactor => GameConfig.instance.spawnDecayFactor;
+  static int get _maxLiveEnemies => GameConfig.instance.maxLiveEnemies;
 
   /// How far outside the visible view a spawn point sits, as a fraction of
   /// that view's own width/height — developer's ask: "outside the player's

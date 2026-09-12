@@ -390,12 +390,18 @@ class _CoinCounterState extends State<_CoinCounter>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const CoinIcon(size: 48),
+                      // TASKS 35.1/35.2: size-matched to _GemCounter's
+                      // GemIcon/_KillCounter's star (both 40, was 48) and
+                      // recolored to match the gem count's near-white
+                      // instead of ArenaColors.accent (green/teal) — all 3
+                      // currency counters on this screen now read as one
+                      // consistent set.
+                      const CoinIcon(size: 40),
                       const SizedBox(width: 10),
                       Text(
                         '${_count.value}',
                         style: const TextStyle(
-                          color: ArenaColors.accent,
+                          color: ArenaColors.textPrimary,
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                         ),

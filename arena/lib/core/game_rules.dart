@@ -3,6 +3,8 @@ import 'dart:ui' show Rect;
 
 import 'package:flame/game.dart' show Vector2;
 
+import 'game_config.dart';
+
 /// Pure gameplay math with no Flame `Component`/`Game` dependency —
 /// deliberately kept separate from the components that call it so it's
 /// unit-testable the same way `stats.dart` is, without a `GameWidget`
@@ -75,7 +77,9 @@ double knockbackDistance(double impulsePxPerS, double durationSec) {
 /// time (`ArenaGame.spawnEnemy`) — deliberately not `moveSpeedPxPerS`, so a
 /// higher level never makes an enemy literally impossible to outrun, only
 /// costlier to fight or facetank.
-const double kEnemyScalePerLevel = 0.12;
+/// `GameConfig`-backed (DECISIONS D-090) instead of a raw `const` — a
+/// developer-editable tuning knob in `assets/config/game_config.json`.
+double get kEnemyScalePerLevel => GameConfig.instance.enemyStatScalePerLevel;
 
 double enemyStatMultiplier(int playerLevel) {
   assert(playerLevel >= 1);
@@ -85,7 +89,9 @@ double enemyStatMultiplier(int playerLevel) {
 /// DECISIONS D-035: "elite" enemies are a visual-only marker for now (a fire
 /// glow, `ArenaGame.spawnEnemy`) — no stat change, unlike `enemyStatMultiplier`
 /// above. Rolled independently per spawn, not tied to player level.
-const double kEliteChance = 0.15;
+/// `GameConfig`-backed (DECISIONS D-090), same reasoning as
+/// [kEnemyScalePerLevel].
+double get kEliteChance => GameConfig.instance.eliteChance;
 
 /// [chanceMultiplier] scales the base chance down (or up) -- SHOP's Steel
 /// Nerves (DECISIONS D-070) halves it. Defaults to 1 so every existing call

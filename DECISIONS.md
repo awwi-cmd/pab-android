@@ -3942,6 +3942,316 @@ reappear on next launch; the "?" button reopens it any time after that.
 
 ---
 
+## D-085 — Audio checkup: mixer split confirmed already correct; explosion/death SFX migrated onto the pooled path
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer flagged BGM and SFX as "routed to the same mixer,"
+asking for them to be split into separate tracks, plus a general audio
+correctness pass.
+
+**Decision (mixer split — no code change needed):** Traced the full chain
+(`Settings.sfxVolume`/`musicVolume` → two prefs keys →
+`SettingsScreen`'s two independent sliders → `SfxPlayer.
+setVolumeMultiplier`/`BgmController.setMasterVolume`, both read once at
+boot in `app.dart` and live on every slider move) and confirmed the two
+were already fully independent — separate fields, separate persistence,
+separate controllers, separate players. Not a real bug; no change made.
+The one thing genuinely shared is Android's default audio stream
+(`STREAM_MUSIC`, via `audioplayers`' default `AudioContext` on both
+`BgmController`'s `mediaPlayer` player and `SfxPlayer`'s `lowLatency`
+pools) — the hardware volume rocker moves both together, which is normal
+mobile-game behavior, not the app-level "mixer" the developer meant.
+
+**Decision (real bug found and fixed):** `ArenaGame._playSfx` (explosion +
+player-death SFX, D-044) was never migrated onto `SfxPlayer`'s pooled
+playback when D-079/D-081 fixed every other one-shot — it still called
+raw `FlameAudio.play(file, ...)`, the exact leak-a-fresh-`AudioPlayer`-
+per-call bug D-079 fixed, on the exact wrong default `PlayerMode.
+mediaPlayer` D-081 root-caused a real crash to. Not just a once-a-round
+cost: `spawnExplosionEffect` (the explosion SFX's only call site) fires on
+every Skirmisher spiral-fire kill, every chest open, and every boss death
+— frequent enough in a real round to reproduce D-079/D-081's symptoms
+again. Fixed by adding `sfx-explosion.wav`/`sfx-you-died.wav` to
+`SfxPlayer._pooledFiles` and two new methods (`playExplosion`/
+`playPlayerDeath`), deleting `ArenaGame._playSfx` entirely, and switching
+its two call sites to `SfxPlayer.instance`. Removed the now-unused
+`flame_audio` import from `arena_game.dart` — nothing else in that file
+touches `FlameAudio` directly anymore, every SFX trigger in the app now
+goes through the one pooled player.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 122/122
+(unchanged — this is playback plumbing, not gameplay logic, covered by
+CLAUDE.md §11's "verify on-device" carve-out, not a unit-testable rule).
+On-device verification is the developer's to run: a Skirmisher round with
+several spiral-fire kills and a chest open shouldn't reproduce any of
+D-079's symptoms (BGM stopping/restarting, static, desync) even under
+sustained play; explosion and death SFX should still sound and be
+volume-scaled the same as before, just via the pool now.
+
+---
+
+## D-086 — BGM pauses on app-background, not just app-quit
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer: "music kept playing on device when minimizing the
+game." `BgmController` (D-062/D-075) starts once at app boot and had no
+lifecycle wiring at all — `audioplayers` doesn't stop on its own when
+Flutter loses visibility, so the looping BGM kept running in the
+background with no way to reach it (no notification, no OS audio-focus
+integration).
+
+**Decision:** `ArenaApp`'s `_ArenaAppState` now mixes in
+`WidgetsBindingObserver` and pauses/resumes `BgmController`'s single
+player off `didChangeAppLifecycleState`. `pause()`/`resume()` (new on
+`BgmController`, wrapping the underlying `AudioPlayer.pause`/`resume`) are
+used instead of stop/restart so the track picks back up exactly where it
+left off. Only `AppLifecycleState.paused`/`hidden` trigger a pause —
+`inactive` is deliberately left alone since it also fires for transient
+foreground interruptions (a permission dialog, the notification shade, an
+incoming call banner) where cutting the music mid-interruption would read
+worse than a half-second of it playing under a dialog. `resumed` undoes
+whichever of the two actually fired. `SfxPlayer`'s one-shots are
+untouched — they're short and don't loop, so there's nothing to leave
+running in the background the way BGM does.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 122/122
+(unchanged — lifecycle wiring isn't gameplay logic, CLAUDE.md §11).
+`flutter build apk --debug` succeeds. On-device verification is the
+developer's to run: minimize the app (home button or recent-apps) during
+a round or a menu — BGM should stop; bring it back to the foreground — BGM
+should resume from where it paused, not restart from the top.
+
+---
+
+## D-087 — Second audio checkup: a real startup race in `BgmController.start()`, everything else confirmed correct
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer asked for another full pass over the sound
+implementation after D-085/D-086, specifically to look for bugs.
+
+**Decision:** Re-read `BgmController`, `SfxPlayer`, `app.dart`'s lifecycle
+wiring, every `SfxPlayer` call site (footsteps/damage/tap/projectile-shoot/
+level-up/chest-card select+chosen/explosion/death), and cross-checked
+`AudioPool`'s actual implementation (pub cache source, not just its doc
+comments) against how `SfxPlayer` uses it — confirmed the pooled
+start/stop/reuse/release lifecycle, the `lowLatency`-skips-auto-return
+behavior, and every asset path all match what `sfx_player.dart` assumes.
+Found one real bug: **`BgmController.start()` races `pause()`/`resume()`**
+(D-086) — `start()` is async and there's a real window, right after a cold
+launch, where the app can be minimized *while `FlameAudio.loopLongAudio`
+is still preparing the player*. `pause()` fires during that window, sees
+`_basePlayer == null`, and no-ops; `start()` then finishes moments later
+and begins playing (fading in) regardless, in the background — the exact
+bug D-086 was supposed to close, just reachable from the other direction.
+Fixed with a new `_pausedByLifecycle` flag: `pause()`/`resume()` set/clear
+it in addition to touching the player (so it's authoritative even before
+one exists), and `start()` checks it once the player is actually created —
+if set, it sets volume straight to the real target and pauses immediately
+instead of fading in, so a later `resume()` plays at the right volume
+instead of silently at the 0 the fade-in would have started from.
+Everything else re-checked came back clean: the mixer split (D-085), the
+explosion/death SFX migration (D-085), no other raw `FlameAudio`/
+`AudioPlayer` calls anywhere outside `bgm_controller.dart`/`sfx_player.dart`
+(grepped the whole `lib/` tree), every pooled SFX asset path exists on
+disk and is declared in `pubspec.yaml`, and the chest-reveal's
+shuffle/spin `Timer`s are cancelled on `dispose()` so closing that overlay
+mid-animation can't leave a dangling scheduled sound trigger.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 122/122
+(unchanged — playback plumbing, not gameplay logic, CLAUDE.md §11).
+`flutter build apk --debug` succeeds. On-device verification is the
+developer's to run: force-close and relaunch the app, then immediately
+hit home/recents within roughly the first second (before the title screen
+would normally finish appearing) — BGM should not be audible while
+backgrounded, and should resume at the normal volume (not silently) when
+foregrounded again.
+
+---
+
+## D-088 — Root cause of total pooled-SFX silence: `AudioPool` was never given `FlameAudio.audioCache`, every load path was double-prefixed
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer, on-device: "I have SFX at max, BGM at 0, not
+hearing footsteps, not hearing projectile when character attacks, etc."
+D-076/D-079/D-081/D-085 had all been "on-device verification pending" —
+this was the first real confirmation that the pooled SFX system produced
+*no audio at all*, not a volume/mixer issue.
+
+**Decision:** Root-caused by reading `audioplayers` 6.8.1's actual source
+(not just its doc comments) for `AudioPool`, `AudioCache`, and
+`AssetSource`. `SfxPlayer._poolFor`'s `AudioPool.create(...)` call never
+passed an `audioCache:` argument, so `AudioPool` fell back to its own
+default, `AudioCache.instance` — the `audioplayers` package's own global
+cache, prefix `'assets/'` — not `FlameAudio.audioCache` (prefix
+`'assets/audio/'`, the one every asset in this project actually lives
+under). `_poolFor` was also handing it an already-prefixed path
+(`'assets/audio/$file'`). Every asset load therefore resolved to
+`'assets/' + 'assets/audio/core/<file>'` = `assets/assets/audio/core/
+<file>` — doesn't exist, so `rootBundle.load` threw inside `AudioPool.
+create`'s player setup. That failed `Future` got permanently memoized by
+`_pools`' `putIfAbsent`, so every later `_playPooledAsync` call re-awaited
+the same rejected `Future`, threw again, and — since nothing in that call
+chain has a `catch`, only a `finally` — the error surfaced only as an
+unhandled-Future-error log line, never as visible failure. Net effect:
+**every one of the 9 pooled sounds** (tap, damage, projectile-shoot,
+level-up, both footstep files, chest-card-chosen, and D-085's
+explosion/death) silently no-op'd for the app's entire lifetime, every
+session, regardless of the SFX slider. `playChestCardSelect` (the one
+sound that was never reported missing) was never affected — it builds its
+own raw `AudioPlayer` and sets `audioCache = FlameAudio.audioCache` by
+hand, with a bare (non-prefixed) path, which is the actually-correct
+shape. Fixed `_poolFor` to match that same shape: `AudioPool.create(...,
+audioCache: FlameAudio.audioCache)` with the bare `file` path instead of
+`'assets/audio/$file'`.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 122/122
+(unchanged — this is asset-loading plumbing, not gameplay logic,
+CLAUDE.md §11 — nothing in this codebase's test suite ever exercised real
+audio decoding, see D-019). `flutter build apk --debug` succeeds. This is
+the one that actually matters for on-device verification: **every**
+previous "SFX... on-device verification pending" note back through D-076
+was verifying against a system that could never have produced sound in
+the first place — footsteps, damage, tap, projectile-shoot, level-up,
+chest-card-chosen, explosion, and player-death should all be audible now
+for the first time.
+
+---
+
+## D-089 — Fixed a real race: coin/gem round-over credits could be clobbered by the kills write landing last
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer, on-device: "coins and gems are not saved to main
+wallet, after completing round. Only kills."
+
+**Decision:** `ArenaGame._endRound()` fired `MetaProgressionRepository.
+addCoins`/`addGems`/`addLifetimeKills` concurrently (three separate
+`unawaited(...)` calls). Each of those is its own independent
+load-modify-save cycle against `SharedPreferences` (DECISIONS D-047's
+documented shape) — with all three racing, every `load()` could grab the
+same pre-round snapshot before any `save()` landed, and whichever
+`save()` finished *last* would write back **all** fields from its own
+snapshot, silently reverting the other two to their stale, pre-round
+values. `addLifetimeKills` being called last made it the most likely of
+the three to win that race, which is exactly the reported symptom (kills
+persisted, coins/gems didn't). Fixed by moving the three calls into a new
+`_persistRoundRewards()` and awaiting them there *sequentially* — still
+fire-and-forget from `_endRound`'s own side (one `unawaited(...)` around
+the whole helper, nothing on screen blocks on it), but each `addX` now
+starts from the state the previous one actually saved, so there's no
+window for one to overwrite another. `addCoins`/`addGems`/
+`addLifetimeKills` themselves are unchanged — same three symmetric
+methods NEXT.md documents as the pattern for a future 4th persistent
+counter; the bug was purely in how the caller invoked them, not in the
+methods themselves.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 122/122
+(unchanged — round-end persistence isn't exercised by the test suite,
+`GameWidget` can't run under `flutter test`, CLAUDE.md §11). `flutter
+build apk --debug` succeeds. On-device verification is the developer's
+to run: finish a round with nonzero coins, gems, and kills, back out to
+Character Select, and confirm all three wallet numbers (not just kills)
+reflect the round's haul.
+
+---
+
+## D-090 — External build-time tuning config: `assets/config/game_config.json`
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer: "Create a configuration file with parameters that
+get read by the game first time we open it, and when we build or create
+an apk build with that configuration so that I can easily influence the
+game economy/things, AI spawn/AI damage, Character, etc etc etc. Make
+sure starting sound levels is also there." Asked which categories to
+cover before touching anything, since "etc etc etc" spans most of
+CLAUDE.md §4.3's hardcoded `core/` numbers — developer confirmed all 4
+offered: Economy, Enemy AI, Character balance, Progression/leveling, plus
+starting audio levels named explicitly in the follow-up.
+
+**Decision:** New `core/game_config.dart`'s `GameConfig` — a process-wide
+singleton (same shape as `BgmController`/`SfxPlayer`) that reads and
+parses `assets/config/game_config.json` once, in `main()`, *before*
+`runApp` — required because `kCharacters`, `EnemyStats`/`BossStats`, the
+XP curve, and `Settings.defaults` are all read synchronously by the very
+first frame (no `FutureBuilder`, no loading state anywhere downstream), so
+the config has to already be populated by then rather than racing the UI
+to load. Every getter has a hardcoded fallback matching the file's own
+shipped defaults, and [load] never throws past its own `try`/`catch` — a
+missing file, a missing section/key (a partial edit), or a malformed file
+all silently degrade to "identical to what this project already shipped
+with," never a crash. This is a *build-time* file, not a live settings
+screen: it's read once per app launch straight out of the installed APK,
+so a change requires an actual rebuild (`rebuildinstall.bat`/`flutter
+build apk`) to take effect — exactly what was asked for ("when we build
+or create an apk build with that configuration").
+
+Wired into a **curated subset** of the existing `core/` constants, chosen
+to be genuinely useful tuning knobs without touching every one of the
+~150 numbers across `stats.dart`/`game_rules.dart`/`progression.dart`/
+`economy.dart`/`data/characters.dart` (deliberately not attempted this
+pass — see below):
+- **Economy:** `coinValueMultiplier` and `gemDropChanceBonus` (applied at
+  `ArenaGame._rollCoins`/`onEnemyKilled`, the same axis Corruption/
+  Fortune/SHOP's own multipliers already use — `kCoinValueByRarity`/
+  `kGemBaseDropChance`/`kRarityWeights` themselves are untouched, so
+  `economy_test.dart`'s direct assertions on those exact numbers still
+  hold), plus `bossCoinMultiplier` (was `economy.dart`'s own `const`).
+- **Enemy AI:** `Spawner`'s starting/min spawn interval, decay factor, and
+  max live enemies; `EnemyStats.maxHp`/`moveSpeedPxPerS`/`contactDamage`;
+  `BossStats.maxHp`/`contactDamage`/`boltDamage`;
+  `game_rules.dart`'s `kEnemyScalePerLevel` (per-level toughness ramp,
+  D-026) and `kEliteChance` (D-035).
+- **Character balance:** each `CharacterDef`'s base STR/VIT/DEX/INT
+  (`data/characters.dart`) — id/name/descriptor/sprite/attack-kit/unlock-
+  threshold stay plain literals, only the 4 base stats per character are
+  config-editable this pass.
+- **Progression:** `kXpPerKill`, `kBaseXpToNextLevel`, `kXpGrowthFactor`
+  (`kBossXpReward` derives from `kXpPerKill` same as before).
+- **Starting audio:** `Settings.defaults.sfxVolume`/`musicVolume` — only
+  matters for a fresh install; once a player touches a slider,
+  `SettingsRepository`'s saved value takes over same as always.
+
+Mechanically, every touched `const` became a `get` getter reading
+`GameConfig.instance` (`kCharacters` became a getter function returning a
+fresh `List<CharacterDef>`, since its `StatBlock`s are no longer
+compile-time constants) — checked every existing call site and test
+first for any reliance on compile-time constancy (a `const` context, a
+`switch` case, etc.); none exist, so this is purely a "same bare-
+identifier read, now backed by a getter instead of a literal" swap with
+zero call-site changes needed anywhere outside the ~7 files above.
+
+**What's deliberately NOT in this pass** (keeps the diff reviewable,
+matches CLAUDE.md §6 "ask before scope"): the deeper skill-tier tables
+(Aura/Mirror/Ray/Thunder/Defence Crystal's per-stack amounts), SHOP item
+prices/effects, the exact `kRarityWeights`/`kCoinValueByRarity`/
+`kPotionHealByRarity` tables (multiplied via the economy knobs above
+instead of replaced), boss timing (teleport cooldown/delay, fire burst
+count), and every `StatBlock`-derived combat formula's own coefficients
+(`maxHp = 50 + vit*10`, etc.) — those stay hardcoded `core/` constants for
+now. `GameConfig.characterStat`'s 3-argument shape (id, stat key,
+fallback) generalizes cleanly to more character fields later without a
+new mechanism, same as every other documented NEXT.md extension point.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 124/124 (+2 new
+in `test/core/game_config_test.dart` — one asserts every getter matches
+the real shipped JSON file end-to-end through `TestWidgetsFlutterBinding`'s
+real asset bundle, not just the in-code fallback; one covers an unknown
+character/stat key falling back to the caller's given default). Verified
+the wiring is real, not just compiling: bumped `enemyMaxHp` to a sentinel
+`999` in the shipped JSON, re-ran the new test (failed exactly as
+expected, `Expected: <20> Actual: <999.0>`), then restored it — confirms
+an edited config value actually reaches a `core/` getter through the full
+load→parse→override chain. `flutter build apk --debug` succeeds, and the
+built APK was inspected directly (`unzip -l`) to confirm
+`assets/config/game_config.json` is genuinely bundled at the path
+`rootBundle` reads. On-device verification is the developer's to run:
+edit a value in `assets/config/game_config.json` (e.g. `enemyMaxHp` or
+`startingMusicVolume`), rebuild+install, and confirm the change is
+actually felt in a round (or on the Settings screen, for the audio
+sliders' starting position on a fresh install / after `adb shell pm clear
+com.awwwi.arena`).
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

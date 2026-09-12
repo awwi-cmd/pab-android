@@ -128,7 +128,39 @@ the LevelUp screen's exclusive-skill accent is a warm amber
 3-slide tutorial (`TutorialScreen`, built from real game assets) now
 auto-opens on a fresh save and is reachable any time from a new circular
 "?" button on the main menu, on-device verification pending** — see
-D-082/D-083/D-084. This is real, ongoing post-demo work
+D-082/D-083/D-084. **Round Over's 3 currency counters are size/color-
+matched, Character Select's wallet row now aligns each currency above the
+button it actually spends on, and explosion/player-death SFX are migrated
+off the old unpooled `FlameAudio.play` path onto the shared `SfxPlayer`
+pool (a real leak/crash-class bug found during an audio-correctness
+checkup, not originally scoped), on-device verification pending** — see
+D-085. **BGM now pauses when the app is minimized/backgrounded and
+resumes from where it left off when foregrounded (`ArenaApp` gained a
+`WidgetsBindingObserver`, `BgmController` gained `pause`/`resume`),
+on-device verification pending** — see D-086. **A second audio checkup
+found and fixed one more real bug — `BgmController.start()` raced its own
+new `pause()`/`resume()`, so minimizing the app within the first second
+of a cold launch could still leave BGM playing in the background —
+everything else re-checked came back clean, on-device verification
+pending** — see D-087. **Root-caused the actual reason SFX was silent
+on-device despite the sliders being right: `AudioPool` was never handed
+`FlameAudio.audioCache`, so every pooled sound's load path was double-
+prefixed (`assets/assets/audio/...`) and failed every time, permanently,
+for all 9 pooled sounds at once (tap/damage/projectile-shoot/level-up/
+footsteps/chest-card-chosen/explosion/death) — fixed, on-device
+verification pending** — see D-088. **Fixed a real race that could drop
+a round's coin/gem haul from the persistent wallet (kills always
+persisted, coins/gems sometimes didn't) — 3 round-over credit writes were
+firing concurrently instead of sequentially, so whichever landed last
+could clobber the other two back to their pre-round values, on-device
+verification pending** — see D-089. **A developer-editable, build-time
+tuning file (`assets/config/game_config.json`, read once at boot before
+`runApp`) now overrides a curated set of economy/enemy-AI/character-
+balance/progression/starting-audio numbers — edit the file, rebuild the
+APK, see it in-game; a missing/malformed file falls back to today's exact
+shipped values, never a crash — on-device verification pending** — see
+D-090. This is real, ongoing
+post-demo work
 now, not speculative scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
@@ -192,7 +224,7 @@ batch files. Always `set FLUTTER=C:\src\flutter\bin\flutter.bat`.
 
 ## 3. Repository layout
 
-Kept current as of Phase 34 (2026-09-12) — update this tree when you add a
+Kept current as of Phase 36 (2026-09-12) — update this tree when you add a
 file that will confuse the next person if it's missing here, same discipline
 as `TASKS.md`.
 
@@ -224,28 +256,31 @@ ArenaDemo/                    <- repo root, open this in your editor
     │   │   ├── bg/                     // splash_bg.png — native launch screen + main menu background — D-082
     │   │   ├── cards/                  // real 52-card deck + 2 Jokers + backs, chest reveal draw (D-057)
     │   │   └── scenes/                // floor tile variants + border tile (D-023)
-    │   └── audio/
-    │       └── core/                  // sfx-explosion.wav, sfx-you-died.wav (D-044); 1-4.wav delivered as layered BGM tracks (D-062), unwired since D-064's revert; electric-eel-fishing.ogg is the wired BGM track as of D-073 (2.wav now also unwired)
+    │   ├── audio/
+    │   │   └── core/                  // sfx-explosion.wav, sfx-you-died.wav (D-044); 1-4.wav delivered as layered BGM tracks (D-062), unwired since D-064's revert; electric-eel-fishing.ogg is the wired BGM track as of D-073 (2.wav now also unwired)
+    │   └── config/
+    │       └── game_config.json       // developer-editable build-time tuning knobs (D-090) -- economy/enemy-AI/character/progression/starting-audio
     └── lib/
-        ├── main.dart              // runApp only
+        ├── main.dart              // awaits GameConfig.instance.load() before runApp (D-090)
         ├── app.dart               // MaterialApp, routes, theme; starts BgmController once (D-062); seeds+preloads SfxPlayer at boot too (D-076/D-079); ThemeData.fontFamily = PixelFont (D-077), MediaQuery textScaler 0.75 (D-080)
         ├── core/
         │   ├── constants.dart     // design size, colors (ArenaColors.warning is the warm-amber exclusive-skill accent, D-083), layer priorities, render scales
-        │   ├── stats.dart         // StatBlock + ALL derived-stat formulas, EnemyStats
-        │   ├── settings.dart      // Settings model + SharedPreferences I/O
+        │   ├── game_config.dart   // GameConfig singleton -- parses assets/config/game_config.json once at boot, typed getters with hardcoded fallbacks (D-090)
+        │   ├── stats.dart         // StatBlock + ALL derived-stat formulas, EnemyStats (maxHp/moveSpeedPxPerS/contactDamage GameConfig-backed, D-090)
+        │   ├── settings.dart      // Settings model + SharedPreferences I/O (Settings.defaults.sfxVolume/musicVolume GameConfig-backed, D-090)
         │   ├── bgm_controller.dart // app-wide singleton: single base-layer BGM — D-062, layering reverted by D-064, track swapped to electric-eel-fishing.ogg by D-073, FlameAudio.loopLongAudio (MediaPlayer, static-free) by D-075
         │   ├── game_rules.dart    // pure gameplay math (targeting, spawn decay, knockback,
         │   │                      //   enemy/boss level-scaling D-026/D-042, randomPerimeterPoint D-041,
         │   │                      //   Corruption/Haste/Fortune/Resolve/Magnet/Luck/Regen/Crit dials D-047/D-067/D-069,
-        │   │                      //   rollIsElite's chanceMultiplier D-070)
-        │   ├── progression.dart   // XP curve, UpgradeKind (Aura + Mirror/Ray/Thunder/Crystal), PlayerUpgrades — D-025/D-027/D-049; kExclusiveUpgradeGroups is 3 overlapping pairs (not one 4-way clique), exclusiveLockTargets — D-072/D-078
-        │   ├── economy.dart       // ItemRarity + gem/coin/potion value tables; kChestDeck/rollChestCard (54-card chest reward) — D-043/D-057
+        │   │                      //   rollIsElite's chanceMultiplier D-070; kEnemyScalePerLevel/kEliteChance GameConfig-backed, D-090)
+        │   ├── progression.dart   // XP curve, UpgradeKind (Aura + Mirror/Ray/Thunder/Crystal), PlayerUpgrades — D-025/D-027/D-049; kExclusiveUpgradeGroups is 3 overlapping pairs (not one 4-way clique), exclusiveLockTargets — D-072/D-078; kXpPerKill/kBaseXpToNextLevel/kXpGrowthFactor GameConfig-backed, D-090
+        │   ├── economy.dart       // ItemRarity + gem/coin/potion value tables; kChestDeck/rollChestCard (54-card chest reward) — D-043/D-057; kBossCoinMultiplier GameConfig-backed, coinValueMultiplier/gemDropChanceBonus applied at ArenaGame's roll sites, D-090
         │   ├── shop.dart          // ShopItemId/ShopItem/kShopPages (3 pages of 5) + derived kShopItems — 15 gem-priced permanent one-time SHOP purchases — D-069/D-070
         │   ├── sfx_player.dart    // app-wide singleton: every one-shot SFX except explosion/death (footsteps, damage, tap, projectile-shoot, level-up, chest-card select/chosen) — D-076; pooled via AudioPool (fixed a real resource leak) — D-079; PlayerMode.lowLatency + drop-not-queue guards (fixed a real crash, root-caused via logcat) — D-081
         │   ├── meta_progression.dart // MetaStat (STR/VIT/DEX/INT/CORRUPTION [displayed "CHAOS", D-071]/HASTE/FORTUNE/RESOLVE/MAGNET/LUCK/REGEN/CRIT), coins+gems+lifetimeKills+ownedItemIds wallet; debugAdjustCoins/debugAdjustGems/debugResetWallet — D-047/D-055/D-059/D-067/D-069
         │   └── tutorial_state.dart // one persisted bool (hasSeenIntro) gating the D-084 first-boot tutorial
         ├── data/
-        │   └── characters.dart    // CharacterDef list; unlockKillThreshold gates slots 2-4 — D-028/D-055
+        │   └── characters.dart    // CharacterDef list; unlockKillThreshold gates slots 2-4 — D-028/D-055; kCharacters is a getter, base STR/VIT/DEX/INT GameConfig-backed, D-090
         ├── ui/
         │   ├── screens/
         │   │   ├── main_menu_screen.dart      // Stateful: auto-pushes TutorialScreen on a fresh save, splash_bg.png as full-bleed background (title art baked in, own Text('ARENA') removed), circular "?" button — D-082/D-084
@@ -272,7 +307,7 @@ ArenaDemo/                    <- repo root, open this in your editor
             │   ├── knife_projectile.dart    // Bruiser kit: pierces, clean->bloody sprite swap; despawn margin — D-029/D-061
             │   ├── spiral_fire_projectile.dart // Skirmisher kit: orbiting yin-yang pair; despawn margin — D-034/D-061
             │   ├── tracking_effect.dart      // VFX glued to a moving target, optional fade-out — D-034/D-035/D-036
-            │   ├── spawner.dart              // camera-relative spawn ring + straggler culling — D-041
+            │   ├── spawner.dart              // camera-relative spawn ring + straggler culling — D-041; starting/min interval, decay factor, max live enemies GameConfig-backed, D-090
             │   ├── gem.dart                  // world pickup, float bob, self-collects near the player — D-043/D-059; pickup radius widened by MAGNET — D-069
             │   ├── potion.dart               // world pickup + float bob, heals on touch — D-043/D-059; pickup radius widened by MAGNET — D-069
             │   ├── potion_spawner.dart       // periodic random-area drop — D-043
