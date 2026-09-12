@@ -1,17 +1,26 @@
-# ARENA
+# Pixel Arena Brawl (PAB)
 
 A top-down survival game for Android, built in **Flutter + Flame**. Pick a
 character, drop into an open world, and survive — your character
 auto-attacks the nearest enemy while you focus entirely on movement and
 positioning.
 
-> Started as a small fixed-arena demo (see [`PRD.md`](PRD.md)). That demo
-> shipped 2026-09-07 and is now well behind where the project actually is —
-> it's grown into a full roaming-world survival game with bosses, loot,
-> persistent progression, and four distinct playable kits. See
-> [`TASKS.md`](TASKS.md) for the phase-by-phase build log and
-> [`DECISIONS.md`](DECISIONS.md) for the reasoning behind every non-obvious
-> call along the way.
+> **Alpha 1.0.0.** Started as a small fixed-arena demo (see
+> [`PRD.md`](PRD.md), now a frozen historical record). It's since grown
+> into a full roaming-world survival game with bosses, a loot economy,
+> persistent meta-progression, achievements, four distinct playable kits,
+> and a full audio layer. See [`TASKS.md`](TASKS.md) for what's built and
+> what's still open, and [`DECISIONS.md`](DECISIONS.md) for the reasoning
+> behind every non-obvious call. Pre-alpha build history (the first ~90
+> decisions and 37 phases) is archived in full under
+> [`docs/archive/`](docs/archive/).
+
+## Download
+
+Grab the latest APK from [Releases](../../releases) and sideload it onto
+an Android device (min SDK 24). This is an alpha build — expect rough
+edges, and see `TASKS.md`'s Alpha verification checklist for what's known
+to still need an on-device pass.
 
 ---
 
@@ -25,10 +34,10 @@ positioning.
 - **A round ends on death.** Survive as long as you can, level up mid-run,
   bank whatever you earned, and go again.
 - **Two progression layers stack on top of each other:**
-  - *In-round:* kill enemies → gain XP (a bottom XP bar tracks the climb
-    to the next level, mirroring the HP bar up top) → level up → pick 1 of
-    3 random upgrades (stat boosts or a real skill — an aura, orbiting
-    mirrors, a piercing ray, a chain-lightning burst, a defensive
+  - *In-round:* kill enemies → gain XP (a yellow XP bar sits right under
+    the red HP bar, both full-width at the top of the screen) → level up
+    → pick 1 of 3 random upgrades (stat boosts or a real skill — an aura,
+    orbiting mirrors, a piercing ray, a chain-lightning burst, a defensive
     crystal). 4 of those skills are paired into mutually-exclusive
     rivalries (pick one, its paired rival is off the table for the rest of
     the round) — real build identity instead of collecting everything. All
@@ -41,6 +50,11 @@ positioning.
     separately gate which of the four characters are unlocked. Corruption
     is the odd one out among the dials — it's a difficulty/reward knob, not
     a stat: tougher, faster enemies in exchange for bigger drops.
+- **20 achievements** track lifetime stats — kills, boss kills, gems/coins/
+  potions/chests, best level reached, longest survival — and pay coin or
+  gem rewards straight into the persistent wallet the instant a threshold
+  is crossed, no claim button needed. Reachable from the main menu's
+  ACHIEVEMENTS button.
 
 ## The four characters
 
@@ -61,43 +75,44 @@ The Bruiser, Skirmisher, and Warden unlock as lifetime kill totals climb
 - **A boss** telegraphs and teleports around the arena (on a cooldown, so
   it can't chain-teleport back to back), adding a real fight on top of the
   trash-mob stream — and always drops a chest on death.
-- **A loot economy** — enemies and chests drop gems/coins/potions; chests
-  play out a real card-draw reveal (a full 52-card + jokers deck) before
-  paying out, with its own landing sparkle burst.
+- **A loot economy** — enemies, potions, and chests drop with their own
+  pickup sound cue; chests play out a real card-draw reveal (a full
+  52-card + jokers deck) before paying out, with its own landing sparkle
+  burst.
 - **A shop and an upgrades screen**, reachable from character select — 15
   real gem-priced permanent items in SHOP, 12 coin-priced leveled dials
   across 3 pages in UPGRADES, both spending the same persistent wallet the
   HUD shows.
-- **A real sound layer** — footsteps, hits, level-ups, shots, and a tap on
-  every button, plus background music, all pooled/latency-tuned to survive
-  a long, sound-heavy round without desyncing or crashing.
+- **A real sound layer** — footsteps, hits, level-ups, shots, pickups, and
+  a tap on every button, plus background music that pauses when the app
+  is backgrounded and resumes where it left off — all pooled and
+  latency-tuned to survive a long, sound-heavy round without desyncing.
 - **A first-time tutorial** — 3 slides built from the game's own real
   assets, shown once on a fresh save and reachable any time from a "?"
   button on the main menu.
 - **Three control schemes** (floating joystick, fixed joystick, drag
   anywhere), each switchable from Settings.
+- **A developer-editable tuning file**
+  (`arena/assets/config/game_config.json`) overrides a curated set of
+  economy/enemy-AI/character-balance/progression/starting-audio numbers at
+  build time — no source edit needed for a balance pass.
 
 ## What's still rough
 
-- The demo's original scope (`PRD.md` §9) is long since exceeded, but a
-  few things are still deliberately unbuilt: no object pooling yet (not
-  needed until a perf check says otherwise), no real enemy-type variety
-  (three cosmetic skins share one stat profile). See [`NEXT.md`](NEXT.md)
-  for the current extension points and open rough edges in detail.
-- Several recent phases are built but not yet verified on a real device —
-  `TASKS.md` marks exactly which checklist items are still open.
-- Currency-HUD polish is queued next: the gem icon isn't size/position
-  matched against the coin and kill counters on Round Over, the coin
-  count's color doesn't match the gem count's, and Character Select's
-  wallet row isn't aligned with the SHOP/UPGRADES buttons it actually
-  spends on. See `TASKS.md` Phase 35.
+This is an alpha. A few things are still deliberately unbuilt — no object
+pooling yet (not needed until a perf check says otherwise), no real
+enemy-type variety (three cosmetic skins share one stat profile), no
+enemy separation/steering. See [`NEXT.md`](NEXT.md) for the current
+extension points and open rough edges in detail, and `TASKS.md`'s
+Backlog for the full still-open list. `TASKS.md`'s Alpha verification
+checklist tracks what's built but not yet confirmed on a real device.
 
 ---
 
 ## Tech stack
 
 - **Flutter** for every menu, screen, and route (main menu, settings,
-  character select, shop/upgrades).
+  character select, shop/upgrades, achievements).
 - **[Flame](https://flame-engine.org/)** for the arena itself — a single
   `GameWidget` hosting all gameplay (camera, world, entities, combat).
   Round-over/level-up/pause/chest-reveal are Flame overlays, not routes, so
@@ -112,16 +127,18 @@ The Bruiser, Skirmisher, and Warden unlock as lifetime kill totals climb
 ## Project layout
 
 ```
-├── PRD.md          — what the original demo was (frozen, historical)
+├── PRD.md           — what the original demo was (frozen, historical)
 ├── TASKS.md         — the phase-by-phase build checklist, kept current
 ├── DECISIONS.md     — why things are the way they are, one entry per call
 ├── NEXT.md          — extension points & open edges for whoever builds next
 ├── CLAUDE.md        — the working agreement / architecture rules for this repo
+├── docs/archive/    — full pre-alpha history of the 4 files above
 └── arena/           — the Flutter project
     ├── lib/
     │   ├── core/     — pure gameplay math & data: stats, progression, the
-    │   │               economy, meta-progression, settings — no Flame
-    │   │               dependency, so this is the part with real unit tests
+    │   │               economy, achievements, meta-progression, settings,
+    │   │               the tuning config — no Flame dependency, so this is
+    │   │               the part with real unit tests
     │   ├── data/     — CharacterDef roster
     │   ├── game/     — the Flame side: ArenaGame, components, attacks,
     │   │               spawning, animations, input
@@ -148,6 +165,7 @@ Or, for faster iteration from inside `arena/`:
 C:\src\flutter\bin\flutter.bat run       # hot-reload session
 C:\src\flutter\bin\flutter.bat analyze   # static analysis
 C:\src\flutter\bin\flutter.bat test      # unit tests
+C:\src\flutter\bin\flutter.bat build apk --release   # release APK (debug-signed for now)
 ```
 
 See `CLAUDE.md` for the full environment setup and the architecture rules

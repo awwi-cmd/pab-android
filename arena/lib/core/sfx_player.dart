@@ -215,6 +215,20 @@ class SfxPlayer {
   /// when the spin actually stops on the real card.
   void playChestCardChosen() => _playPooled('core/chest-card-chosen.wav');
 
+  /// A gem/potion pickup, or the instant a chest is triggered (DECISIONS
+  /// D-091, "add sfx for when you pickup gems/potions/chests") — reuses
+  /// the tap click (`core/sfx_tap_input.ogg`) rather than a dedicated
+  /// asset, since no pickup-specific sound file exists in this project yet;
+  /// a louder [_pickupRelativeVolume] than [playTap]'s own keeps it reading
+  /// as a distinct "you got something" cue during gameplay rather than an
+  /// echo of a menu tap. Swap in a real asset later by adding it to
+  /// `_pooledFiles` and changing the one file path here — nothing else
+  /// needs to change (`collectGem`/`collectPotion`/`ChestComponent.
+  /// _startOpening` all call this same method).
+  static const _pickupRelativeVolume = 0.85;
+  void playPickup() =>
+      _playPooled('core/sfx_tap_input.ogg', relativeVolume: _pickupRelativeVolume);
+
   /// `ArenaGame.spawnExplosionEffect` (DECISIONS D-044) — every explosion
   /// VFX beat: boss death, a chest opening, a Skirmisher spiral-fire kill.
   /// Migrated off `ArenaGame`'s own unpooled `FlameAudio.play` (this file's

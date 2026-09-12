@@ -6,6 +6,7 @@ import 'package:flame/components.dart';
 import '../../core/constants.dart';
 import '../../core/economy.dart';
 import '../../core/game_rules.dart';
+import '../../core/sfx_player.dart';
 import '../arena_game.dart';
 
 /// A world chest (DECISIONS D-055) — sits closed
@@ -69,6 +70,7 @@ class ChestComponent extends SpriteAnimationComponent
 
   void _startOpening() {
     _opening = true;
+    SfxPlayer.instance.playPickup(); // DECISIONS D-091 -- the touch itself, distinct from the explosion beat below
     // DECISIONS D-071: sized relative to this chest's own rendered width
     // ("smaller a bit than the chest"), not the flat, much-bigger
     // kAnimaWidthPx every other anima flourish shares -- plus a reduced

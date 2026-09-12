@@ -28,7 +28,23 @@ class ArenaColors {
   static const textPrimary = Color(0xFFEDEFF7);
   static const textDim = Color(0xFF8B90A6);
   static const locked = Color(0xFF3A3E4E);
+
+  /// The XP bar's fill (DECISIONS D-091, "make xp bar yellow") — HP reuses
+  /// [danger] (already read as "red" everywhere else it's used) rather than
+  /// a second near-duplicate color.
+  static const xp = Color(0xFFF2C94C);
 }
+
+/// HUD bar layout (DECISIONS D-091) — HP and XP now both sit at the top of
+/// the screen, stacked, spanning its full width (was: a small fixed-size HP
+/// box top-left, a small fixed-size XP box bottom-left). Shared here so
+/// `HpBarComponent`/`XpBarComponent` can't drift out of alignment with each
+/// other — both read the same margin/height/gap rather than each picking
+/// their own.
+const double kHudBarSideMarginPx = 24;
+const double kHudBarTopMarginPx = 24;
+const double kHudBarHeightPx = 14;
+const double kHudBarGapPx = 6;
 
 /// Characters are authored at 16×24 px (DECISIONS D-015, superseding
 /// D-011's assumed 32×32). This is the integer scale they render at on the
