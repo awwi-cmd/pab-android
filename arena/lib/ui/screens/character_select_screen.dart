@@ -159,32 +159,54 @@ class _WalletRow extends StatelessWidget {
   final int coins;
   final int gems;
 
+  // TASKS 35.3: gems buy SHOP items and coins buy UPGRADES levels, so each
+  // currency now centers directly above the button it actually spends on
+  // (mirroring the SHOP/UPGRADES `Row` right below, same `Expanded` split
+  // and the same 12px gap) instead of floating as one centered group above
+  // both buttons regardless of which currency spends where.
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const CoinIcon(size: 28),
-        const SizedBox(width: 8),
-        Text(
-          '$coins',
-          style: const TextStyle(
-            color: ArenaColors.accent,
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
+        Expanded(
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // DECISIONS D-069: the real gem asset (legendary tier), not
+                // the star-full.png placeholder this used to borrow.
+                const GemIcon(size: 24),
+                const SizedBox(width: 6),
+                Text(
+                  '$gems',
+                  style: const TextStyle(
+                    color: ArenaColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        const SizedBox(width: 20),
-        // DECISIONS D-069: the real gem asset (legendary tier), not the
-        // star-full.png placeholder this used to borrow.
-        const GemIcon(size: 24),
-        const SizedBox(width: 6),
-        Text(
-          '$gems',
-          style: const TextStyle(
-            color: ArenaColors.textPrimary,
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
+        const SizedBox(width: 12),
+        Expanded(
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CoinIcon(size: 28),
+                const SizedBox(width: 8),
+                Text(
+                  '$coins',
+                  style: const TextStyle(
+                    color: ArenaColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ],

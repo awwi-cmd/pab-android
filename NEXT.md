@@ -282,6 +282,32 @@ verify (an animation looking right, a touch gesture feeling right — no,
 don't fight that), or is it actually just math wearing a component's
 clothing (yes — pull it into `game_rules.dart`)?
 
+**Adding a new build-time tuning knob, the `GameConfig` shape (D-090).**
+`core/game_config.dart`'s `GameConfig` is a curated overlay on top of
+select `core/` constants, not a replacement for CLAUDE.md §4.3 — most
+combat numbers still live as plain `const`s in `stats.dart`/
+`game_rules.dart`/`progression.dart`/`economy.dart`, and should keep being
+added there first. Promote one to config-editable only when there's an
+actual reason a developer would want to change it without touching code
+(a balance pass, a build flavor). The shape to copy: add a typed getter to
+`GameConfig` with a fallback matching the constant's current value, add
+the same key/section to `assets/config/game_config.json` (so the shipped
+file documents every knob that exists), then change the *one* place that
+number is actually declared from `const` to `get` (`double get kFoo =>
+GameConfig.instance.foo;`) — every existing call site keeps reading the
+same bare identifier, zero other files need touching (verified for the
+whole first batch: no call site anywhere in this codebase relies on
+compile-time constancy for these). Whole maps
+(`kCoinValueByRarity`/`kRarityWeights`/`kPotionHealByRarity`) were
+deliberately left alone rather than made config-editable field-by-field —
+existing tests assert their exact values directly, and a multiplier
+applied at the one real consuming call site (`ArenaGame._rollCoins`) gets
+the same practical tuning power without touching the table or the tests
+that pin it. Add `GameConfig` test coverage for a new knob the same way
+`test/core/game_config_test.dart` does: assert against the real shipped
+JSON (not a mock), so a typo'd key name in the file itself gets caught,
+not just a typo in the Dart getter.
+
 ## Smaller things worth knowing
 
 - `AttackBehavior` types are `const`-constructible and stateless on

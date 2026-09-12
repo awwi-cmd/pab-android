@@ -1617,26 +1617,154 @@ once, and anyone can reopen it from the main menu.
 
 ---
 
-## Phase 35 — Currency HUD polish (queued, highest priority — not started)
+## Phase 35 — Currency HUD polish (built, on-device verification pending)
 *Goal: 3 currency-display bugs the developer flagged as the next thing to
 pick up, reported together but not yet implemented.*
 
-- [ ] **35.1 (highest prio)** Round Over's gem icon (`_GemCounter`,
-      `arena_screen.dart`) isn't vertically centered against the coin icon/
-      kill star on that screen, and reads as a different size than them —
-      align and size-match all 3 currency counters (`_CoinCounter`/
-      `_GemCounter`/`_KillCounter`).
-- [ ] **35.2** Coin count text color — currently `ArenaColors.accent`
-      (green/teal) — should match the gem count's color (near-white/
-      `ArenaColors.textPrimary`) instead, on Character Select *and*
-      everywhere else a coin count renders (Upgrades' wallet row, Round
-      Over's `_CoinCounter`, Settings' debug currency readout).
-- [ ] **35.3** Character Select: swap the wallet row's currency-to-button
-      alignment — the coin count should sit centered above the UPGRADES
-      button (coins buy upgrade levels), the gem count centered above the
-      SHOP button (gems buy shop items), rather than both currencies
-      floating as one centered group above both buttons regardless of
-      which spends which.
+- [x] **35.1 (highest prio)** Round Over's `_CoinCounter` icon size-matched
+      down to 40 (was 48) to read the same size as `_GemCounter`'s
+      `GemIcon`/`_KillCounter`'s star (both already 40) — all 3 now render
+      identically sized, vertically centered the same way (each already sat
+      in an identical `SizedBox(height: 64)` + centered `Row`, so matching
+      the icon size was the actual fix).
+- [x] **35.2** Coin count text recolored `ArenaColors.accent` →
+      `ArenaColors.textPrimary` (matching the gem count) in all 3 places
+      that had it wrong: Character Select's `_WalletRow`, Upgrades'
+      `_WalletRow`, Round Over's `_CoinCounter`. Settings' debug currency
+      readout (`'Coins: $x   Gems: $y'`) was already one `textPrimary`
+      string, not colored per-currency — nothing to change there.
+- [x] **35.3** Character Select's `_WalletRow` rebuilt from one centered
+      `Row` into two `Expanded` halves mirroring the SHOP/UPGRADES button
+      `Row` right below it (same split, same 12px gap) — gems now center
+      above SHOP (left), coins above UPGRADES (right), matching which
+      currency actually spends on which screen.
+- [x] **35.4 (found during the audio checkup requested alongside this
+      phase, not originally scoped — see DECISIONS D-085)**
+      `ArenaGame._playSfx` (explosion + player-death SFX) was
+      still on the pre-D-079 unpooled `FlameAudio.play` path — migrated onto
+      `SfxPlayer`'s pooled playback (`playExplosion`/`playPlayerDeath`),
+      `_playSfx` deleted, unused `flame_audio` import removed from
+      `arena_game.dart`.
+- [x] **35.5** `flutter analyze` clean, `flutter test` 122/122 (unchanged —
+      HUD layout/color and SFX playback plumbing, not gameplay logic;
+      CLAUDE.md §11), `flutter build apk --debug` succeeds.
+- [x] **35.6 (reported alongside this phase, not originally scoped — see
+      DECISIONS D-086)** BGM kept playing when the app was minimized —
+      `ArenaApp` had no app-lifecycle wiring at all. `_ArenaAppState` now
+      mixes in `WidgetsBindingObserver`; `BgmController` gained
+      `pause()`/`resume()`, called on `AppLifecycleState.paused`/`hidden`
+      and `.resumed` respectively (`inactive` deliberately left alone —
+      transient foreground interruptions like a permission dialog
+      shouldn't cut the music).
+- [ ] **35.7** On-device verification — **developer**: Round Over's 3
+      currency rows (coins/gems/kills) read as one consistent set —
+      same icon size, same vertical alignment, coin count no longer green;
+      Character Select's gem count sits above SHOP and coin count above
+      UPGRADES; a Skirmisher round with several spiral-fire kills plus a
+      chest open doesn't reproduce D-079's old symptoms (BGM stopping/
+      restarting, static, desync) under sustained play, and explosion/death
+      SFX still sound and are volume-scaled the same as before; minimizing
+      the app (home button or recent-apps) stops the music, and bringing it
+      back to the foreground resumes it from where it left off, not from
+      the top; also try minimizing within ~1s of a fresh cold launch (D-087's
+      race window) and confirm BGM still doesn't play in the background.
+
+- [x] **35.8 (found during a second audio checkup, not originally scoped —
+      see DECISIONS D-087)** `BgmController.start()` raced `pause()`/
+      `resume()`: minimizing the app in the brief window while `start()`
+      was still preparing the player (right after a cold launch) left
+      BGM playing anyway once `start()` finished. Fixed with a
+      `_pausedByLifecycle` flag `start()` checks once the player exists —
+      lands paused at the real target volume instead of fading in.
+      `flutter analyze` clean, `flutter test` 122/122, `flutter build apk
+      --debug` succeeds. Also re-verified (no bugs found): `AudioPool`'s
+      real pub-cache source matches how `SfxPlayer` uses it, no stray
+      `FlameAudio`/`AudioPlayer` calls anywhere outside `bgm_controller.
+      dart`/`sfx_player.dart`, every pooled SFX asset exists and is
+      declared in `pubspec.yaml`, chest-reveal's shuffle/spin `Timer`s are
+      cancelled on `dispose()`.
+- [x] **35.9 (developer, on-device: "SFX at max, BGM at 0, not hearing
+      footsteps, not hearing projectile when character attacks, etc." —
+      root cause found, see DECISIONS D-088)** Every pooled SFX
+      (`_poolFor`/`AudioPool.create`) was silently, permanently broken:
+      `AudioPool` was never given `audioCache: FlameAudio.audioCache`, so
+      it defaulted to a different cache with the wrong prefix, and the
+      path was *also* pre-prefixed by hand — the two combined into a
+      double-prefixed path that never resolved to a real asset. Every
+      pooled sound (tap/damage/projectile-shoot/level-up/both footstep
+      files/chest-card-chosen/explosion/death — all of D-076/D-085) has
+      been silent since the pooling rewrite in D-079, this whole time.
+      Fixed by passing `audioCache: FlameAudio.audioCache` and dropping
+      the hand-baked prefix from the path, matching the one sound
+      (`playChestCardSelect`) that already did this correctly and was
+      never reported broken. `flutter analyze` clean, `flutter test`
+      122/122, `flutter build apk --debug` succeeds.
+- [x] **35.10 (developer, on-device: "coins and gems are not saved to
+      main wallet, after completing round. Only kills" — see DECISIONS
+      D-089)** `ArenaGame._endRound()` fired the 3 `MetaProgressionRepository.
+      addX` round-over credits concurrently — each is its own
+      load-modify-save cycle, so racing them meant whichever `save()`
+      landed last (usually kills, called last) clobbered the other two
+      fields back to their pre-round values. Fixed by awaiting the three
+      calls sequentially inside a new `_persistRoundRewards()` helper
+      (still fire-and-forget from `_endRound`'s own side). `flutter
+      analyze` clean, `flutter test` 122/122, `flutter build apk --debug`
+      succeeds.
+
+**Exit criterion:** all 3 currency counters on Round Over match visually;
+Character Select's wallet row lines up currency-to-button; explosion/death
+SFX play through the same pooled path every other one-shot already does;
+BGM stops when the app is backgrounded (including right after a cold
+launch) and resumes at the right volume when it's foregrounded; every
+pooled SFX (footsteps, projectile-shoot on attack, tap, damage, level-up,
+chest-card-chosen, explosion, player-death) is actually audible with SFX
+volume up; finishing a round with nonzero coins/gems/kills persists all
+3 into the wallet, not just kills.
+
+---
+
+## Phase 36 — External build-time tuning config (built, on-device verification pending)
+*Goal: a developer-editable JSON file, bundled into the APK at build time,
+that overrides a curated set of economy/AI/character/progression/audio
+numbers without touching Dart source. See DECISIONS D-090.*
+
+- [x] **36.1** New `core/game_config.dart`'s `GameConfig` singleton —
+      reads/parses `assets/config/game_config.json` once via `main()`
+      (before `runApp`, since `kCharacters`/`EnemyStats`/etc. are all read
+      synchronously by the first frame). Every getter falls back to the
+      file's own shipped default on a missing file/section/key/malformed
+      edit — never crashes.
+- [x] **36.2** Wired into: economy (`coinValueMultiplier`,
+      `gemDropChanceBonus`, `bossCoinMultiplier`), enemy AI (spawn
+      starting/min interval, decay factor, max live enemies, grunt HP/
+      speed/contact damage, boss HP/contact damage/bolt damage, per-level
+      scale, elite chance), character balance (all 4 characters' base
+      STR/VIT/DEX/INT), progression (XP per kill, base XP to next level,
+      XP growth factor), and starting audio (SFX/Music volume on a fresh
+      install).
+- [x] **36.3** `flutter analyze` clean, `flutter test` 124/124 (+2 new,
+      `test/core/game_config_test.dart` — one round-trips the real shipped
+      JSON through `TestWidgetsFlutterBinding`'s asset bundle end to end,
+      one covers an unknown character/stat falling back safely).
+      `flutter build apk --debug` succeeds; confirmed the JSON is actually
+      bundled inside the built APK (`unzip -l`) at the path `rootBundle`
+      reads.
+- [x] **36.4** End-to-end wiring sanity check: bumped `enemyMaxHp` to a
+      sentinel `999` in the real shipped file, re-ran the new test (failed
+      exactly as expected — `Expected: <20> Actual: <999.0>`), restored it
+      to the real default. Confirms an edited JSON value genuinely reaches
+      a `core/` getter through the full load→parse→override chain, not
+      just "compiles."
+- [ ] **36.5** On-device verification — **developer**: edit a value in
+      `assets/config/game_config.json` (try `enemyMaxHp` or
+      `startingMusicVolume`), rebuild+install, and confirm the change is
+      actually felt in a round (or on Settings' sliders' starting position
+      on a fresh install / after `adb shell pm clear com.awwwi.arena`).
+
+**Exit criterion:** editing `assets/config/game_config.json` and
+rebuilding the APK measurably changes the named economy/AI/character/
+progression/audio numbers in-game; a missing or reverted file behaves
+identically to today's shipped defaults.
 
 ---
 

@@ -52,6 +52,18 @@ class BgmController {
 
   double _masterVolume = Settings.defaults.musicVolume / 100;
 
+  /// True while the app is backgrounded (DECISIONS D-086) — tracked
+  /// separately from `_basePlayer == null` because [start] is itself async
+  /// and there's a real window (cold launch, then an immediate
+  /// minimize/home-press before `FlameAudio.loopLongAudio` finishes
+  /// preparing) where [pause] can fire while `_basePlayer` is still null,
+  /// see it as a no-op, and then have [start] finish moments later and
+  /// begin playing anyway — same "music kept playing when minimized" bug,
+  /// just from the other direction. [start] checks this flag once the
+  /// player actually exists and pauses immediately instead of fading in if
+  /// it's set.
+  bool _pausedByLifecycle = false;
+
   /// Read once at app boot (`ArenaApp`'s `initState`) before [start] is
   /// ever called, and again live any time the player changes the Music
   /// Volume slider (`SettingsScreen._update`) — a looping BGM, unlike
@@ -66,7 +78,34 @@ class BgmController {
   Future<void> start() async {
     if (_basePlayer != null) return; // already running -- app-lifetime singleton
     _basePlayer = await FlameAudio.loopLongAudio(_basePath, volume: 0);
+    if (_pausedByLifecycle) {
+      // The app was backgrounded while this was still starting up (see
+      // `_pausedByLifecycle`'s doc) -- skip the fade-in cosmetic and land
+      // paused at the real target volume, so a later `resume()` plays at
+      // the right level instead of silently at the 0 this started at.
+      await _basePlayer!.setVolume(_masterVolume);
+      await _basePlayer!.pause();
+      return;
+    }
     unawaited(_fadeVolume(_basePlayer!, _masterVolume));
+  }
+
+  /// Called from `ArenaApp`'s `didChangeAppLifecycleState` when the app is
+  /// backgrounded (minimized, screen locked, task-switched away from) —
+  /// developer report: "music kept playing on device when minimizing the
+  /// game." `audioplayers` doesn't stop on its own when Flutter loses
+  /// visibility (no OS audio-focus handling is wired up), so this has to be
+  /// explicit. `pause()`, not `stop()`, so [resume] picks the track back up
+  /// exactly where it left off rather than restarting it.
+  Future<void> pause() async {
+    _pausedByLifecycle = true;
+    await _basePlayer?.pause();
+  }
+
+  /// The other half of [pause] — called on `AppLifecycleState.resumed`.
+  Future<void> resume() async {
+    _pausedByLifecycle = false;
+    await _basePlayer?.resume();
   }
 
   /// Ramps [player]'s volume from 0 up to [target] over [_fadeDuration].

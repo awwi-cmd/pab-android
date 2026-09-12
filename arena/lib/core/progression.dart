@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'game_config.dart';
+
 /// In-round leveling system (not persisted, resets every round — see
 /// DECISIONS D-025). Kills grant XP directly (no drops); levelling up
 /// pauses the round and offers 3 of these 4 placeholder upgrades. Pure
@@ -7,18 +9,20 @@ import 'dart:math';
 /// (the D-019/D-024 pattern).
 
 /// Flat XP granted per kill. Every enemy grants the same amount regardless
-/// of skin (DECISIONS D-022 — skins are visual only).
-const double kXpPerKill = 10;
+/// of skin (DECISIONS D-022 — skins are visual only). `GameConfig`-backed
+/// (DECISIONS D-090) instead of a raw `const`.
+double get kXpPerKill => GameConfig.instance.xpPerKill;
 
 /// The boss (DECISIONS D-042) is worth a flat multiple of a grunt kill —
 /// it's meant to feel like a real milestone, not just another kill.
-const double kBossXpReward = kXpPerKill * 10;
+double get kBossXpReward => kXpPerKill * 10;
 
 /// XP-to-next-level curve: grows by [kXpGrowthFactor] every level, so
 /// levelling deliberately slows down rather than staying linear
-/// (developer's call: the default pace read as too fast).
-const double kBaseXpToNextLevel = 150;
-const double kXpGrowthFactor = 1.3;
+/// (developer's call: the default pace read as too fast). `GameConfig`-
+/// backed (DECISIONS D-090).
+double get kBaseXpToNextLevel => GameConfig.instance.baseXpToNextLevel;
+double get kXpGrowthFactor => GameConfig.instance.xpGrowthFactor;
 
 /// XP required to go from [level] - 1 to [level].
 double xpThresholdForLevel(int level) {

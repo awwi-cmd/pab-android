@@ -82,6 +82,7 @@ flutter:
     - assets/images/cards/Spades/
     - assets/audio/
     - assets/audio/core/
+    - assets/config/
 
   # DECISIONS D-077 -- the game's main font, used app-wide via app.dart's
   # ThemeData (every Text widget inherits it unless it sets its own

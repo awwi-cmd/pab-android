@@ -1,5 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'game_config.dart';
+
 /// The three control schemes (PRD §7 / DECISIONS D-006). Read once at arena
 /// entry — never live-switched mid-round.
 enum ControlScheme { floatingJoystick, fixedJoystick, dragAnywhere }
@@ -23,11 +25,17 @@ class Settings {
   final int musicVolume; // 0-100
   final bool showFps;
 
-  static const defaults = Settings(
+  /// `sfxVolume`/`musicVolume` are `GameConfig`-backed (DECISIONS D-090) —
+  /// a developer-editable "starting audio level" for a fresh install, read
+  /// from `assets/config/game_config.json`. Only matters until the player
+  /// actually touches a slider themselves — [SettingsRepository.load] only
+  /// falls back to this when nothing's been saved yet. No longer `const`
+  /// for the same reason `kCharacters`/`EnemyStats`/etc. aren't anymore.
+  static Settings get defaults => Settings(
     controlScheme: ControlScheme.floatingJoystick,
     joystickSide: JoystickSide.left,
-    sfxVolume: 70,
-    musicVolume: 50,
+    sfxVolume: GameConfig.instance.startingSfxVolume,
+    musicVolume: GameConfig.instance.startingMusicVolume,
     showFps: false,
   );
 

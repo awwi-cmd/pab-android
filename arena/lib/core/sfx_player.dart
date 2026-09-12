@@ -76,10 +76,14 @@ class SfxPlayer {
   /// same "outlives any one screen" shape `BgmController`'s single player
   /// already has. Built via `AudioPool.create` directly (not `FlameAudio.
   /// createPool`, which doesn't expose `playerMode` at all) so every pool
-  /// explicitly runs `PlayerMode.lowLatency` (DECISIONS D-081) — the plain
-  /// `'assets/audio/$file'` path matches `FlameAudio.audioCache`'s own
-  /// `'assets/audio/'` prefix without needing to depend on that mutable
-  /// global's current value.
+  /// explicitly runs `PlayerMode.lowLatency` (DECISIONS D-081) — and passes
+  /// `audioCache: FlameAudio.audioCache` explicitly (DECISIONS D-088: this
+  /// was missing, `AudioPool` defaults to its own `AudioCache.instance`
+  /// otherwise, prefix `'assets/'` not `'assets/audio/'`, which silently
+  /// broke every pooled sound). [file] is a bare path like
+  /// `'core/sfx_tap_input.ogg'` — `FlameAudio.audioCache`'s own prefix adds
+  /// the `'assets/audio/'` on load, so it must *not* be baked into this
+  /// string too.
   final Map<String, Future<AudioPool>> _pools = {};
 
   /// How long a pooled `lowLatency` player is held before being returned to
@@ -97,8 +101,22 @@ class SfxPlayer {
   }) {
     return _pools.putIfAbsent(
       file,
+      // DECISIONS D-088: `AudioPool.create` was never given an `audioCache`
+      // here, so it silently defaulted to `AudioCache.instance` --
+      // audioplayers' own global cache, prefix `'assets/'` -- instead of
+      // `FlameAudio.audioCache` (prefix `'assets/audio/'`). Combined with
+      // the `'assets/audio/$file'` path already baking that prefix in by
+      // hand, every load doubled it (`assets/assets/audio/...`) and threw;
+      // that failed `Future` got cached forever by `putIfAbsent`, so every
+      // pooled sound silently no-op'd for the rest of the app's life. Fixed
+      // by passing `FlameAudio.audioCache` explicitly and dropping the
+      // hand-baked prefix from the path -- the exact same
+      // audioCache+bare-path shape [_playChestCardSelect] below already
+      // used correctly (which is why that one sound was never reported
+      // broken).
       () => AudioPool.create(
-        source: AssetSource('assets/audio/$file'),
+        source: AssetSource(file),
+        audioCache: FlameAudio.audioCache,
         minPlayers: minPlayers,
         maxPlayers: maxPlayers,
         playerMode: PlayerMode.lowLatency,
@@ -116,6 +134,8 @@ class SfxPlayer {
     'core/step-concrete-one.ogg',
     'core/step-concrete-two.ogg',
     'core/chest-card-chosen.wav',
+    'core/sfx-explosion.wav',
+    'core/sfx-you-died.wav',
   ];
 
   /// Kicks off every pool's creation up front (DECISIONS D-079) — called
@@ -194,6 +214,18 @@ class SfxPlayer {
   /// The chest reveal's landing payoff (`_ChestRevealOverlayState`) — once,
   /// when the spin actually stops on the real card.
   void playChestCardChosen() => _playPooled('core/chest-card-chosen.wav');
+
+  /// `ArenaGame.spawnExplosionEffect` (DECISIONS D-044) — every explosion
+  /// VFX beat: boss death, a chest opening, a Skirmisher spiral-fire kill.
+  /// Migrated off `ArenaGame`'s own unpooled `FlameAudio.play` (this file's
+  /// class doc) onto the shared pool — that old path had the exact leak/
+  /// wrong-`PlayerMode` bug D-079/D-081 fixed for every other one-shot, just
+  /// never carried over to these two.
+  void playExplosion() => _playPooled('core/sfx-explosion.wav');
+
+  /// `ArenaGame.onPlayerDied`'s real-death path (not the debug stand-ins,
+  /// DECISIONS D-044) — same migration as [playExplosion].
+  void playPlayerDeath() => _playPooled('core/sfx-you-died.wav');
 
   /// The chest reveal's per-swap flicker (DECISIONS D-076, developer's
   /// spec verbatim: "play it once with every card swap and change its

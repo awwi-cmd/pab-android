@@ -153,8 +153,10 @@ class _WalletRow extends StatelessWidget {
         const SizedBox(width: 10),
         Text(
           '$coins',
+          // TASKS 35.2: matches the gem count's color everywhere a gem
+          // count renders instead of ArenaColors.accent (green/teal).
           style: const TextStyle(
-            color: ArenaColors.accent,
+            color: ArenaColors.textPrimary,
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),

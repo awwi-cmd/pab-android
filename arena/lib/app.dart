@@ -20,14 +20,43 @@ class ArenaApp extends StatefulWidget {
   State<ArenaApp> createState() => _ArenaAppState();
 }
 
-class _ArenaAppState extends State<ArenaApp> {
+class _ArenaAppState extends State<ArenaApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // DECISIONS D-062: the base BGM layer starts once, here, for the whole
     // app's lifetime -- "2.wav... playing everywhere" (menus and the arena
     // alike), not something any one screen owns.
     _startBgm();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// DECISIONS D-086: "music kept playing on device when minimizing the
+  /// game" -- `paused`/`hidden` are the two states that actually mean "not
+  /// visible anymore" (minimized, task-switched away, screen locked);
+  /// `inactive` is deliberately left alone -- it also fires for transient
+  /// foreground interruptions (a permission dialog, the notification
+  /// shade, an incoming call banner) where cutting the music would be a
+  /// worse experience than leaving it playing through a half-second
+  /// interruption. `resumed` undoes whichever of the two actually fired.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        BgmController.instance.pause();
+      case AppLifecycleState.resumed:
+        BgmController.instance.resume();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
+    }
   }
 
   Future<void> _startBgm() async {
