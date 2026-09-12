@@ -88,6 +88,12 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
   double _teleportDelayTimer = 0;
   final Vector2 _teleportDestination = Vector2.zero();
 
+  /// Counts down from `BossStats.teleportCooldownSec` once a teleport
+  /// begins (DECISIONS D-074) — a new one can't start again until this
+  /// hits 0, even if the player is still (or again) inside
+  /// `teleportTriggerDistancePx`.
+  double _teleportCooldownTimer = 0;
+
   /// The post-arrival size-down-then-up bounce (DECISIONS D-060, "he must
   /// size down and size up where he appears") — `_popScale` dips below 1
   /// then eases back to it over [_teleportPopDurationSec] once
@@ -114,6 +120,10 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
 
     _tickTeleportPop(dt);
     scale.setValues(_facingSign * _popScale, _popScale);
+    // DECISIONS D-074: ticks down regardless of what else is happening this
+    // frame (including mid wind-up) -- the cooldown's clock starts the
+    // instant a teleport begins, not once it finishes.
+    if (_teleportCooldownTimer > 0) _teleportCooldownTimer -= dt;
 
     if (_teleportPending) {
       // Frozen for the whole wind-up -- no walk/fire/contact damage -- a
@@ -134,7 +144,10 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
     // Start the teleport wind-up the instant the player threatens melee
     // (DECISIONS D-042/D-060) -- checked before anything else this frame,
     // so it pre-empts both contact damage and the walk/fire state below.
-    if (distance <= BossStats.teleportTriggerDistancePx) {
+    // Gated on the cooldown (DECISIONS D-074) -- a player camped right at
+    // the trigger distance can't chain wind-ups back to back.
+    if (distance <= BossStats.teleportTriggerDistancePx &&
+        _teleportCooldownTimer <= 0) {
       _beginTeleport(player.position);
       return;
     }
@@ -266,9 +279,16 @@ class BossComponent extends SpriteAnimationGroupComponent<BossAnim>
       game.animaAnimation,
       _teleportDestination.clone(),
       size: Vector2(kBossAnimaWidthPx, kBossAnimaWidthPx * kAnimaAspect),
+      // DECISIONS D-074 ("the anima VFX is in front of the boss, put it
+      // behind"): spawnEffect's own default (ArenaPriority.hitEffects, 25)
+      // sits above the boss's own priority (ArenaPriority.enemy, 10) --
+      // still visible once the boss actually pops in on top of it at
+      // _completeTeleport if the flourish is still playing.
+      priority: ArenaPriority.groundEffects,
     );
     _teleportPending = true;
     _teleportDelayTimer = BossStats.teleportDelaySec;
+    _teleportCooldownTimer = BossStats.teleportCooldownSec;
   }
 
   /// Actually moves the boss to the telegraphed destination once the

@@ -89,6 +89,146 @@ void main() {
         }
       }
     });
+
+    test(
+      'picking a kind only locks its paired partner(s) (DECISIONS D-078), '
+      'not every exclusive kind',
+      () {
+        final pickedAura = {UpgradeKind.aura: 1};
+        var sawRay = false;
+        var sawThunder = false;
+        for (var seed = 0; seed < 200; seed++) {
+          final choices = rollUpgradeChoices(
+            Random(seed),
+            pickCounts: pickedAura,
+            count: 3,
+            candidates: const [
+              UpgradeKind.aura,
+              UpgradeKind.ultimateMirror,
+              UpgradeKind.projectileRay,
+              UpgradeKind.projectileThunder,
+            ],
+          );
+          // Aura is only paired with Ultimate Mirror -- that's locked...
+          expect(choices, isNot(contains(UpgradeKind.ultimateMirror)));
+          // ...but Ray/Thunder don't share a pair with Aura, so they can
+          // still come up (Aura + Ray, Aura + Thunder are valid combos).
+          if (choices.contains(UpgradeKind.projectileRay)) sawRay = true;
+          if (choices.contains(UpgradeKind.projectileThunder)) sawThunder = true;
+        }
+        expect(sawRay, isTrue);
+        expect(sawThunder, isTrue);
+      },
+    );
+
+    test(
+      'a kind paired with 2 others (Ultimate Mirror) locks both once picked',
+      () {
+        final pickedMirror = {UpgradeKind.ultimateMirror: 1};
+        for (var seed = 0; seed < 200; seed++) {
+          final choices = rollUpgradeChoices(
+            Random(seed),
+            pickCounts: pickedMirror,
+            count: 3,
+            candidates: const [
+              UpgradeKind.aura,
+              UpgradeKind.ultimateMirror,
+              UpgradeKind.projectileRay,
+              UpgradeKind.projectileThunder,
+            ],
+          );
+          expect(choices, isNot(contains(UpgradeKind.aura)));
+          expect(choices, isNot(contains(UpgradeKind.projectileThunder)));
+        }
+      },
+    );
+
+    test(
+      'the already-picked exclusive kind can still be offered, up to its own cap',
+      () {
+        final pickedAuraOnce = {UpgradeKind.aura: 1};
+        var sawAuraAgain = false;
+        for (var seed = 0; seed < 50; seed++) {
+          final choices = rollUpgradeChoices(
+            Random(seed),
+            pickCounts: pickedAuraOnce,
+            count: 3,
+          );
+          if (choices.contains(UpgradeKind.aura)) sawAuraAgain = true;
+        }
+        expect(sawAuraAgain, isTrue);
+      },
+    );
+
+    test('non-exclusive kinds are unaffected by another group\'s pick', () {
+      final pickedAura = {UpgradeKind.aura: 1};
+      var sawVit = false;
+      var sawDefenceCrystal = false;
+      for (var seed = 0; seed < 50; seed++) {
+        final choices = rollUpgradeChoices(
+          Random(seed),
+          pickCounts: pickedAura,
+          count: 3,
+        );
+        if (choices.contains(UpgradeKind.vit)) sawVit = true;
+        if (choices.contains(UpgradeKind.defenceCrystal)) {
+          sawDefenceCrystal = true;
+        }
+      }
+      expect(sawVit, isTrue);
+      expect(sawDefenceCrystal, isTrue);
+    });
+  });
+
+  group('exclusive upgrade groups (DECISIONS D-072)', () {
+    test('isExclusiveUpgrade is true only for the 4 grouped skills', () {
+      expect(isExclusiveUpgrade(UpgradeKind.aura), isTrue);
+      expect(isExclusiveUpgrade(UpgradeKind.ultimateMirror), isTrue);
+      expect(isExclusiveUpgrade(UpgradeKind.projectileRay), isTrue);
+      expect(isExclusiveUpgrade(UpgradeKind.projectileThunder), isTrue);
+      expect(isExclusiveUpgrade(UpgradeKind.vit), isFalse);
+      expect(isExclusiveUpgrade(UpgradeKind.knifeMastery), isFalse);
+      expect(isExclusiveUpgrade(UpgradeKind.defenceCrystal), isFalse);
+    });
+
+    test('lockedOutByExclusiveGroups is empty with no picks yet', () {
+      expect(lockedOutByExclusiveGroups(const {}), isEmpty);
+    });
+
+    test(
+      'locks out only the paired partner (DECISIONS D-078), not the whole roster',
+      () {
+        final locked = lockedOutByExclusiveGroups({UpgradeKind.projectileRay: 2});
+        expect(locked, {UpgradeKind.projectileThunder});
+        expect(locked, isNot(contains(UpgradeKind.projectileRay)));
+        expect(locked, isNot(contains(UpgradeKind.aura)));
+        expect(locked, isNot(contains(UpgradeKind.ultimateMirror)));
+      },
+    );
+
+    test(
+      'a kind in 2 pairs (Ultimate Mirror) locks both partners at once',
+      () {
+        final locked = lockedOutByExclusiveGroups({
+          UpgradeKind.ultimateMirror: 1,
+        });
+        expect(locked, {UpgradeKind.aura, UpgradeKind.projectileThunder});
+      },
+    );
+
+    test('exclusiveLockTargets names the real paired partner(s)', () {
+      expect(exclusiveLockTargets(UpgradeKind.aura), {
+        UpgradeKind.ultimateMirror,
+      });
+      expect(exclusiveLockTargets(UpgradeKind.ultimateMirror), {
+        UpgradeKind.aura,
+        UpgradeKind.projectileThunder,
+      });
+      expect(exclusiveLockTargets(UpgradeKind.projectileRay), {
+        UpgradeKind.projectileThunder,
+      });
+      expect(exclusiveLockTargets(UpgradeKind.vit), isEmpty);
+    });
   });
 
   group('upgradeKindsFor (DECISIONS D-031)', () {

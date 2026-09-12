@@ -6,6 +6,8 @@ import 'package:flame/components.dart';
 import '../../core/constants.dart';
 import '../../core/game_rules.dart';
 import '../../core/progression.dart';
+import '../../core/sfx_player.dart';
+import '../../core/shop.dart';
 import '../../core/stats.dart';
 import '../../data/characters.dart';
 import '../anim/anim_state.dart';
@@ -58,14 +60,29 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
 
   final Vector2 _velocity = Vector2.zero(); // scratch, reused every frame
 
+  /// Footstep SFX (DECISIONS D-076) — alternates the two step sounds on a
+  /// fixed cadence while actually moving; not tied to a specific run-cycle
+  /// frame (a first-guess cadence, same disclaimer as every other tuning
+  /// number in this project). Resets the instant movement stops, so the
+  /// first step after standing still always starts a fresh interval rather
+  /// than potentially firing immediately off whatever was left over.
+  double _footstepTimer = 0;
+  bool _footstepAlternate = false;
+  static const _footstepIntervalSec = 0.32;
+
   bool get isAlive => current != AnimState.death;
 
   /// Base stat plus whatever level-up picks have added this round
   /// (`ArenaGame.upgrades`, DECISIONS D-025) — a flat additive layer on
   /// top of `StatBlock`, not a re-derivation of it.
-  double get effectiveMaxHp => stats.maxHp + game.upgrades.bonusMaxHp;
+  // SHOP (DECISIONS D-069) layers its own permanent bonuses on top, same
+  // additive shape as the in-round upgrade bonus.
+  double get effectiveMaxHp =>
+      stats.maxHp + game.upgrades.bonusMaxHp + game.meta.bonusMaxHpFromShop;
   double get effectiveMoveSpeed =>
-      stats.moveSpeedPxPerS + game.upgrades.bonusMoveSpeed;
+      stats.moveSpeedPxPerS +
+      game.upgrades.bonusMoveSpeed +
+      game.meta.bonusMoveSpeedFromShop;
 
   @override
   void update(double dt) {
@@ -81,15 +98,16 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
       }
     }
 
-    // Defence Crystal (in-round, DECISIONS D-049) and Resolve (persistent,
-    // DECISIONS D-067) both add a flat regen bonus, same additive-layer
-    // pattern as effectiveMaxHp/effectiveMoveSpeed above.
+    // Defence Crystal (in-round, DECISIONS D-049), Resolve, and REGEN
+    // (persistent, DECISIONS D-067/D-069) all add a flat regen bonus, same
+    // additive-layer pattern as effectiveMaxHp/effectiveMoveSpeed above.
     hp = min(
       effectiveMaxHp,
       hp +
           (stats.hpRegenPerSec +
                   game.upgrades.bonusHpRegenPerSec +
-                  resolveHpRegenPerSec(game.meta.resolveLevel)) *
+                  resolveHpRegenPerSec(game.meta.resolveLevel) +
+                  regenHpPerSec(game.meta.regenLevel)) *
               dt,
     );
 
@@ -100,8 +118,13 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
       opacity = 1.0;
     }
 
+    // DECISIONS D-074 ("when the character takes damage, he is slowed
+    // down, we need to remove this"): movement used to be skipped
+    // outright for the whole `hurt` recoil pose's duration, reading as a
+    // freeze/slow every time a hit landed -- applies unconditionally now,
+    // the `hurt` pose is purely visual.
     final moving = !input.direction.isZero();
-    if (moving && current != AnimState.hurt) {
+    if (moving) {
       _velocity
         ..setFrom(input.direction)
         ..scale(effectiveMoveSpeed * dt);
@@ -111,6 +134,15 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
       if (input.direction.x != 0) {
         scale.x = input.direction.x < 0 ? -1 : 1;
       }
+
+      _footstepTimer -= dt;
+      if (_footstepTimer <= 0) {
+        _footstepTimer = _footstepIntervalSec;
+        _footstepAlternate = !_footstepAlternate;
+        SfxPlayer.instance.playFootstep(_footstepAlternate);
+      }
+    } else {
+      _footstepTimer = 0;
     }
     // No bounds clamp (DECISIONS D-040 — the arena is no longer a fixed
     // rect; the camera follows the player anywhere in the world instead of
@@ -126,9 +158,16 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
     current = moving ? AnimState.run : AnimState.idle;
   }
 
+  /// Called once per shot/swing by every base `AttackBehavior`
+  /// (`ProjectileAttack`/`KnifeAttack`/`SpiralFireAttack`/
+  /// `WardenSlamAttack`) — the SFX here (DECISIONS D-076) rides along for
+  /// free and, just as importantly, stays *out* of every power-up
+  /// (Ray/Thunder/Aura/Mirror never call this) without any extra
+  /// bookkeeping — "not power-ups" is true by construction, not a filter.
   void playFire() {
     if (current == AnimState.hurt || current == AnimState.death) return;
     current = AnimState.fire;
+    SfxPlayer.instance.playProjectileShoot();
   }
 
   /// Contact damage from an enemy (PRD §6.2). No-ops during i-frames or
@@ -137,19 +176,29 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
   void takeDamage(double amount) {
     if (game.debugGodMode) return;
     if (_invulnTimer > 0 || current == AnimState.death) return;
-    // Defence Crystal (in-round, DECISIONS D-049) and Resolve (persistent,
-    // DECISIONS D-067) both add flat damage resistance, clamped together so
-    // a future bug/overstack can't invert it into bonus damage.
+    // Defence Crystal (in-round, DECISIONS D-049), Resolve, and SHOP's Iron
+    // Will (persistent, DECISIONS D-067/D-069) all add flat damage
+    // resistance, clamped together so a future bug/overstack can't invert
+    // it into bonus damage.
     final resistanceMultiplier =
         (1 -
                 game.upgrades.damageResistance -
-                resolveDamageResistance(game.meta.resolveLevel))
+                resolveDamageResistance(game.meta.resolveLevel) -
+                game.meta.damageResistanceFromShop)
             .clamp(0.0, 1.0);
     hp = (hp - amount * resistanceMultiplier).clamp(0, effectiveMaxHp);
     _invulnTimer = _invulnDurationSec;
     game.spawnBloodImpact(); // DECISIONS D-033: only on damage that lands
+    SfxPlayer.instance.playDamage(); // DECISIONS D-076: same, only on a real hit
 
     if (hp <= 0) {
+      // SHOP's Second Wind (DECISIONS D-069) — a lethal hit is caught here,
+      // before the death path, and consumed at most once per round.
+      if (game.tryConsumeRevive()) {
+        hp = effectiveMaxHp * kReviveHpFraction;
+        current = AnimState.hurt;
+        return;
+      }
       current = AnimState.death;
       game.onPlayerDied();
     } else {

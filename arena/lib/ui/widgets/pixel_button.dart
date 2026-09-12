@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
+import 'tap_sfx.dart';
 
 /// Flat, hard-edged button matching the pixel-art look — no rounded corners,
 /// no gradients, no shadow blur. A pressed state is the only feedback.
+/// Every tap also plays the shared tap SFX (DECISIONS D-076) — this is the
+/// single most-used button in the app, so wiring it here covers most
+/// screens for free.
 class PixelButton extends StatelessWidget {
   const PixelButton({
     super.key,
@@ -29,7 +33,7 @@ class PixelButton extends StatelessWidget {
           borderRadius: BorderRadius.zero,
         ),
         child: InkWell(
-          onTap: enabled ? onPressed : null,
+          onTap: enabled ? withTapSfx(onPressed) : null,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Text(

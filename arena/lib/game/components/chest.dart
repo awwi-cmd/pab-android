@@ -5,6 +5,7 @@ import 'package:flame/components.dart';
 
 import '../../core/constants.dart';
 import '../../core/economy.dart';
+import '../../core/game_rules.dart';
 import '../arena_game.dart';
 
 /// A world chest (DECISIONS D-055) — sits closed
@@ -46,8 +47,10 @@ class ChestComponent extends SpriteAnimationComponent
 
     if (!_opening) {
       final player = game.player;
-      if (player.isAlive &&
-          position.distanceTo(player.position) < kChestPickupRadiusPx) {
+      // MAGNET (DECISIONS D-069) widens every pickup's own collect radius.
+      final radius = kChestPickupRadiusPx *
+          magnetPickupRadiusMultiplier(game.meta.magnetLevel);
+      if (player.isAlive && position.distanceTo(player.position) < radius) {
         _startOpening();
       }
       return;
@@ -66,10 +69,20 @@ class ChestComponent extends SpriteAnimationComponent
 
   void _startOpening() {
     _opening = true;
+    // DECISIONS D-071: sized relative to this chest's own rendered width
+    // ("smaller a bit than the chest"), not the flat, much-bigger
+    // kAnimaWidthPx every other anima flourish shares -- plus a reduced
+    // contrast tune ("wayy too big... reduce contrast").
+    final animaWidth = size.x * kChestAnimaSizeFactor;
     game.spawnEffect(
       game.animaAnimation,
       position.clone(),
-      size: Vector2(kAnimaWidthPx, kAnimaWidthPx * kAnimaAspect),
+      size: Vector2(animaWidth, animaWidth * kAnimaAspect),
+      contrast: kChestAnimaContrast,
+      // DECISIONS D-074 ("needs to be behind the chest asset"): spawnEffect's
+      // own default (ArenaPriority.hitEffects, 25) sits above the chest's
+      // own priority (ArenaPriority.pickup, 7).
+      priority: ArenaPriority.groundEffects,
     );
   }
 

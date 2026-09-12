@@ -126,4 +126,11 @@ class BossStats {
   /// for the whole window, a committed wind-up rather than something the
   /// player can bait and dodge out of.
   static const double teleportDelaySec = 0.5;
+
+  /// Minimum time between the *start* of one teleport wind-up and the next
+  /// (DECISIONS D-074, developer's call: "add a cooldown for the boss
+  /// teleportation, 3 seconds") — without it, a player camped right at
+  /// [teleportTriggerDistancePx] could retrigger the wind-up the instant a
+  /// prior one finished, reading as a boss that never actually holds still.
+  static const double teleportCooldownSec = 3.0;
 }

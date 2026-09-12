@@ -76,7 +76,9 @@ class ProjectileAttack extends AttackBehavior {
       ProjectileComponent(
         startPosition: player.position.clone(),
         direction: direction,
-        damage: stats.damagePerHit + game.upgrades.bonusDamage,
+        damage: game.resolveAttackDamage(
+          stats.damagePerHit + game.upgrades.bonusDamage,
+        ),
         knockback: stats.knockbackImpulse,
         speedPxPerS: stats.projSpeedPxPerS,
         maxRangePx: stats.attackRangePx * 1.5,
@@ -143,9 +145,13 @@ class KnifeAttack extends AttackBehavior {
     direction.normalize();
 
     final knifeLevel = game.upgrades.pickCounts[UpgradeKind.knifeMastery] ?? 0;
-    final damage = (stats.damagePerHit + game.upgrades.bonusDamage) *
-        _damageMultiplier *
-        (knifeLevel >= 1 ? UpgradeAmounts.knifeMasteryTier1DamageMultiplier : 1);
+    final damage = game.resolveAttackDamage(
+      (stats.damagePerHit + game.upgrades.bonusDamage) *
+          _damageMultiplier *
+          (knifeLevel >= 1
+              ? UpgradeAmounts.knifeMasteryTier1DamageMultiplier
+              : 1),
+    );
 
     for (final angleOffset in _throwAngleOffsets(knifeLevel)) {
       game.addToWorld(
@@ -243,8 +249,9 @@ class SpiralFireAttack extends AttackBehavior {
       return; // exactly on top of the target
     }
 
-    final damage =
-        (stats.damagePerHit + game.upgrades.bonusDamage) * _damageMultiplier;
+    final damage = game.resolveAttackDamage(
+      (stats.damagePerHit + game.upgrades.bonusDamage) * _damageMultiplier,
+    );
     for (final phase in [0.0, pi]) {
       game.addToWorld(
         SpiralFireProjectileComponent(
@@ -315,7 +322,9 @@ class WardenSlamAttack extends AttackBehavior {
     final hitIndices = allWithinRange(player.position, positions, radiusPx);
     if (hitIndices.isEmpty) return; // nothing in range -- no swing
 
-    final damage = (stats.damagePerHit + game.upgrades.bonusDamage) * _damageMultiplier;
+    final damage = game.resolveAttackDamage(
+      (stats.damagePerHit + game.upgrades.bonusDamage) * _damageMultiplier,
+    );
     final knockback = stats.knockbackImpulse * _knockbackMultiplier;
     for (final index in hitIndices) {
       final target = targets[index];

@@ -4,6 +4,7 @@ import '../../core/bgm_controller.dart';
 import '../../core/constants.dart';
 import '../../core/meta_progression.dart';
 import '../../core/settings.dart';
+import '../../core/sfx_player.dart';
 import '../../data/characters.dart';
 import '../../game/arena_game.dart';
 import '../widgets/pixel_button.dart';
@@ -58,6 +59,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // setState below overwrites `_settings` with `next`.
     if (next.musicVolume != _settings?.musicVolume) {
       BgmController.instance.setMasterVolume(next.musicVolume);
+    }
+    // DECISIONS D-076: SfxPlayer (button taps and every other one-shot SFX)
+    // needs the same live push BGM already gets -- a one-shot fired right
+    // after moving this slider should reflect it immediately, same as BGM.
+    if (next.sfxVolume != _settings?.sfxVolume) {
+      SfxPlayer.instance.setVolumeMultiplier(next.sfxVolume);
     }
     setState(() => _settings = next);
     await _repo.save(next);

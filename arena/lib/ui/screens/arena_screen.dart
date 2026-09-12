@@ -9,10 +9,14 @@ import '../../core/economy.dart';
 import '../../core/meta_progression.dart';
 import '../../core/progression.dart';
 import '../../core/settings.dart';
+import '../../core/sfx_player.dart';
 import '../../data/characters.dart';
 import '../../game/arena_game.dart';
 import '../../game/input/joystick_overlay.dart';
 import '../widgets/coin_icon.dart';
+import '../widgets/gem_icon.dart';
+import '../widgets/skill_icon.dart';
+import '../widgets/tap_sfx.dart';
 import 'settings_screen.dart';
 
 /// Hosts the single `GameWidget` for the arena (CLAUDE.md §4.1 — Flame owns
@@ -166,7 +170,7 @@ class _DebugDieButton extends StatelessWidget {
       alignment: Alignment.topCenter,
       child: SafeArea(
         child: TextButton(
-          onPressed: game.debugDie,
+          onPressed: withTapSfx(game.debugDie),
           child: const Text(
             'DIE (debug)',
             style: TextStyle(color: ArenaColors.danger, fontSize: 16),
@@ -189,7 +193,7 @@ class _PauseButton extends StatelessWidget {
       alignment: Alignment.topRight,
       child: SafeArea(
         child: IconButton(
-          onPressed: game.openPauseMenu,
+          onPressed: withTapSfx(game.openPauseMenu),
           icon: const Icon(Icons.pause_circle_outline),
           color: ArenaColors.textPrimary,
           iconSize: 28,
@@ -240,15 +244,20 @@ class _RoundOverOverlay extends StatelessWidget {
                 label: 'Time survived',
                 value: _formatElapsed(game.elapsed),
               ),
-              _StatRow(label: 'Enemies killed', value: '${game.kills}'),
               _StatRow(
                 label: 'Damage dealt',
                 value: '${game.damageDealt.round()}',
               ),
               _StatRow(label: 'Level reached', value: '${game.level}'),
-              _StatRow(label: 'Gems collected', value: '${game.gemsCollected}'),
               const SizedBox(height: 16),
+              // DECISIONS D-069/D-071: coins/gems/kills all get the same
+              // real-asset icon+counting treatment instead of a plain text
+              // stat row. Stacked (not side-by-side) so `_CoinCounter`'s own
+              // `LayoutBuilder` still resolves against a real bounded width
+              // from the Column, not an unbounded `Row` main axis.
               _CoinCounter(total: game.coinsEarned),
+              _GemCounter(total: game.gemsCollected),
+              _KillCounter(total: game.kills),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
@@ -256,9 +265,9 @@ class _RoundOverOverlay extends StatelessWidget {
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: ArenaColors.accent),
                   ),
-                  onPressed: () {
+                  onPressed: withTapSfx(() {
                     Navigator.of(context).popUntil((route) => route.isFirst);
-                  },
+                  }),
                   child: const Text(
                     'MAIN MENU',
                     style: TextStyle(color: ArenaColors.accent),
@@ -445,6 +454,377 @@ class _FlyingCoinSpec {
   final Interval interval;
 }
 
+/// Round Over's gem reveal (DECISIONS D-069, flying pieces + sparkle VFX
+/// added D-070 — "same animation gems in end of match screen that coins
+/// have... add more VFX to them") — the real gem icon (`GemIcon`, legendary
+/// tier) with the round's `gemsCollected` total counting up from 0, small
+/// gem sprites flying in and shrinking exactly like `_CoinCounter`'s coins,
+/// plus a looping twinkle burst (`_GemSparkleSpec`) orbiting the icon that
+/// coins don't get — gems are the premium currency, so this reveal reads a
+/// notch fancier than the coin one rather than an identical reskin.
+class _GemCounter extends StatefulWidget {
+  const _GemCounter({required this.total});
+
+  final int total;
+
+  @override
+  State<_GemCounter> createState() => _GemCounterState();
+}
+
+class _GemCounterState extends State<_GemCounter>
+    with TickerProviderStateMixin {
+  static const _duration = Duration(milliseconds: 1600);
+  static const _maxFlyingGems = 10;
+
+  late final AnimationController _controller;
+  late final Animation<int> _count;
+  late final List<_FlyingCoinSpec> _flyingGems;
+
+  /// The extra VFX coins don't have — a handful of sparkle glints looping
+  /// around the gem icon for as long as the overlay is up, independent of
+  /// the count-up (which finishes and stops).
+  static const _sparkleDuration = Duration(milliseconds: 2400);
+  late final AnimationController _sparkleController;
+  late final List<_GemSparkleSpec> _sparkles;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: _duration)
+      ..forward();
+    _count = IntTween(
+      begin: 0,
+      end: widget.total,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+
+    final random = Random();
+    // Capped regardless of the real total, same reasoning as _CoinCounter.
+    final gemCount = widget.total > 0 ? _maxFlyingGems : 0;
+    _flyingGems = List.generate(gemCount, (i) {
+      final startDelay = i / gemCount * 0.5; // staggered, not simultaneous
+      return _FlyingCoinSpec(
+        fromLeft: random.nextBool(),
+        startDistance:
+            1.2 + random.nextDouble() * 0.8, // x half-width, off-widget
+        startYOffset: (random.nextDouble() - 0.5) * 72,
+        interval: Interval(
+          startDelay,
+          (startDelay + 0.5).clamp(0.0, 1.0),
+          curve: Curves.easeIn,
+        ),
+      );
+    });
+
+    _sparkleController = AnimationController(
+      vsync: this,
+      duration: _sparkleDuration,
+    )..repeat();
+    _sparkles = List.generate(6, (i) {
+      final angle = i / 6 * 2 * pi;
+      return _GemSparkleSpec(
+        dx: cos(angle) * (30 + random.nextDouble() * 10),
+        dy: sin(angle) * (18 + random.nextDouble() * 8),
+        phase: random.nextDouble(),
+        size: 12 + random.nextDouble() * 8,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _sparkleController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 88,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return AnimatedBuilder(
+            animation: Listenable.merge([_controller, _sparkleController]),
+            builder: (context, _) => Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                for (final gem in _flyingGems)
+                  _buildFlyingGem(gem, constraints.maxWidth),
+                SizedBox(
+                  width: 128,
+                  height: 64,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      for (final sparkle in _sparkles) _buildSparkle(sparkle),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const GemIcon(size: 40),
+                          const SizedBox(width: 10),
+                          Text(
+                            '${_count.value}',
+                            style: const TextStyle(
+                              color: ArenaColors.textPrimary,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Same flight math `_CoinCounterState._buildFlyingCoin` uses, rendering
+  /// the legendary-tier gem cell instead of the coin cell.
+  Widget _buildFlyingGem(_FlyingCoinSpec gem, double width) {
+    final t = gem.interval.transform(_controller.value);
+    final startX = (gem.fromLeft ? -1 : 1) * gem.startDistance * width / 2;
+    final remaining = 1 - t;
+    return Transform.translate(
+      offset: Offset(startX * remaining, gem.startYOffset * remaining),
+      child: Opacity(
+        opacity: remaining,
+        child: Transform.scale(
+          scale: remaining,
+          child: const _SpriteCell(
+            asset: 'assets/images/consumables/gems.png',
+            sheetWidth: 80,
+            sheetHeight: 144,
+            cellSize: 16,
+            column: 4, // legendary -- same tier GemIcon crops
+            row: 0,
+            displaySize: 26,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// One twinkle glint — fades and grows in, then back out, on its own
+  /// looping local timeline (`_sparkleController` + [_GemSparkleSpec.phase]
+  /// staggers each one so they don't all pulse in lockstep).
+  Widget _buildSparkle(_GemSparkleSpec sparkle) {
+    final t = (_sparkleController.value + sparkle.phase) % 1.0;
+    final opacity = (t < 0.5 ? t / 0.5 : 1 - (t - 0.5) / 0.5).clamp(0.0, 1.0);
+    return Positioned(
+      left: 64 + sparkle.dx - sparkle.size / 2,
+      top: 32 + sparkle.dy - sparkle.size / 2,
+      child: Opacity(
+        opacity: opacity,
+        child: Transform.scale(
+          scale: 0.6 + 0.4 * opacity,
+          child: Icon(
+            Icons.auto_awesome,
+            size: sparkle.size,
+            color: ArenaColors.accent,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GemSparkleSpec {
+  const _GemSparkleSpec({
+    required this.dx,
+    required this.dy,
+    required this.phase,
+    required this.size,
+  });
+
+  /// Fixed offset from the gem icon's own center — the sparkle orbits
+  /// nowhere, it just blinks in place at this spot (cheaper, and reads fine
+  /// for a small twinkle burst).
+  final double dx;
+  final double dy;
+
+  /// Where in the shared [AnimationController]'s loop this piece starts its
+  /// own fade in/out cycle, so the 6 sparkles don't pulse in lockstep.
+  final double phase;
+  final double size;
+}
+
+/// Round Over's kill-count reveal (DECISIONS D-071, "add the kills in end
+/// of match screen as well, use the hollow star... turn it a golden star
+/// with the same jump and land animation the card has") — the hollow star
+/// (`star-empty.png`) with `game.kills` counting up, small golden stars
+/// (`star-full.png`) flying in exactly like `_CoinCounter`'s coins, and the
+/// instant the count finishes, the center icon itself swaps to the golden
+/// star and plays the *exact* jump/land bounce `_ChestRevealOverlay`'s card
+/// landing uses (same tween weights/curves/duration) — reused directly
+/// rather than a second hand-tuned bounce.
+class _KillCounter extends StatefulWidget {
+  const _KillCounter({required this.total});
+
+  final int total;
+
+  @override
+  State<_KillCounter> createState() => _KillCounterState();
+}
+
+class _KillCounterState extends State<_KillCounter>
+    with TickerProviderStateMixin {
+  static const _duration = Duration(milliseconds: 1600);
+  static const _maxFlyingStars = 10;
+
+  static const _starEmptyAsset = 'assets/images/ui/star-empty.png';
+  static const _starFullAsset = 'assets/images/ui/star-full.png';
+
+  late final AnimationController _controller;
+  late final Animation<int> _count;
+  late final List<_FlyingCoinSpec> _flyingStars;
+
+  /// The landing bounce — identical shape to `_ChestRevealOverlayState`'s
+  /// own `_landController`/`_jumpOffset` (same 520ms duration, same 35/65
+  /// easeOut-then-bounceOut weights) so a star "landing" reads as the same
+  /// physical event a card landing does, not a different one that happens
+  /// to look similar.
+  late final AnimationController _landController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 520),
+  );
+  late final Animation<double> _jumpOffset = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 0.0,
+        end: -22.0,
+      ).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 35,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: -22.0,
+        end: 0.0,
+      ).chain(CurveTween(curve: Curves.bounceOut)),
+      weight: 65,
+    ),
+  ]).animate(_landController);
+
+  /// Flips from the hollow star to the golden one the instant the count-up
+  /// finishes, in lockstep with [_landController] firing.
+  bool _golden = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: _duration)
+      ..addStatusListener((status) {
+        if (status != AnimationStatus.completed) return;
+        setState(() => _golden = true);
+        _landController.forward(from: 0);
+      })
+      ..forward();
+    _count = IntTween(
+      begin: 0,
+      end: widget.total,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+
+    final random = Random();
+    final starCount = widget.total > 0 ? _maxFlyingStars : 0;
+    _flyingStars = List.generate(starCount, (i) {
+      final startDelay = i / starCount * 0.5;
+      return _FlyingCoinSpec(
+        fromLeft: random.nextBool(),
+        startDistance: 1.2 + random.nextDouble() * 0.8,
+        startYOffset: (random.nextDouble() - 0.5) * 72,
+        interval: Interval(
+          startDelay,
+          (startDelay + 0.5).clamp(0.0, 1.0),
+          curve: Curves.easeIn,
+        ),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _landController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 88,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return AnimatedBuilder(
+            animation: Listenable.merge([_controller, _landController]),
+            builder: (context, _) => Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                for (final star in _flyingStars)
+                  _buildFlyingStar(star, constraints.maxWidth),
+                Transform.translate(
+                  offset: Offset(0, _jumpOffset.value),
+                  child: SizedBox(
+                    width: 128,
+                    height: 64,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Image.asset(
+                          _golden ? _starFullAsset : _starEmptyAsset,
+                          height: 40,
+                          filterQuality: FilterQuality.none,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          '${_count.value}',
+                          style: const TextStyle(
+                            color: ArenaColors.textPrimary,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Same flight math `_CoinCounterState._buildFlyingCoin` uses, rendering
+  /// the golden star sprite directly (a standalone image, not a sheet, so
+  /// no `_SpriteCell` crop needed).
+  Widget _buildFlyingStar(_FlyingCoinSpec star, double width) {
+    final t = star.interval.transform(_controller.value);
+    final startX = (star.fromLeft ? -1 : 1) * star.startDistance * width / 2;
+    final remaining = 1 - t;
+    return Transform.translate(
+      offset: Offset(startX * remaining, star.startYOffset * remaining),
+      child: Opacity(
+        opacity: remaining,
+        child: Transform.scale(
+          scale: remaining,
+          child: Image.asset(
+            _starFullAsset,
+            height: 26,
+            filterQuality: FilterQuality.none,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Crops one cell out of a sprite sheet for a plain Flutter `Image.asset`
 /// (DECISIONS D-043) — used for the flying coins above, since they're a
 /// Flutter widget animation (Round Over is a Flutter overlay, D-010), not a
@@ -514,8 +894,14 @@ class _SpriteCell extends StatelessWidget {
   }
 }
 
-/// Level-up popup (DECISIONS D-025): game is paused, pick 1 of 3, with a
-/// way to check what's been picked so far and go back to the choice.
+/// Level-up popup (DECISIONS D-025, redesigned D-072): game is paused, pick
+/// 1 of 3, with a way to check what's been picked so far and go back to the
+/// choice. The choice list is `_LevelUpCard`s now, not bare
+/// `OutlinedButton`s — bordered panels with a category tag and (for the 4
+/// mutually-exclusive skills, DECISIONS D-072) a visible "EXCLUSIVE"
+/// warning, wrapped in a `SingleChildScrollView` so a long description can
+/// never overflow the popup regardless of screen height (same fix
+/// `_ChestRevealOverlay` already uses, D-058).
 class _LevelUpOverlay extends StatefulWidget {
   const _LevelUpOverlay({required this.game});
 
@@ -531,10 +917,10 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black.withValues(alpha: 0.8),
+      color: Colors.black.withValues(alpha: 0.85),
       child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
           child: _showingUpgrades ? _buildUpgradeList() : _buildChoices(),
         ),
       ),
@@ -545,9 +931,11 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay> {
     final game = widget.game;
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
           'LEVEL UP!',
+          textAlign: TextAlign.center,
           style: TextStyle(
             color: ArenaColors.accent,
             fontSize: 26,
@@ -558,43 +946,17 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay> {
         const SizedBox(height: 4),
         const Text(
           'Choose 1 of 3',
+          textAlign: TextAlign.center,
           style: TextStyle(color: ArenaColors.textDim),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
         for (final kind in game.currentLevelUpChoices) ...[
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: ArenaColors.accent),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              onPressed: () => game.resolveLevelUpChoice(kind),
-              child: Column(
-                children: [
-                  Text(
-                    kind.label,
-                    style: const TextStyle(
-                      color: ArenaColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    kind.description,
-                    style: const TextStyle(
-                      color: ArenaColors.textDim,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          _LevelUpCard(kind: kind, onTap: () => game.resolveLevelUpChoice(kind)),
           const SizedBox(height: 12),
         ],
+        const SizedBox(height: 4),
         TextButton(
-          onPressed: () => setState(() => _showingUpgrades = true),
+          onPressed: withTapSfx(() => setState(() => _showingUpgrades = true)),
           child: const Text(
             'VIEW YOUR UPGRADES',
             style: TextStyle(color: ArenaColors.textDim),
@@ -608,9 +970,11 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay> {
     final counts = widget.game.upgrades.pickCounts;
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
           'YOUR UPGRADES',
+          textAlign: TextAlign.center,
           style: TextStyle(
             color: ArenaColors.accent,
             fontSize: 20,
@@ -625,9 +989,12 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  kind.label,
-                  style: const TextStyle(color: ArenaColors.textPrimary),
+                Expanded(
+                  child: Text(
+                    kind.label,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: ArenaColors.textPrimary),
+                  ),
                 ),
                 Text(
                   'x${counts[kind] ?? 0}',
@@ -643,7 +1010,7 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay> {
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: ArenaColors.accent),
             ),
-            onPressed: () => setState(() => _showingUpgrades = false),
+            onPressed: withTapSfx(() => setState(() => _showingUpgrades = false)),
             child: const Text(
               'BACK',
               style: TextStyle(color: ArenaColors.accent),
@@ -651,6 +1018,149 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// One LevelUp choice (DECISIONS D-072) — a bordered panel with a left
+/// accent stripe, an icon badge (DECISIONS D-078 — the real skill's own
+/// game art, not just text, was the missing "doesn't look cheap" piece),
+/// a label + category tag row, and the *full* description underneath with
+/// no truncation. Replaces the old bare `OutlinedButton` (fixed vertical
+/// padding, no wrap guarantees), which is what let a long description
+/// overflow the popup on a short screen. Exclusive skills
+/// (`isExclusiveUpgrade`) swap the accent stripe/tag to danger-red and add
+/// a "Locks out: X" line naming the real paired partner(s) (D-072/D-078),
+/// so the tradeoff is visible before tapping, not discovered by their
+/// absence next level. A soft drop shadow (DECISIONS D-078) gives the flat
+/// bordered panel some real depth instead of reading as a plain outline.
+class _LevelUpCard extends StatelessWidget {
+  const _LevelUpCard({required this.kind, required this.onTap});
+
+  final UpgradeKind kind;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final exclusive = isExclusiveUpgrade(kind);
+    final accent = exclusive ? ArenaColors.warning : ArenaColors.accent;
+    return Container(
+      decoration: BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Material(
+        color: ArenaColors.surface,
+        child: InkWell(
+          onTap: withTapSfx(onTap),
+          child: Container(
+            // A double border (outer dim, inner accent) reads as a carved
+            // panel edge rather than a single flat outline.
+            decoration: BoxDecoration(
+              border: Border.all(color: ArenaColors.textDim),
+            ),
+            padding: const EdgeInsets.all(2),
+            child: Container(
+              decoration: BoxDecoration(border: Border.all(color: accent)),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(width: 5, color: accent),
+                    Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: SkillIcon(kind: kind, accent: accent),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(0, 10, 12, 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    kind.label,
+                                    style: const TextStyle(
+                                      color: ArenaColors.textPrimary,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                _Tag(
+                                  text: exclusive ? 'EXCLUSIVE' : kind.tag,
+                                  color: accent,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              kind.description,
+                              style: const TextStyle(
+                                color: ArenaColors.textDim,
+                                fontSize: 12,
+                                height: 1.35,
+                              ),
+                            ),
+                            if (exclusive) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                'Locks out: ${exclusiveLockTargets(kind).map((k) => k.label).join(', ')}.',
+                                style: const TextStyle(
+                                  color: ArenaColors.warning,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Small bordered category badge — `STAT`/`SKILL`/`PASSIVE`
+/// (`UpgradeKindLabels.tag`) or `EXCLUSIVE` for the 4 grouped skills.
+class _Tag extends StatelessWidget {
+  const _Tag({required this.text, required this.color});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(border: Border.all(color: color)),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1,
+        ),
+      ),
     );
   }
 }
@@ -733,66 +1243,35 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
     ),
   ]).animate(_landController);
 
-  /// DECISIONS D-061/D-063 ("throw some confetti from outside the screen,
-  /// from left and right, landing in front and in the back of the card
-  /// when we land it"; follow-up: "shoot the confetti pieces
-  /// independently, and make them fall more outside of the screen, because
-  /// they stop in the middle now") — fires alongside [_landController] the
-  /// instant the spin lands. Built from scratch with a `CustomPainter`
-  /// rather than a confetti package (CLAUDE.md §4.9: no new dependencies)
-  /// — plain rotated rects are enough for a burst, no image asset exists
-  /// for this either.
-  static const _confettiCount = 26;
-  static const _confettiDurationMs = 1400;
-  static const _confettiColors = [
-    Color(0xFFE0526C), // ArenaColors.danger
-    Color(0xFFF5C542), // amber
-    Color(0xFF6CE0B8), // ArenaColors.accent
-    Color(0xFF4FA8E0), // blue
-    Color(0xFFE07BE0), // pink
-  ];
+  /// DECISIONS D-072 ("the confetti for the chests is not it... come up
+  /// with a different VFX when the card is chosen, remove the confetti") —
+  /// replaces the old rotated-rect confetti burst (D-061/D-063) with a
+  /// radial sparkle burst, reusing the exact same `Icons.auto_awesome`
+  /// glint look the gem counter's own sparkle VFX already established
+  /// (D-070) rather than inventing a third visual language for "something
+  /// good just landed." Fires alongside [_landController] the instant the
+  /// spin lands, once (not looping like the gem counter's).
+  static const _burstCount = 14;
+  static const _burstDurationMs = 750;
 
-  late final AnimationController _confettiController = AnimationController(
+  late final AnimationController _burstController = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: _confettiDurationMs),
+    duration: const Duration(milliseconds: _burstDurationMs),
   );
-  late final List<_ConfettiParticle> _confettiParticles = _buildConfetti();
+  late final List<_CardLandSparkleSpec> _landSparkles = _buildLandSparkles();
 
-  /// Half the particles start off-screen left, half off-screen right
-  /// (`Alignment` values beyond ±1 resolve outside the box, exactly what
-  /// "from outside the screen" needs); independently, half are [front]
-  /// (painted on top of the card) and half aren't (painted behind it) —
-  /// "landing in front and in the back of the card."
-  ///
-  /// DECISIONS D-063 bugfix: [endAlign] used to sit close to the card
-  /// (±0.4-ish) — every piece visibly stopped and hung there once it
-  /// "landed," reported as "they stop in the middle now." Real confetti
-  /// doesn't stop mid-air: it keeps falling and drifting outward past the
-  /// screen edges, so [endAlign] now lands well outside the visible box on
-  /// both axes (`dy` past `1.0` is already below the bottom edge) — a
-  /// piece finishes this animation by actually leaving the screen, not by
-  /// coming to rest inside it. [startDelayFraction] independently staggers
-  /// when each piece's own flight actually begins, so the burst reads as
-  /// individual pieces shooting out over time rather than the whole set
-  /// launching and arriving in lockstep.
-  List<_ConfettiParticle> _buildConfetti() {
+  /// Every sparkle radiates outward from the card's own center at a random
+  /// angle/distance, each with its own [_CardLandSparkleSpec.delay] so the
+  /// burst reads as individual glints firing outward over a beat rather
+  /// than one uniform ring expanding in lockstep.
+  List<_CardLandSparkleSpec> _buildLandSparkles() {
     return [
-      for (var i = 0; i < _confettiCount; i++)
-        _ConfettiParticle(
-          startAlign: Alignment(
-            (i.isEven ? -1 : 1) * (1.4 + _random.nextDouble() * 0.9),
-            -0.4 + _random.nextDouble() * 0.8,
-          ),
-          endAlign: Alignment(
-            (_random.nextBool() ? -1 : 1) * (0.4 + _random.nextDouble() * 1.6),
-            1.2 + _random.nextDouble() * 1.2,
-          ),
-          startDelayFraction: _random.nextDouble() * 0.35,
-          color: _confettiColors[_random.nextInt(_confettiColors.length)],
-          size: 7 + _random.nextDouble() * 6,
-          rotationTurns: 1 + _random.nextDouble() * 2.5,
-          arcHeight: 0.12 + _random.nextDouble() * 0.18,
-          front: i.isOdd,
+      for (var i = 0; i < _burstCount; i++)
+        _CardLandSparkleSpec(
+          angle: _random.nextDouble() * 2 * pi,
+          distancePx: 60 + _random.nextDouble() * 70,
+          size: 14 + _random.nextDouble() * 12,
+          delay: _random.nextDouble() * 0.25,
         ),
     ];
   }
@@ -807,7 +1286,7 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
   void dispose() {
     _timer?.cancel();
     _landController.dispose();
-    _confettiController.dispose();
+    _burstController.dispose();
     super.dispose();
   }
 
@@ -821,6 +1300,7 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
       _shuffling = false;
       _displayedAsset = _randomFlickerCard().assetPath;
       _step = 0;
+      SfxPlayer.instance.playChestCardSelect();
       _scheduleNextStep();
       return;
     }
@@ -829,6 +1309,9 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
       setState(
         () => _displayedAsset = _backAssetPaths[_step % _backAssetPaths.length],
       );
+      // DECISIONS D-076: "play it once with every card swap and change its
+      // pitch each time" -- every shuffle/spin step is a swap.
+      SfxPlayer.instance.playChestCardSelect();
       _scheduleShuffleStep();
     });
   }
@@ -842,8 +1325,10 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
           _displayedAsset = _finalCard.assetPath;
           _spinning = false;
         });
+        // DECISIONS D-076: the landing payoff, not another select swap.
+        SfxPlayer.instance.playChestCardChosen();
         _landController.forward(from: 0);
-        _confettiController.forward(from: 0);
+        _burstController.forward(from: 0);
       });
       return;
     }
@@ -852,6 +1337,7 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
     _timer = Timer(Duration(milliseconds: delayMs), () {
       if (!mounted) return;
       setState(() => _displayedAsset = _randomFlickerCard().assetPath);
+      SfxPlayer.instance.playChestCardSelect();
       _scheduleNextStep();
     });
   }
@@ -860,32 +1346,68 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
   Widget build(BuildContext context) {
     return Container(
       color: Colors.black.withValues(alpha: 0.82),
-      // Confetti sits in its own full-screen Stack layers, not inside the
-      // scrollable content Column below -- it has to fly in from genuinely
-      // off-screen (DECISIONS D-061), and the SingleChildScrollView would
-      // clip anything positioned outside its own viewport.
+      // The sparkle burst sits in its own full-screen layer on top of the
+      // card content, same reasoning confetti used to have (DECISIONS
+      // D-061): it radiates well past the card's own bounds, and the
+      // scrollable content Column below would clip anything positioned
+      // outside its own viewport.
       child: Stack(
         children: [
-          Positioned.fill(
-            child: IgnorePointer(
-              child: _ConfettiLayer(
-                controller: _confettiController,
-                particles: _confettiParticles,
-                front: false,
-              ),
-            ),
-          ),
           _buildContent(),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: _ConfettiLayer(
-                controller: _confettiController,
-                particles: _confettiParticles,
-                front: true,
+          // DECISIONS D-074 bugfix: only mounted once the spin has actually
+          // landed. Every sparkle's fade-envelope reads as fully opaque and
+          // un-offset at the controller's own rest value (0, before
+          // `.forward()` is ever called) -- with no gate here, that meant a
+          // clump of 14 fully-visible glints sitting dead-center on the
+          // card for the *entire* shuffle+spin, before the reveal ever
+          // fired ("we can see where we're storing them before we choose
+          // the card").
+          if (!_shuffling && !_spinning)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _burstController,
+                  builder: (context, _) => Stack(
+                    children: [
+                      for (final sparkle in _landSparkles)
+                        _buildLandSparkle(sparkle),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
         ],
+      ),
+    );
+  }
+
+  /// One glint of the landing burst — same fade/scale envelope
+  /// `_GemCounterState._buildSparkle` uses, but firing outward from the
+  /// center once instead of blinking in place on a loop.
+  Widget _buildLandSparkle(_CardLandSparkleSpec sparkle) {
+    final raw = ((_burstController.value - sparkle.delay) / (1 - sparkle.delay))
+        .clamp(0.0, 1.0);
+    final eased = Curves.easeOut.transform(raw);
+    final opacity = (1 - raw).clamp(0.0, 1.0);
+    if (opacity <= 0) return const SizedBox.shrink();
+    final offset = Offset(cos(sparkle.angle), sin(sparkle.angle)) *
+        sparkle.distancePx *
+        eased;
+    return Align(
+      alignment: Alignment.center,
+      child: Transform.translate(
+        offset: offset,
+        child: Opacity(
+          opacity: opacity,
+          child: Transform.scale(
+            scale: 0.6 + 0.4 * (1 - raw),
+            child: Icon(
+              Icons.auto_awesome,
+              size: sparkle.size,
+              color: ArenaColors.accent,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -911,6 +1433,12 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
               ),
             ),
             const SizedBox(height: 20),
+            // DECISIONS D-078 ("I can still see the sparkles of the card
+            // being on screen, before the card is chosen") — the D-074
+            // ambient corner-sparkle idea read as exactly that complaint in
+            // practice regardless of being "behind" the card, so it's gone
+            // outright: no sparkle VFX at all until the spin actually
+            // lands (the burst layer below already only mounts then).
             AnimatedBuilder(
               animation: _jumpOffset,
               builder: (context, child) => Transform.translate(
@@ -978,7 +1506,7 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
                 // before the real card (and its payout) has actually landed.
                 onPressed: (_shuffling || _spinning)
                     ? null
-                    : widget.game.closeChestReveal,
+                    : withTapSfx(widget.game.closeChestReveal),
                 child: Text(
                   'CONTINUE',
                   style: TextStyle(
@@ -996,134 +1524,22 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
   }
 }
 
-class _ConfettiParticle {
-  const _ConfettiParticle({
-    required this.startAlign,
-    required this.endAlign,
-    required this.color,
+/// One glint of the chest-landing sparkle burst (DECISIONS D-072) — fires
+/// outward from the card's own center at [angle] for [distancePx], staggered
+/// by [delay] so the burst reads as individual glints over a beat rather
+/// than one ring expanding in lockstep.
+class _CardLandSparkleSpec {
+  const _CardLandSparkleSpec({
+    required this.angle,
+    required this.distancePx,
     required this.size,
-    required this.rotationTurns,
-    required this.arcHeight,
-    required this.front,
-    required this.startDelayFraction,
+    required this.delay,
   });
 
-  final Alignment startAlign;
-  final Alignment endAlign;
-  final Color color;
+  final double angle;
+  final double distancePx;
   final double size;
-  final double rotationTurns;
-  final double arcHeight;
-  final bool front;
-
-  /// DECISIONS D-063 ("shoot the confetti pieces independently"): each
-  /// particle's own flight only actually starts once the shared controller
-  /// clears this fraction of its total run, so the burst reads as pieces
-  /// launching individually over time rather than the whole set moving in
-  /// perfect lockstep.
-  final double startDelayFraction;
-}
-
-/// One side of the chest reveal's confetti burst (DECISIONS D-061) — [front]
-/// picks whether this layer paints the particles that land in front of the
-/// card or behind it; two of these (one each) sandwich the actual card
-/// content in `_ChestRevealOverlayState.build`. Repaints every tick off
-/// [controller] via `CustomPainter`, not per-particle widgets — cheap for
-/// ~13 particles per layer and gives direct, explicit control over
-/// position/rotation/opacity that `Transform`/`Align` widgets would need a
-/// lot more boilerplate to match.
-class _ConfettiLayer extends StatelessWidget {
-  const _ConfettiLayer({
-    required this.controller,
-    required this.particles,
-    required this.front,
-  });
-
-  final Animation<double> controller;
-  final List<_ConfettiParticle> particles;
-  final bool front;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) => CustomPaint(
-        painter: _ConfettiPainter(
-          particles: particles,
-          t: controller.value,
-          front: front,
-        ),
-      ),
-    );
-  }
-}
-
-class _ConfettiPainter extends CustomPainter {
-  _ConfettiPainter({
-    required this.particles,
-    required this.t,
-    required this.front,
-  });
-
-  final List<_ConfettiParticle> particles;
-  final double t;
-  final bool front;
-
-  /// DECISIONS D-063: each particle now runs its own local timeline —
-  /// `[p.startDelayFraction, 1]` of the shared controller mapped to
-  /// `[0, 1]` for that piece alone — rather than every particle sharing
-  /// one global flight fraction. `Curves.easeIn` reads as gravity actually
-  /// pulling it down and out, unlike the old `Curves.easeOut` (which
-  /// decelerated into a stop -- exactly the "stop in the middle" the
-  /// developer flagged).
-  static const _fadeStart = 0.85; // fraction of *local* time fading starts at
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (final p in particles) {
-      if (p.front != front) continue;
-      if (t < p.startDelayFraction) continue; // hasn't launched yet
-
-      final localT = ((t - p.startDelayFraction) / (1 - p.startDelayFraction))
-          .clamp(0.0, 1.0);
-      final eased = Curves.easeIn.transform(localT);
-      final opacity = localT < _fadeStart
-          ? 1.0
-          : (1 - (localT - _fadeStart) / (1 - _fadeStart)).clamp(0.0, 1.0);
-      if (opacity <= 0) continue;
-
-      final start = _toOffset(p.startAlign, size);
-      final end = _toOffset(p.endAlign, size);
-      final pos = Offset.lerp(start, end, eased)!;
-      final arc = p.arcHeight * size.height * sin(pi * eased);
-      final rotation = p.rotationTurns * 2 * pi * localT;
-
-      canvas.save();
-      canvas.translate(pos.dx, pos.dy - arc);
-      canvas.rotate(rotation);
-      final paint = Paint()..color = p.color.withValues(alpha: opacity);
-      canvas.drawRect(
-        Rect.fromCenter(
-          center: Offset.zero,
-          width: p.size,
-          height: p.size * 0.4,
-        ),
-        paint,
-      );
-      canvas.restore();
-    }
-  }
-
-  Offset _toOffset(Alignment align, Size size) {
-    return Offset(
-      (align.x + 1) / 2 * size.width,
-      (align.y + 1) / 2 * size.height,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _ConfettiPainter oldDelegate) =>
-      oldDelegate.t != t;
+  final double delay;
 }
 
 /// One playing-card image (`assets/images/cards`, DECISIONS D-057/D-058),
@@ -1222,7 +1638,7 @@ class _PauseMenuOverlay extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           side: const BorderSide(color: ArenaColors.accent),
         ),
-        onPressed: onPressed,
+        onPressed: withTapSfx(onPressed),
         child: Text(label, style: const TextStyle(color: ArenaColors.accent)),
       ),
     );

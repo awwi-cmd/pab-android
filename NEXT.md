@@ -208,6 +208,20 @@ resume. A 5th thing that needs to interrupt the round with a paused popup
 bespoke coordination with the other three — decide where in the priority
 order it belongs, add one more branch to `_afterMenuClosed`, done.
 
+**SHOP's permanent one-time items, the `ShopItem` shape (D-069).**
+`core/shop.dart`'s `kShopItems` is a flat, declaration-ordered list — a new
+item is a new `ShopItemId` member + a new `ShopItem` entry + a bonus getter
+on `MetaProgression` (`bonusXFromShop`, reading `ownsItem(id)`) + wiring
+that getter into wherever the effect actually applies (`PlayerComponent`
+for stat bonuses, `ArenaGame.resolveAttackDamage` for damage). Unlike the
+leveled `MetaStat` dials, these are owned-or-not, not leveled — no cost
+curve, `ownedItemIds` is just a `Set<String>`. `ArenaGame.
+tryConsumeRevive`/`reviveAvailable` is the pattern for a shop item whose
+*ownership* is permanent but whose *effect* is consumed once per round
+(Second Wind) — round-scoped state on `ArenaGame`, reset in `resetRound`,
+gated by a `MetaProgression.ownsX` check rather than living on
+`MetaProgression` itself.
+
 **`core/game_rules.dart` (D-024).** Pure gameplay math — targeting, spawn
 interval decay, knockback distance — lives here specifically so it's
 unit-testable without a `GameWidget` (see the testing section below). When

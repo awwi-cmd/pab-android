@@ -7,6 +7,7 @@ import '../../core/meta_progression.dart';
 import '../../data/characters.dart';
 import '../widgets/carousel_arrow.dart';
 import '../widgets/coin_icon.dart';
+import '../widgets/gem_icon.dart';
 import '../widgets/pixel_button.dart';
 import '../widgets/screen_scaffold.dart';
 import '../widgets/stat_bar.dart';
@@ -174,11 +175,9 @@ class _WalletRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 20),
-        Image.asset(
-          'assets/images/ui/star-full.png',
-          height: 24,
-          filterQuality: FilterQuality.none,
-        ),
+        // DECISIONS D-069: the real gem asset (legendary tier), not the
+        // star-full.png placeholder this used to borrow.
+        const GemIcon(size: 24),
         const SizedBox(width: 6),
         Text(
           '$gems',

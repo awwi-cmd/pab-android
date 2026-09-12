@@ -4,12 +4,27 @@ import 'package:flame_audio/flame_audio.dart';
 
 import 'settings.dart';
 
-/// Background music (DECISIONS D-062, simplified by D-064) —
-/// `assets/audio/core/2.wav` looping for the whole app lifetime, "the main
-/// BGM playing everywhere." The layered Core/boss/death stack (3/1/4.wav)
-/// from D-062 was pulled back out (developer's explicit call, 2026-09-10:
-/// "Remove all of the BGM, and leave only the main one") — the 3 extra
-/// layer tracks are no longer referenced anywhere in this class.
+/// Background music (DECISIONS D-062, simplified by D-064, track swapped by
+/// D-073, playback mode fixed by D-075) —
+/// `assets/audio/core/electric-eel-fishing.ogg` looping for the whole app
+/// lifetime, "the main BGM playing everywhere." The layered
+/// Core/boss/death stack (3/1/4.wav) from D-062 was pulled back out
+/// (developer's explicit call, 2026-09-10: "Remove all of the BGM, and
+/// leave only the main one") — those, and the old base track (2.wav,
+/// replaced by this one), are no longer referenced anywhere in this class.
+///
+/// Plays via [FlameAudio.loopLongAudio] (`PlayerMode.mediaPlayer`), not
+/// [FlameAudio.loop] (`PlayerMode.lowLatency`) — DECISIONS D-075, developer
+/// report: "static noise when BGM is playing" the moment D-073 switched
+/// the track to a full OGG music file. `lowLatency` decodes through
+/// `SoundPool`, which Android reserves for short SFX; asking it to hold a
+/// whole music track's decoded PCM is exactly the kind of case known to
+/// produce audible static/distortion on real devices and emulators alike.
+/// `loopLongAudio`'s own doc comment does warn it has "an audio gap between
+/// loop iterations" on Android (the trade-off D-073 originally picked
+/// `loop` to avoid) — clean audio with a small seam beats a perfectly
+/// seamless loop full of static, so this reverses that call. Revisit if the
+/// seam turns out to be audible in practice.
 ///
 /// A process-wide singleton, not tied to any one screen or `ArenaGame`
 /// instance — CLAUDE.md §4.5's "`ArenaGame` owns round state" is about a
@@ -24,7 +39,7 @@ class BgmController {
   BgmController._();
   static final BgmController instance = BgmController._();
 
-  static const _basePath = 'core/2.wav';
+  static const _basePath = 'core/electric-eel-fishing.ogg';
 
   /// The base layer fades in over this long on first start (developer's
   /// original call for D-062's layers, kept here since an instant full-
@@ -50,7 +65,7 @@ class BgmController {
   /// `initState`.
   Future<void> start() async {
     if (_basePlayer != null) return; // already running -- app-lifetime singleton
-    _basePlayer = await FlameAudio.loop(_basePath, volume: 0);
+    _basePlayer = await FlameAudio.loopLongAudio(_basePath, volume: 0);
     unawaited(_fadeVolume(_basePlayer!, _masterVolume));
   }
 

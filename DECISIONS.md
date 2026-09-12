@@ -3075,6 +3075,873 @@ is the developer's to run.
 
 ---
 
+## D-069 — Gem currency display, a real SHOP, and 4 more Upgrades dials (MAGNET/LUCK/REGEN/CRIT)
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer asked for three things in one message: (1) gem
+currency shown on character select and Round Over, (2) SHOP filled with
+items that actually do something, using the highest-tier gem asset for the
+gem counter icon, (3) more upgrades on the Upgrades screen's 3rd page
+(D-067 shipped it as a "COMING SOON" placeholder). Two real design
+questions — what SHOP sells and priced in what, what the 4 new dials are —
+were asked and confirmed rather than guessed (`AskUserQuestion`, both
+"Recommended" options chosen): SHOP sells **gem-priced, permanent one-time
+boosts** (distinct from the leveled coin dials); the 3 new dials are
+**MAGNET / LUCK / REGEN / CRIT**.
+
+**Decision, gem icon:** `ui/widgets/gem_icon.dart`'s `GemIcon` crops
+`consumables/gems.png`'s legendary column (rightmost, frame 0) — same
+"crop one real frame out of the actual sheet" approach `CoinIcon` (D-064)
+already uses for coins. Character select's wallet row swaps the
+`star-full.png` placeholder for this; Round Over gets a new `_GemCounter`
+(`arena_screen.dart`) — the same icon+tweened-count treatment `_CoinCounter`
+already has, minus the flying-particle flourish (one currency reveal
+already sells the moment), replacing the old plain `'Gems collected: N'`
+text row.
+
+**Decision, SHOP:** new `core/shop.dart` — `ShopItemId` enum, `ShopItem`
+(label/description/`costGems`), `kShopItems` (5 entries, declaration order
+is display order). `MetaProgression` gained `ownedItemIds` (a
+`Set<String>` of `ShopItemId.name`, persisted via
+`SharedPreferences.setStringList`) and `buyItem`/`ownsItem` (same
+afford-check-then-deduct shape as `.buy()`), plus bonus getters
+(`bonusMaxHpFromShop` etc.) combat code reads directly. The 5 items:
+- **Vitality Charm** (200 gems) — +30 max HP, read in
+  `PlayerComponent.effectiveMaxHp`.
+- **Swift Boots** (200 gems) — +20 move speed, read in
+  `PlayerComponent.effectiveMoveSpeed`.
+- **Sharp Edge** (250 gems) — +15% auto-attack damage. Scoped to just the
+  base attack (`ArenaGame.resolveAttackDamage`, called from every
+  `AttackBehavior`), same deliberately narrow precedent Haste already set
+  for attack speed — Ray/Thunder/Aura/Mirror stay unaffected.
+- **Iron Will** (250 gems) — +8% damage resistance, folded into
+  `PlayerComponent.takeDamage`'s existing resistance clamp alongside
+  Defence Crystal's and Resolve's.
+- **Second Wind** (500 gems) — survive one lethal hit per round at 50% HP.
+  `ArenaGame.tryConsumeRevive()`/`reviveAvailable` gate it to once per
+  round (`_reviveUsedThisRound`, reset in `resetRound` — the *ownership* is
+  permanent, the *use* is round state, CLAUDE.md §4.5); checked in
+  `PlayerComponent.takeDamage` right where the death path used to fire
+  unconditionally.
+`ShopScreen` (`ui/screens/shop_screen.dart`) is a scrolling list of
+`_ShopItemRow`s (same visual language as `UpgradesScreen`'s `_UpgradeRow` —
+label/description/buy button, OWNED once bought) instead of the D-047
+empty-state placeholder.
+
+**Decision, new dials:** `core/game_rules.dart` gained 4 more pure
+functions, same per-level-multiplier shape as Corruption/Haste/Fortune/
+Resolve: `magnetPickupRadiusMultiplier` (widens `gem`/`potion`/`chest`
+pickup radius, +15%/level), `luckGemDropBonus` (an additive term
+`economy.dart`'s `gemDropChance` now takes as an optional `bonusChance`
+param, +1pt/level), `regenHpPerSec` (a 4th additive HP-regen layer in
+`PlayerComponent.update`, alongside Defence Crystal's/Resolve's own),
+`critChance` (rolled by `ArenaGame.resolveAttackDamage`, same narrow
+base-attack-only scope Sharp Edge above shares — ×1.5 damage on a hit,
++3%/level). `MetaStat` gained `magnet`/`luck`/`regen`/`crit` members;
+`UpgradesScreen._statPages` gained a 3rd real entry
+`[magnet, luck, regen, crit]`, and `_ComingSoonPage` is deleted (nothing
+references it anymore).
+
+**Consequences:** `flutter analyze` clean, `flutter test` green (new cases
+added for the 4 dial functions, `gemDropChance`'s new optional param, and
+`MetaProgression.buyItem`/`ownsItem`). `flutter build apk --debug`
+succeeds. On-device verification is the developer's to run: gem icon/count
+reads correctly on both screens; SHOP purchases deduct gems, persist
+across an app restart, and are actually felt next round (HP/speed/damage/
+resistance/revive); the 3rd Upgrades page's 4 rows buy and level
+correctly with coins, same as pages 1-2.
+
+---
+
+## D-070 — SHOP paged (no scrolling) with 2 more pages of items; Round Over's gem reveal gets coin-style flying pieces plus its own sparkle VFX
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer, in one message: (1) SHOP (D-069) should page like
+Upgrades instead of scrolling, with 2 more pages of items that actually do
+something; (2) Round Over's gem counter (D-069) should get the same flying-
+piece animation the coin counter has, plus additional VFX of its own.
+
+**Decision, SHOP paging:** `core/shop.dart`'s `kShopItems` (one flat list)
+became `kShopPages` (`List<List<ShopItem>>`, 3 pages of 5 — page order and
+in-page order are both just the list's own declaration order, same
+convention `MetaStat.values` already set); `kShopItems` is now a derived
+flattening (`[for (final page in kShopPages) ...page]`) so every existing
+buy-lookup/test that read it as a flat list is untouched. `ShopScreen`
+rebuilt around the exact `UpgradesScreen` shape: `PageController` +
+`CarouselArrowRow`/`PageDots`, each page laying its rows out with
+`Expanded` — no scroll view anywhere, can't overflow regardless of screen
+height.
+
+**Decision, 10 new items (pages 2-3):** Same "permanent one-time, gem-
+priced" shape as page 1, but reaching into gameplay hooks that were already
+single choke points, so almost none of this touched `attack_behavior.dart`
+or added new per-kit branches:
+- **Quick Hands** (220g) — +10% attack speed, folded into `ArenaGame`'s
+  `_fireCooldown` calc alongside Haste's own multiplier.
+- **Battle Fury** (280g) — +20% auto-attack damage while below 50% HP. The
+  one item that can't be a bare `MetaProgression` getter (it needs the
+  *live* player's current HP) — checked directly in
+  `ArenaGame.resolveAttackDamage`, the one place that already has both
+  `meta` and `player`.
+- **Potion Master** (180g) — potions heal 50% more (`ArenaGame.
+  collectPotion`).
+- **Steel Nerves** (200g) — halves the Elite spawn roll. `game_rules.dart`'s
+  `rollIsElite` gained an optional `chanceMultiplier` param (default 1,
+  every existing call/test unaffected), same shape `gemDropChance`'s
+  `bonusChance` param already set.
+- **Vampiric Touch** (260g) — a small flat heal on every kill
+  (`ArenaGame.onEnemyKilled`); the bonus getter reads 0 when unowned, so
+  the call site is an unconditional `player.heal(...)`, no branch needed.
+- **Treasure Hunter** (260g) — +30% gems from chests (`ArenaGame.
+  onChestOpened`).
+- **Scholar's Insight** (220g) — +20% XP from every kill (`ArenaGame.
+  grantXp`).
+- **Golden Touch** (240g) — +20% coin value, folded into `ArenaGame.
+  _rollCoins` alongside Corruption's/Fortune's own multipliers.
+- **Gem Hoarder** (220g) — +5% flat gem drop chance, summed into the same
+  `bonusChance` term LUCK's dial already feeds `gemDropChance`.
+- **Boss Hunter** (350g) — bosses (which otherwise drop no gems at all —
+  `onBossKilled`'s own long-standing "not designed yet" gap) now drop a
+  flat 50-gem bonus haul.
+
+**Decision, gem reveal VFX:** `_GemCounter` (`arena_screen.dart`) gained
+the same flying-piece mechanic `_CoinCounter` has — `_FlyingCoinSpec`
+(already generic, no coin-specific fields) reused as-is, rendering a
+legendary-tier gem cell via the existing `_SpriteCell` instead of the coin
+cell. On top of that, gems get VFX coins don't: a looping burst of 6
+sparkle glints (`_GemSparkleSpec`, `Icons.auto_awesome`) fixed around the
+gem icon, each fading in/out on its own staggered local timeline off one
+shared repeating `AnimationController` — reads as gems being the fancier,
+premium currency rather than an identical reskin of the coin reveal.
+
+**Consequences:** `flutter analyze` clean, `flutter test` green (new cases:
+`kShopPages`/`kShopItems` shape, the new bonus getters neutral-until-owned
+and reflecting ownership, `rollIsElite`'s `chanceMultiplier`).
+`flutter build apk --debug` succeeds. On-device verification is the
+developer's to run: SHOP pages through 3 screens with arrows/dots, never
+scrolls on any page; all 10 new items are felt in a round once bought
+(attack speed, low-HP damage spike, potion heal size, fewer Elites,
+on-kill healing, chest/XP/coin/gem-drop bumps, a bonus gem drop on a boss
+kill); Round Over's gem counter shows small gems flying in and shrinking
+like the coins do, plus the sparkle twinkle looping around it.
+
+---
+
+## D-071 — Chest anima resized/de-contrasted, independent-falling confetti +30%, CORRUPTION shortened to CHAOS, Round Over gets a kill counter with a golden-star landing bounce
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer, four asks in one message: (1) the chest-opening
+anima flourish reads "wayy too big," reduce its size and contrast, smaller
+than the chest itself; (2) chest-reveal confetti should fall with each
+piece moving independently, plus +30% count and +30% spawn-location
+spread; (3) shorten CORRUPTION's displayed name, same functionality; (4)
+add a kill counter to Round Over using the hollow star, golden stars flying
+in the way coins/gems do, the icon itself turning into a golden star with
+the same jump/land bounce the chest reveal's card has.
+
+**Decision, chest anima:** `ArenaGame.spawnEffect` gained a `contrast`
+param (default 1, no-op) — generalized from `AuraComponent`'s own private
+`_colorMatrix` (D-032) so any one-shot VFX can dial contrast down, not just
+brightness; the old pure-multiply `_brightnessMatrix` is gone, folded into
+this one function (`contrast == 1` reduces to exactly the old formula).
+`ChestComponent._startOpening` now sizes the anima off its *own* rendered
+width (`size.x * kChestAnimaSizeFactor`, 0.85 — DECISIONS constants.dart)
+instead of the flat, much bigger `kAnimaWidthPx` (160px vs. the chest's own
+96px) every other anima flourish shares, and passes `kChestAnimaContrast`
+(0.7).
+
+**Decision, confetti:** `_confettiCount` 26 -> 34 (+30%, rounded).
+`_buildConfetti`'s start-position (`startAlign`) random ranges widened 30%
+(1.4/0.9 -> 1.82/1.17 horizontal magnitude, -0.4/0.8 -> -0.52/1.04
+vertical) — only the *spawn* range, `endAlign`'s landing spread is
+untouched. `_ConfettiParticle` gained `wobbleAmplitudePx`/
+`wobbleFrequency`/`wobblePhase`, randomized per piece; `_ConfettiPainter.
+paint` adds a `sin(localT * frequency * 2π + phase) * amplitude` horizontal
+offset on top of the shared start->end lerp, so pieces now visibly diverge
+mid-flight instead of all tracing the same line with just different
+endpoints.
+
+**Decision, CORRUPTION rename:** Display label only —
+`MetaStatLabels.label`'s `MetaStat.corruption` case now returns `'CHAOS'`.
+The enum member, every field (`corruptionLevel` etc.), and all 3 multiplier
+functions in `game_rules.dart` keep the `corruption` name — "same
+functionality," nothing to migrate in `SharedPreferences` or anywhere else.
+
+**Decision, kill counter:** New `_KillCounter` (`arena_screen.dart`),
+replacing the plain `'Enemies killed'` text row, sitting alongside
+`_CoinCounter`/`_GemCounter`. Center icon starts as `star-empty.png`
+(hollow) with `game.kills` counting up; small `star-full.png` (golden)
+stars fly in exactly like `_CoinCounter`'s coins (`_FlyingCoinSpec` reused
+as-is, plain `Image.asset` since stars aren't a sprite sheet). The instant
+the count-up finishes, the center icon swaps to `star-full.png` and plays
+the *literal same* jump/land bounce `_ChestRevealOverlayState`'s card
+landing uses — identical `TweenSequence` (520ms, 35% easeOut to -22 / 65%
+bounceOut back to 0) rather than a second hand-tuned bounce that happens to
+look similar.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 111/111
+(unchanged — no new pure-function logic to unit test; the changed code is
+either UI/VFX or a generalized private color-matrix helper, same
+untestable-by-design shape `AuraComponent`'s own version already has,
+CLAUDE.md §4.11/rule 11). `flutter build apk --debug` succeeds. On-device
+verification is the developer's to run: chest anima reads smaller than the
+chest and flatter/less punchy; confetti burst is visibly bigger and wider,
+individual pieces drifting differently as they fall; CHAOS shows correctly
+on Upgrades page 2 and still does everything Corruption always did; Round
+Over's kill counter shows golden stars flying in, and the hollow star
+visibly turns gold with a jump/bounce the instant the count finishes.
+
+---
+
+## D-072 — LevelUp screen redesigned, 4 skills made mutually exclusive (a real meta), chest confetti replaced with a sparkle burst
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer, three asks: (1) the LevelUp ("choose a power")
+screen needs a real redesign, and its text needs to actually fit inside
+its panels; (2) some powers are too strong stacked together — make picking
+one lock out specific others, on purpose, to force real build choices; (3)
+the chest-reveal confetti (D-061/D-063/D-071) "is not it" — remove it,
+replace with different VFX when the card lands.
+
+**Decision, exclusivity ("create a meta"):** `core/progression.dart`
+gained `kExclusiveUpgradeGroups` — one group so far: `{aura, ultimateMirror,
+projectileRay, projectileThunder}`, the 4 independent screen-clearing
+damage skills, each already strong enough alone to carry a build, with no
+real tradeoff stacked together. `lockedOutByExclusiveGroups(pickCounts)`
+computes every kind locked out because a *different* member of its group
+already has a pick (the picked one itself stays eligible, so it can still
+level toward its own cap); `rollUpgradeChoices` excludes those alongside
+the existing max-picks check. Deliberately narrow: flat stat bumps (vit/
+dex/str/intellect), `knifeMastery` (a modifier on an existing attack, not
+a 5th independent damage source), and `defenceCrystal` (pure
+survivability) aren't in any group, so they keep stacking freely
+alongside whichever one of the 4 gets picked — same "narrow scope on
+purpose" precedent Haste/Sharp Edge/CRIT already set (D-069/D-070) rather
+than a blanket "only one skill ever" rule. `isExclusiveUpgrade(kind)`
+exposes group membership for the UI to warn about *before* a pick, not
+just via the kind's later absence.
+
+**Decision, LevelUp redesign:** The 3 choices were bare `OutlinedButton`s
+with no overflow guard — a long description (Knife Mastery's, worst case)
+had nothing stopping the whole popup's `Column` from exceeding screen
+height, since nothing wrapped it in a scroll view. New `_LevelUpCard`
+(`arena_screen.dart`): a bordered panel, left accent stripe, label +
+category tag (`UpgradeKindLabels.tag` — STAT/SKILL/PASSIVE) row up top,
+and the *full* description underneath with no truncation. An exclusive
+kind (`isExclusiveUpgrade`) swaps the stripe/tag to danger-red and adds a
+one-line "Locks out the other 3 offense skills this round" warning, so
+the new tradeoff from this same decision is visible on the card itself.
+The whole popup (`_LevelUpOverlayState.build`) is now wrapped in a
+`SingleChildScrollView`, same overflow fix `_ChestRevealOverlay` already
+uses (D-058) — it can't overflow again regardless of how long a future
+description gets.
+
+**Decision, chest VFX:** The rotated-rect confetti burst
+(`_ConfettiParticle`/`_ConfettiLayer`/`_ConfettiPainter`) is deleted
+outright. In its place: a radial sparkle burst reusing the *exact* visual
+language the gem counter's own sparkle VFX already established (D-070) —
+`Icons.auto_awesome` glints (`_CardLandSparkleSpec`) firing outward from
+the card's center at a random angle/distance, each staggered by its own
+delay, fading and scaling down over one non-looping 750ms
+`AnimationController` fired alongside the existing landing bounce. Reads
+as "something good just landed" using a VFX language the app already
+speaks, rather than a third one-off effect.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 117/117 (+6 new:
+exclusive-group roll behavior, `isExclusiveUpgrade`/
+`lockedOutByExclusiveGroups`). `flutter build apk --debug` succeeds.
+On-device verification is the developer's to run: LevelUp cards read
+clearly and never overflow/clip text on any description, including Knife
+Mastery's; picking any of Aura/Mirror/Ray/Thunder removes the other 3 from
+every later level-up that round (the picked one can still come back up to
+level further); the EXCLUSIVE badge/warning shows on all 4 before picking;
+the chest reveal shows the new sparkle burst with zero confetti rectangles
+anywhere.
+
+---
+
+## D-073 — BGM track swapped to electric-eel-fishing.ogg, gapless loop confirmed
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer: "Remove the current bgm, and add
+electric-eel-fishing.ogg, perfect loop it."
+
+**Decision:** `BgmController._basePath` changed from `core/2.wav` to
+`core/electric-eel-fishing.ogg` (delivered pre-session, already covered by
+`pubspec.yaml`'s `assets/audio/core/` folder entry — no asset declaration
+needed). The old base track (2.wav) and the already-unused layered stack
+(1/3/4.wav, D-064) stay in the repo unreferenced, same precedent D-064
+already set rather than deleting audio assets outright. "Perfect loop" is
+already what `BgmController.start()` gets for free: it calls
+`FlameAudio.loop` (`PlayerMode.lowLatency`), which loops gaplessly on
+Android — confirmed by reading `flame_audio`'s own source, whose sibling
+method `loopLongAudio` (`PlayerMode.mediaPlayer`) carries an explicit doc
+warning that *that* one has "an audio gap between loop iterations" on
+Android and recommends `loop` for a gapless one. No code-shape change
+needed beyond the path swap; the class doc comment now spells out why
+`loop` (not `loopLongAudio`) is load-bearing for this ask, so a future
+track swap doesn't accidentally regress onto the gapped method.
+
+**Consequences:** `flutter analyze` clean, `flutter build apk --debug`
+succeeds (no unit test exists for `BgmController` — a Flame-audio
+component with no pure logic, same untested-by-design shape every other
+audio/VFX component has, CLAUDE.md §4.11/rule 11). On-device verification
+is the developer's to run: electric-eel-fishing.ogg plays app-wide from
+boot, fades in the same ~2.5s as before, and loops with no audible
+click/gap/silence at the seam.
+
+---
+
+## D-074 — Chest/boss anima moved behind their sprites, chest-reveal corner sparkles fixed + added, boss teleport cooldown, hurt no longer freezes movement
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer, four asks in one message: (1) the chest-opening
+anima flourish renders in front of the chest, should be behind; (2) the
+chest-reveal sparkle VFX (D-072) is good, but add one in each of the
+card's 4 corners while it's still choosing, behind the card — "right now
+we can see where we're storing them before we choose the card"; (3) the
+boss's teleport anima renders in front of the boss, should be behind, plus
+a 3-second cooldown on the teleport itself; (4) taking damage visibly
+slows/freezes the character, remove that.
+
+**Decision, anima z-order (chest + boss):** Both were spawned via
+`ArenaGame.spawnEffect` without an explicit `priority`, defaulting to
+`ArenaPriority.hitEffects` (25) — above both the chest's own
+`ArenaPriority.pickup` (7, `chest.dart`) and the boss's own
+`ArenaPriority.enemy` (10, `boss.dart`). Both call sites now pass
+`priority: ArenaPriority.groundEffects` (5), rendering behind either
+sprite.
+
+**Decision, chest-reveal sparkles — real bug, not just a missing feature:**
+`_buildLandSparkle`'s fade/offset math reads as fully opaque and
+un-offset at the burst controller's own *rest* value (0, before
+`.forward()` is ever called: `raw = ((0 - delay) / (1 - delay)).clamp(0,
+1)` is 0 for every particle regardless of `delay`) — so all 14 landing-
+burst glints sat fully visible, dead-center on the card, for the entire
+shuffle+spin, before the reveal ever fired. That's exactly "we can see
+where we're storing them." Fix: the whole landing-burst layer is now only
+mounted once `!_shuffling && !_spinning` (i.e., landed) — before that it
+isn't built at all, not just invisible. Separately, the actually-requested
+new VFX: 4 small ambient glints (`_buildCornerSparkle`, one per
+`Alignment` corner, `FractionalTranslation`-nudged slightly past the
+card's own edge), pulsing on a shared looping `_cornerSparkleController`
+staggered per corner, shown only `if (_shuffling || _spinning)` and
+painted *before* (behind, in `Stack` paint order) the card image inside
+the same `Stack` — gone the instant the spin lands, when the landing burst
+takes over.
+
+**Decision, boss teleport cooldown:** `BossStats.teleportCooldownSec`
+(3.0) — `BossComponent._teleportCooldownTimer` starts counting down the
+instant a teleport *begins* (`_beginTeleport`, not once it finishes), and
+the trigger check (`distance <= teleportTriggerDistancePx`) is now also
+gated on it being `<= 0`. Without this, a player standing still right at
+the trigger distance could chain wind-ups back to back with no real gap.
+
+**Decision, hurt no longer freezes movement:** `PlayerComponent.update`'s
+movement block used to skip applying `input.direction` entirely whenever
+`current == AnimState.hurt` (`if (moving && current != AnimState.hurt)`)
+— every non-lethal hit froze the player in place for the whole hurt-pose
+duration, reading as "slowed down." The `hurt` pose (D-021: "recoil pose
+only, no tint") was only ever meant to be a visual reaction, not a control
+lock (unlike the `spawn` state, which *is* deliberately a control lock per
+PRD §6.5) — movement now applies unconditionally; the animation-state
+transition logic right below (switching back to `run`/`idle` once the hurt
+pose finishes) is untouched.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 117/117
+(unchanged — every change here is either a VFX z-order/visibility fix, a
+Flame-component timer, or a movement-gate removal, none of it pure logic
+in `core/` to unit-test, CLAUDE.md §4.11/rule 11). `flutter build apk
+--debug` succeeds. On-device verification is the developer's to run: chest
+and boss anima both read behind their sprite now; the chest reveal shows
+4 pulsing corner glints behind the card *only* while it's still shuffling/
+spinning, replaced cleanly by the landing burst once it lands, with no
+sparkles visible before that; the boss can't re-teleport for a full 3s
+after starting one; taking damage no longer stops or slows movement.
+
+---
+
+## D-075 — BGM static noise fixed: `loopLongAudio` (MediaPlayer) instead of `loop` (SoundPool)
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer, marked highest priority: "I hear static noise when
+BGM is playing" — surfaced immediately after D-073 swapped the BGM track
+to a full-length OGG music file.
+
+**Decision:** `BgmController.start()` now calls `FlameAudio.loopLongAudio`
+(`PlayerMode.mediaPlayer`, backed by Android's real media decoder/
+`ExoPlayer`) instead of `FlameAudio.loop` (`PlayerMode.lowLatency`, backed
+by `SoundPool`). `SoundPool` is an Android API meant for short SFX played
+with minimal latency — decoding and holding a whole music track's PCM
+through it is exactly the kind of load known to produce audible static/
+distortion on real hardware and emulators alike, and lines up with the
+static appearing the moment D-073 pointed a full track at it (the previous
+`2.wav` track apparently didn't trigger it as audibly, or as noticeably,
+but the underlying risk was the same). The trade-off, documented at both
+D-073 and here: `loopLongAudio`'s own doc comment warns of "an audio gap
+between loop iterations" on Android — the exact seam D-073 picked `loop`
+specifically to avoid ("perfect loop it"). Clean audio with a possible
+small seam beats a seamless loop full of static; revisit if the seam turns
+out to be audible in practice (the actual fix then would be re-encoding
+the source file with proper loop points and reaching for a lower-level
+gapless-loop technique, not reverting to `loop`).
+
+**Consequences:** `flutter analyze` clean, `flutter build apk --debug`
+succeeds (no unit test exists for `BgmController`, same untested-by-design
+shape as D-073, CLAUDE.md §4.11/rule 11). On-device verification is the
+developer's to run: BGM plays with no static/distortion at any point
+during playback, and the loop point (however it sounds) is checked
+separately from the static fix itself.
+
+---
+
+## D-076 — A real SFX layer: footsteps, damage, tap sounds on every button, projectile shots, level-up, chest-card sounds; an XP bar to match the HP bar
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer delivered 7 new SFX files
+(`step-concrete-one/two.ogg`, `sfx_player-damage.ogg`, `sfx_tap_input.ogg`,
+`chest-card-select.wav`, `chest-card-chosen.wav`,
+`player-projectile-shoot.wav`, `level-up-sound.wav`) and asked for all of
+them wired in, plus a bottom XP bar matching the existing top HP bar.
+
+**Decision, a second SFX singleton:** New `core/sfx_player.dart` —
+`SfxPlayer`, an app-wide singleton alongside `BgmController`
+(`core/bgm_controller.dart`), same "read `Settings` once at boot
+(`ArenaApp.initState`), update live off the SFX Volume slider
+(`SettingsScreen._update`)" shape. Needed as its own thing, not folded
+into `ArenaGame._playSfx` (the original explosion/death SFX, D-044),
+because most of these have to play from plain menu screens with no live
+`ArenaGame` at all — tap sounds, most obviously. Every one-shot still goes
+through `kSfxVolumeCap` (D-044's "make sure they are not that loud"), plus
+a further per-sound `relativeVolume` for anything either especially
+frequent (taps, footsteps, the chest-card flicker) or explicitly asked to
+stay quiet.
+
+**Decision, each sound's hook:**
+- **Footsteps** — `PlayerComponent`'s movement block now runs a small
+  timer (`_footstepIntervalSec`, a first-guess cadence, not synced to a
+  specific run-cycle frame) alternating `step-concrete-one`/`-two` while
+  actually moving; resets to 0 the instant movement stops.
+- **Player damage** — `PlayerComponent.takeDamage`, right where
+  `spawnBloodImpact()` already fires (D-033) — same "only on a hit that
+  actually lands" guard for free.
+- **Tap on every button** — the widest-reaching one. `PixelButton` and
+  `CarouselArrow` (the two shared, heavily-reused button widgets) play it
+  internally; `ScreenScaffold`'s back button switched from
+  `automaticallyImplyLeading`'s default (no hook to play a sound from) to
+  an explicit `BackButton`; every other raw `OutlinedButton`/`TextButton`/
+  `IconButton`/bare `InkWell` (Round Over's MAIN MENU, the LevelUp card's
+  own tap, VIEW YOUR UPGRADES/BACK, the Pause Menu's 3 buttons via its
+  shared `_menuButton` helper, ChestReveal's CONTINUE, the debug DIE
+  button, the pause button) is wrapped with a new
+  `ui/widgets/tap_sfx.dart`'s `withTapSfx(onPressed)` at its call site —
+  `null` in, `null` out, so a disabled button stays silent. Sliders/
+  radios/switches are deliberately out of scope — this is for discrete
+  button presses, not continuous controls.
+- **Projectile shoot, "not power-ups"** — `PlayerComponent.playFire()`.
+  Every base `AttackBehavior` (`ProjectileAttack`/`KnifeAttack`/
+  `SpiralFireAttack`/`WardenSlamAttack`) already calls this once per shot/
+  swing; Ray/Thunder/Aura/Mirror never call it, so the "not power-ups"
+  scoping is true by construction, not a filter that has to be kept in
+  sync by hand.
+- **Level up** — `ArenaGame.grantXp`'s `while` loop and
+  `debugGrantLevelUp`, right where `level++` actually happens (once per
+  level gained, even across a multi-level XP grant).
+- **Chest-card select/chosen** — `_ChestRevealOverlayState`'s existing
+  shuffle/spin `Timer` callbacks (every swap plays `chest-card-select`),
+  except the very last one, which plays `chest-card-chosen` instead of
+  another select (the same moment the landing bounce/sparkle burst already
+  fire). `chest-card-select` specifically needed a *held* `AudioPlayer`
+  (`SfxPlayer._cardSelectPlayer`), not a fire-and-forget one-shot like
+  everything else here — the developer's spec ("interrupts the other one
+  so they don't play over another," "change its pitch each time") means
+  explicitly `.stop()`-ing the previous instance before starting a new one
+  with a randomized `setPlaybackRate`. `setPlaybackRate`'s own doc warns it
+  must be called *after* `play()`/`resume()`, not before — got this wrong
+  on the first pass internally, caught by reading the doc before shipping.
+
+**Decision, XP bar:** New `game/components/xp_bar.dart`'s
+`XpBarComponent` — same background/fill/border shape as `HpBarComponent`,
+added to `camera.viewport` (HUD, not world) the same way. Unlike the HP
+bar's fixed `(24, 24)` (top-left is top-left on any screen size), a
+*bottom* position needs the actual viewport height, which isn't known at
+construction — `onGameResize` (called by Flame on every mounted component
+whenever the game resizes, including once on first mount) is what places
+it, 24px up from the bottom edge. `ArenaGame` gained a public `xpFraction`
+getter (`_xpToNextLevel` itself stays private, CLAUDE.md §4.5) for the bar
+to read.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 117/117
+(unchanged — every change here is SFX plumbing, a movement-block timer, or
+a HUD component, none of it pure `core/` logic to unit-test, CLAUDE.md
+§4.11/rule 11). `flutter build apk --debug` succeeds. On-device
+verification is the developer's to run: footsteps alternate while moving
+and stop instantly when idle; a hit plays the damage sound; every button
+across every screen (menus, pause menu, level-up, chest reveal, round
+over) makes a tap sound, sliders/switches don't; only the base auto-attack
+(never Ray/Thunder/Aura/Mirror) plays the shoot sound; leveling up plays
+its sound; the chest reveal's card flicker pitches around per swap with no
+sounds overlapping, at a volume that doesn't dominate, landing on a
+distinct "chosen" sound; the XP bar fills left-to-right at the bottom of
+the arena and doesn't visually collide with the movement-input joystick.
+
+---
+
+## D-077 — A real pixel font, applied app-wide
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer delivered `assets/fonts/pixel.ttf`: "this needs to
+be our main font in this game."
+
+**Decision:** Declared as a `PixelFont` family in `pubspec.yaml`'s new
+`fonts:` section, then set as `ThemeData.fontFamily` in `app.dart`'s
+`_theme` — not on individual `TextStyle`s. `Text`'s own merge-with-
+ambient-`DefaultTextStyle` logic (every `TextStyle` in this codebase
+leaves `fontFamily`/`inherit` unset, so `inherit` defaults `true`) means
+every screen's text picks this up automatically, menus and Flame overlays
+alike, with zero changes to any of the ~40 existing `TextStyle` call sites.
+
+**Consequences:** `flutter analyze` clean, `flutter build apk --debug`
+succeeds (confirms the font asset resolves and packages correctly — a
+build failure would be the way a bad `pubspec.yaml` font path actually
+surfaces). On-device verification is the developer's to run: the pixel
+font renders everywhere (main menu, settings, character select, shop/
+upgrades, every arena overlay) — legible at every size actually used,
+including the smallest label text.
+
+---
+
+## D-078 — Chest sparkles still visible pre-choice (bug), exclusive pairs instead of one 4-way clique, and a real LevelUp card redesign
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer, three more asks/reports on top of D-072/D-076: (1)
+the chest-card sparkles are still visible on screen before a card is
+chosen; (2) one 4-way exclusive clique (D-072) is too much — pair the
+skills instead, at least 2-3 exclusive relationships; (3) the LevelUp
+screen (D-072's redesign) still looks cheap, needs more.
+
+**Decision, sparkles:** The D-074 fix already gated the *landing* burst
+correctly (only mounts once `!_shuffling && !_spinning`) — the residual
+visibility was the D-074 corner-sparkle feature itself (4 ambient glints
+behind the card, deliberately visible for the whole shuffle/spin). Being
+*behind* the card didn't stop them reading as exactly the reported
+complaint in practice. Rather than trying to hide them further, that
+feature is removed outright — `_cornerSparkleController`,
+`_buildCornerSparkle`, and the `Stack` wrapper around `_PlayingCardImage`
+are gone; the card display reverts to the plain jump-bounce
+`AnimatedBuilder` it had before D-074. No sparkle VFX exists anywhere
+before the spin actually lands, full stop.
+
+**Decision, exclusive pairs:** `kExclusiveUpgradeGroups` (D-072's single
+`{aura, ultimateMirror, projectileRay, projectileThunder}` clique) is now
+3 separate pairs instead, chaining all 4 kinds together without any one
+pick locking the *other two*: `{aura, ultimateMirror}`,
+`{ultimateMirror, projectileThunder}`, `{projectileThunder,
+projectileRay}` — each with its own "why these two" rationale in the code
+comment (redundant always-on AoE, redundant scale-to-everything nukes,
+redundant second-attack rotations). `ultimateMirror` deliberately sits in
+2 pairs (the existing `lockedOutByExclusiveGroups` already unions across
+every group a kind belongs to, so this needed no code change, only data);
+non-adjacent combos (Aura+Ray, Aura+Thunder, Mirror+Ray) are now valid
+picks, unlike D-072's all-or-nothing version. New `exclusiveLockTargets
+(kind)` (`lockedOutByExclusiveGroups({kind: 1})`) feeds the LevelUp card's
+warning line the *real* paired partner(s) by name instead of D-072's now-
+inaccurate hardcoded "the other 3."
+
+**Decision, LevelUp redesign:** `_LevelUpCard` gained a 44px icon badge
+(`_UpgradeIcon`/`_UpgradeIconSprite`) cropping each skill's own real game
+art (`ultimate-mirror.png`/`projectile-ray-beam.png`/
+`projectile-thunder.png`/`defence-crystal.png`/`effect_electric-shield.png`/
+`knife_clean.png` — every asset D-049/D-032/D-029 already shipped) instead
+of a plain text-only row; the 4 flat stat bumps (no dedicated art) get a
+plain `Icon` glyph instead. `_UpgradeIconSprite` generalizes `_SpriteCell`'s
+crop trick for non-square cells (the ray beam/thunder sheets aren't) —
+scales by the cell's *larger* dimension and centers in a square box, so a
+wide or tall frame letterboxes instead of stretching. The card itself
+gained a soft accent-tinted `BoxShadow` and a double border (outer dim,
+inner accent) for real depth instead of one flat outline. Layered on top
+of D-077's font swap, applied for free.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 120/120 (+3 net
+new/rewritten: pairwise lock behavior replacing the old clique tests,
+`exclusiveLockTargets`). `flutter build apk --debug` succeeds. On-device
+verification is the developer's to run: zero sparkle VFX visible before a
+chest card actually lands; picking Aura only removes Ultimate Mirror (Ray/
+Thunder still offerable), picking Ultimate Mirror removes both Aura and
+Thunder, etc. — the "Locks out: X" line on each exclusive card always
+names the right partner(s); LevelUp cards show each skill's real icon,
+read with real depth (shadow + double border), and no longer read as
+"cheap."
+
+---
+
+## D-079 — Root-caused and fixed a real SFX resource leak (BGM stopping/restarting, static, desync, a freeze); boss now drops a chest
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer reported 4 audio symptoms in one message: BGM
+stopping and restarting on its own roughly every 30 seconds; static noise
+persisting even after D-075's fix; sounds not syncing with the actions
+that trigger them; and one full game freeze, suspected to be sound-
+related. Also asked, separately: make the boss drop a chest on death.
+
+**Diagnosis:** All 4 audio symptoms trace back to one bug in `SfxPlayer`
+(D-076): every one-shot call (`playTap`/`playFootstep`/`playDamage`/
+`playProjectileShoot`/`playLevelUp`/`playChestCardChosen`) went through
+`FlameAudio.play(file, ...)`, which constructs a **brand-new**
+`AudioPlayer` — a fresh platform-channel object, a fresh decode, fresh
+`setAudioContext`/`setReleaseMode` round-trips — on every single trigger,
+and never disposes it. Footsteps alone fire roughly 3 times a second
+while moving; across taps, shots, and footsteps in a real round, that
+leaked hundreds of live native audio objects within well under a minute.
+That fully explains all 4 reports at once: the extra per-call native
+setup work is exactly what "not synced" sounds like; the accumulating
+resource pressure on a shared, limited platform audio subsystem is a
+textbook cause of a periodic audio-wide hiccup (the BGM player — otherwise
+untouched after its one-time creation — getting starved or reset counts
+as "stopping and restarting"); the same contention reads as static; and
+enough leaked native objects on this machine's already-documented
+resource-constrained emulator (CLAUDE.md §2's own history) is a plausible
+route to a genuine freeze. D-075's `loopLongAudio` switch was chasing a
+symptom (static) whose actual cause was never the BGM player itself.
+
+**Decision:** `SfxPlayer` now uses `FlameAudio.createPool` — one
+`AudioPool` per sound file (2-4 pre-`setSource`'d players, default
+`PlayerMode.mediaPlayer`), created once and reused for the app's whole
+lifetime, same "outlives any screen" shape `BgmController`'s single player
+already has. `.start(volume:)` on an already-prepared player is fast, and
+the pool auto-returns a player to itself the instant playback completes —
+no manual disposal, no unbounded growth. New `SfxPlayer.preload()`,
+called from `ArenaApp.initState` alongside `BgmController.start`, warms
+every pool up front so the very first sound in a session doesn't pay the
+one-time creation cost. `chest-card-select` (pitch varies per call,
+D-076) deliberately stays on its own dedicated held-`AudioPlayer`
+mechanism — a pool's fixed players don't support per-play pitch — but
+that path was never the leak: it explicitly stops+disposes the previous
+instance before creating the next, so at most one extra player is ever
+alive, for one short chest-reveal burst at a time, not continuously
+across a whole round.
+
+**Decision, boss chest:** `ArenaGame.onBossKilled` now calls the existing
+`spawnChest(deathPosition)` (the same method `ChestSpawner`'s periodic
+timer already calls) right where the boss died, unconditionally — a real
+milestone reward instead of the "not designed yet" gap the class doc used
+to flag. Boss Hunter's flat gem bonus (D-070) is unaffected and stacks
+with this.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 120/120
+(unchanged — this is audio-pipeline/component plumbing, none of it pure
+`core/` logic to unit-test, CLAUDE.md §4.11/rule 11). `flutter build apk
+--debug` succeeds. On-device verification is the developer's to run: BGM
+plays continuously through a full round with no stop/restart and no
+static; footsteps/taps/shots/damage all fire in sync with the action that
+triggers them, including during a long, sound-heavy round; no freeze
+across an extended play session; a boss kill always drops a chest at its
+death position.
+
+---
+
+## D-080 — Global text scale reduced 25%
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer, after D-077's pixel font shipped: "the font is
+too big, we need to reduce it by 25%."
+
+**Decision:** `MaterialApp.builder` in `app.dart` wraps every screen in a
+`MediaQuery` whose `textScaler` is a flat `TextScaler.linear(0.75)` —
+touches one place instead of every one of the ~40 existing `TextStyle`'s
+own `fontSize`. Deliberately replaces rather than composes with the
+platform's own accessibility text-scale setting: this is a pixel-art game
+with hand-fitted panel layouts (the LevelUp cards, stat bars, HUD), not a
+text-heavy app, and a user's system font-scaling stacking on top would
+just as easily break those layouts in the other direction.
+
+**Consequences:** `flutter analyze` clean, `flutter build apk --debug`
+succeeds. On-device verification is the developer's to run: every screen's
+text reads at the smaller, correctly-proportioned size, still legible at
+the smallest sizes used (LevelUp card descriptions, tags).
+
+---
+
+## D-081 — Real crash root-caused via logcat: SFX pools were on the wrong `PlayerMode`
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer: "the sound got really desynced and the game
+crashed, it was like 5-6 seconds behind" — reported after D-079's pooled-
+`AudioPool` fix had already shipped, meaning pooling alone wasn't enough.
+Pulled the device's actual logcat rather than re-theorizing, and found two
+real, distinct log entries:
+
+```
+E flutter : Unhandled Exception: TimeoutException after 0:00:30.000000: Future not completed
+E flutter : #2 AudioPlayer._completePrepared (package:audioplayers/src/audioplayer.dart:372:5)
+E flutter : #6 FlameAudio._preparePlayer (package:flame_audio/flame_audio.dart:67:5)
+```
+```
+E AndroidRuntime: FATAL EXCEPTION: main
+E AndroidRuntime: java.lang.IllegalStateException
+E AndroidRuntime: 	at android.media.MediaPlayer._prepareAsync(Native Method)
+E AndroidRuntime: 	at ...MediaPlayerWrapper.prepare(MediaPlayerWrapper.kt:88)
+E AndroidRuntime: 	at ...WrappedPlayer.stop(WrappedPlayer.kt:238)
+E AndroidRuntime: 	at ...WrappedPlayer.onCompletion(WrappedPlayer.kt:300)
+```
+
+**Diagnosis:** Both trace to `PlayerMode.mediaPlayer` — the default
+`AudioPool`/`FlameAudio` backend, and what D-079's pools and
+`BgmController` (D-075) both used. `MediaPlayer` wraps Android's
+heavyweight media pipeline, built for one long-lived stream (correct for
+BGM); `audioplayers`' own `mediaPlayer`-mode `AudioPool` auto-returns a
+finished player to the pool by calling `stop()`, which internally calls
+`prepareAsync()` to reset it for reuse. Under the trigger rate footsteps
+alone produce (~3/sec), that reset raced hard enough to throw
+`IllegalStateException` from inside the native completion callback —
+uncatchable from Dart, and fatal (`FATAL EXCEPTION: main`, process died).
+Separately, `BgmController`'s own lone `MediaPlayer` (D-075) hung for the
+full 30s the library allows for "prepared" to fire, at the same time all
+the SFX pools' `MediaPlayer` instances were also churning through the
+identical native pipeline — exactly the "BGM stops... 5-6 seconds behind"
+report, caused by resource contention on a pipeline never meant to host
+this many concurrent short-lived instances.
+
+**Decision:** Every pooled SFX (`SfxPlayer`'s tap/damage/shoot/level-up/
+footstep/chest-chosen) now explicitly requests `PlayerMode.lowLatency`
+(`AudioPool.create` called directly, since `FlameAudio.createPool` doesn't
+expose `playerMode` at all) — `SoundPool`, the Android API actually
+designed for rapid repeated short clips, with no prepare-per-play state
+machine to race. The cost, per `AudioPool`'s own doc: `lowLatency` pools
+don't auto-return a player on completion, so `_playPooledAsync` now
+returns each one by hand after a fixed 2s delay (generous for every clip
+here). Added a second, cheap layer of defense: `_inFlight`/
+`_cardSelectBusy` guards drop (don't queue) a trigger that arrives while
+the previous call for the same sound is still mid-setup, so a burst can
+never pile up regardless of a device's momentary slowness — this also
+closes a real, previously-unguarded race in `chest-card-select`'s own
+dedicated player (overlapping calls during the spin's fastest steps could
+race reading/writing `_cardSelectPlayer`). `BgmController` stays on
+`mediaPlayer`/`loopLongAudio` — correct for one long stream — and should
+no longer contend with anything now that every SFX pool has moved off
+that pipeline entirely.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 120/120
+(unchanged — audio-pipeline plumbing, no pure `core/` logic, CLAUDE.md
+§4.11/rule 11). `flutter build apk --debug` succeeds. On-device
+verification is the developer's to run: no crash and no BGM stop/restart
+across a long, sound-heavy round; SFX stay in sync with the actions that
+trigger them start to finish, not just for the first 30 seconds.
+
+---
+
+## D-082 — `splash_bg.png`: native launch screen + main menu background
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer delivered `assets/images/bg/splash_bg.png` (a full
+1080x1920 title-art piece with the game's logo lockup baked in): "it needs
+to be the game's splash art + background only in the main menu."
+
+**Decision:** Two separate mechanisms, since the native launch screen
+renders before Flutter's engine (and its `assets/` bundle) is even
+available:
+- **Native splash** — the file is copied into
+  `android/app/src/main/res/drawable-nodpi/splash_bg.png` (a real Android
+  resource, `-nodpi` so it's never density-pre-scaled) and both
+  `drawable/launch_background.xml` and `drawable-v21/launch_background.xml`
+  (the latter is the one actually used, minSdkVersion 24) now point their
+  single layer-list `<item>` straight at `@drawable/splash_bg`, replacing
+  the boilerplate white/`colorBackground` placeholder.
+- **Main menu background** — `MainMenuScreen` (`assets/images/bg/` newly
+  declared in `pubspec.yaml`) renders the same file full-bleed
+  (`Image.asset(..., fit: BoxFit.cover)`) behind its existing buttons, and
+  nowhere else, per the "only in the main menu" spec. Since the art already
+  bakes in the "PIXEL ARENA BRAWL" title lockup, the screen's old plain
+  `Text('ARENA')` title is gone — the art *is* the title now, not a second,
+  redundant one drawn on top of it.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 120/120,
+`flutter build apk --debug` succeeds — this is also the one place a bad
+Android resource actually surfaces: the first build attempt failed
+outright (`[Fatal Error] launch_background.xml:2:64: The string "--" is
+not permitted within comments` — Dart-style `--` inside an XML comment
+isn't legal XML, unlike Dart itself), caught and fixed before shipping.
+On-device verification is the developer's to run: the splash art shows
+during cold start before the first Flutter frame, and the main menu shows
+it as a full-bleed background with the buttons readable over it.
+
+---
+
+## D-083 — Exclusive-skill color: warm amber instead of bright red
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer: "get rid of that bright red for exclusives, it's
+wayy to bright. Pick something a little bit more warm, but still pricking
+players' attention for it to read."
+
+**Decision:** New `ArenaColors.warning` (`0xFFE0964B`, warm amber) added
+alongside the existing `ArenaColors.danger` (`0xFFE0526C`) rather than
+changing `danger` itself — `danger` is also used for God Mode's switch,
+the debug DIE button, and ROUND OVER, which are genuinely "danger," not
+"notice this." `_LevelUpCard`'s exclusive-skill accent (stripe, tag,
+border, shadow, and the "Locks out: X" line) now reads `warning` instead.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 120/120,
+`flutter build apk --debug` succeeds. On-device verification is the
+developer's to run: exclusive cards read warm/amber, not bright red, while
+still standing out from the regular accent-teal cards; every other
+`danger` usage (God Mode, DIE, ROUND OVER) is unchanged.
+
+---
+
+## D-084 — First-time-user tutorial: 3 slides, auto-shown on a fresh save, reachable via a "?" button
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer: "First time user experience, booting the game with
+fresh saves, should have a 3 slide tutorial explaining the game. You can
+pick assets to explain powers and what we built. Can also be accessed from
+the top right in the main menu, a circular ? button."
+
+**Decision:** New `core/tutorial_state.dart`'s `TutorialState` — one
+persisted bool (`tutorial.hasSeenIntro`), same minimal shape as every
+other small persisted flag in this project rather than a full repository
+class. New `ui/screens/tutorial_screen.dart`'s `TutorialScreen` — a fixed
+3-page `PageView` using the same carousel chrome
+(`CarouselArrowRow`/`PageDots`) every other multi-page screen already
+uses, built entirely out of real in-game assets rather than new
+illustration:
+1. **MOVE & SURVIVE** — plain `Icon` glyphs (no dedicated art exists for
+   "movement"/"auto-attack"/"survive").
+2. **LEVEL UP & CHOOSE POWERS** — 5 real skill icons via the newly-shared
+   `SkillIcon` widget (promoted out of `arena_screen.dart`'s
+   `_LevelUpCard` into `ui/widgets/skill_icon.dart` the moment a second
+   screen needed the identical per-skill iconography — `SkillIcon`/
+   `SpriteCellIcon` are now public, `_LevelUpCard` imports them same as
+   this screen does), plus a line about the EXCLUSIVE mechanic (D-072/
+   D-078).
+3. **LOOT, SHOP & UPGRADE** — the real `CoinIcon`/`GemIcon` widgets plus
+   the actual `chest_01.png` sprite.
+
+`MainMenuScreen` (now `StatefulWidget`, was stateless) checks
+`TutorialState.hasSeenIntro()` in `initState` and pushes `TutorialScreen`
+once if it's `false` — true only on a genuinely fresh save, since nothing
+has written the key yet. A new circular "?" button, top-right (developer's
+spec verbatim), pushes the same route on demand regardless of that flag.
+Both paths converge on the same `_finish()` (`TutorialState.markSeen()`
+then pop), so there's only one way this screen ever exits, whether it was
+auto-triggered or manually opened.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 122/122 (+2
+new: a genuinely-fresh-save `setMockInitialValues({})` test confirming the
+tutorial auto-opens and that finishing it flips the persisted flag and
+returns to the menu; a seeded-`hasSeenIntro: true` test confirming the "?"
+button still reopens it manually). The 2 pre-existing widget tests were
+updated to seed `hasSeenIntro: true` (they test the menu/character-select
+flow itself, not the tutorial) and to drop the now-removed `Text('ARENA')`
+assertion (D-082 replaced it with the splash art). `flutter build apk
+--debug` succeeds. On-device verification is the developer's to run: a
+freshly-installed app (or `adb shell pm clear com.awwwi.arena` on this
+one) opens straight to the tutorial after the main menu's first frame;
+finishing or skipping it lands back on the main menu and it doesn't
+reappear on next launch; the "?" button reopens it any time after that.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

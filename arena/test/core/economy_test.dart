@@ -55,6 +55,14 @@ void main() {
     test('never exceeds 1.0', () {
       expect(gemDropChance(1000), 1.0);
     });
+
+    test('bonusChance (LUCK, DECISIONS D-069) adds on top, still clamped', () {
+      expect(
+        gemDropChance(1, bonusChance: 0.1),
+        closeTo(kGemBaseDropChance + 0.1, 1e-9),
+      );
+      expect(gemDropChance(1000, bonusChance: 0.5), 1.0);
+    });
   });
 
   group('rollGemDrop', () {

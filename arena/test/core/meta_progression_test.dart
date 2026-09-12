@@ -1,4 +1,5 @@
 import 'package:arena/core/meta_progression.dart';
+import 'package:arena/core/shop.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -60,6 +61,81 @@ void main() {
     );
   });
 
+  group('MetaProgression.buyItem (SHOP, DECISIONS D-069)', () {
+    final item = kShopItems.first;
+
+    test('fails and spends nothing without enough gems', () {
+      final meta = MetaProgression(gems: 0);
+      expect(meta.buyItem(item), isFalse);
+      expect(meta.ownsItem(item.id), isFalse);
+      expect(meta.gems, 0);
+    });
+
+    test('succeeds and deducts the exact cost with enough gems', () {
+      final meta = MetaProgression(gems: item.costGems + 10);
+      expect(meta.buyItem(item), isTrue);
+      expect(meta.ownsItem(item.id), isTrue);
+      expect(meta.gems, 10);
+    });
+
+    test('refuses a second purchase of an already-owned item', () {
+      final meta = MetaProgression(gems: 1000000);
+      expect(meta.buyItem(item), isTrue);
+      final gemsAfterFirstBuy = meta.gems;
+      expect(meta.buyItem(item), isFalse);
+      expect(meta.gems, gemsAfterFirstBuy); // second attempt spent nothing
+    });
+
+    test('bonus getters are neutral until owned', () {
+      final meta = MetaProgression();
+      expect(meta.bonusMaxHpFromShop, 0);
+      expect(meta.bonusMoveSpeedFromShop, 0);
+      expect(meta.damageMultiplierFromShop, 1.0);
+      expect(meta.damageResistanceFromShop, 0.0);
+      expect(meta.ownsSecondWind, isFalse);
+      // Page 2/3 (DECISIONS D-070) getters -- same neutral-until-owned shape.
+      expect(meta.attackSpeedMultiplierFromShop, 1.0);
+      expect(meta.potionHealMultiplierFromShop, 1.0);
+      expect(meta.eliteChanceMultiplierFromShop, 1.0);
+      expect(meta.vampiricHealPerKillFromShop, 0.0);
+      expect(meta.chestGemMultiplierFromShop, 1.0);
+      expect(meta.xpMultiplierFromShop, 1.0);
+      expect(meta.coinMultiplierFromShop, 1.0);
+      expect(meta.gemDropBonusFromShop, 0.0);
+      expect(meta.ownsBossHunter, isFalse);
+    });
+
+    test('bonus getters reflect ownership once bought', () {
+      final meta = MetaProgression(gems: 1000000);
+      for (final item in kShopItems) {
+        meta.buyItem(item);
+      }
+      expect(meta.bonusMaxHpFromShop, kVitalityCharmBonusMaxHp);
+      expect(meta.bonusMoveSpeedFromShop, kSwiftBootsBonusMoveSpeed);
+      expect(meta.damageMultiplierFromShop, kSharpEdgeDamageMultiplier);
+      expect(meta.damageResistanceFromShop, kIronWillDamageResistance);
+      expect(meta.ownsSecondWind, isTrue);
+      expect(meta.attackSpeedMultiplierFromShop, kQuickHandsAttackSpeedMultiplier);
+      expect(meta.potionHealMultiplierFromShop, kPotionMasterHealMultiplier);
+      expect(meta.eliteChanceMultiplierFromShop, kSteelNervesEliteChanceMultiplier);
+      expect(meta.vampiricHealPerKillFromShop, kVampiricTouchHealPerKill);
+      expect(meta.chestGemMultiplierFromShop, kTreasureHunterGemRewardMultiplier);
+      expect(meta.xpMultiplierFromShop, kScholarsInsightXpMultiplier);
+      expect(meta.coinMultiplierFromShop, kGoldenTouchCoinMultiplier);
+      expect(meta.gemDropBonusFromShop, kGemHoarderDropBonus);
+      expect(meta.ownsBossHunter, isTrue);
+    });
+
+    test('kShopPages flattens to kShopItems, 3 pages of 5', () {
+      expect(kShopPages, hasLength(3));
+      for (final page in kShopPages) {
+        expect(page, hasLength(5));
+      }
+      expect(kShopItems, hasLength(15));
+      expect(kShopItems, [for (final page in kShopPages) ...page]);
+    });
+  });
+
   group('MetaProgressionRepository persistence', () {
     test(
       'save then load round-trips every track, new dials included',
@@ -78,6 +154,11 @@ void main() {
           hasteLevel: 6,
           fortuneLevel: 7,
           resolveLevel: 8,
+          magnetLevel: 9,
+          luckLevel: 10,
+          regenLevel: 1,
+          critLevel: 2,
+          ownedItemIds: {ShopItemId.secondWind.name},
         );
         await repo.save(meta);
         final loaded = await repo.load();
@@ -85,6 +166,12 @@ void main() {
         expect(loaded.fortuneLevel, 7);
         expect(loaded.resolveLevel, 8);
         expect(loaded.corruptionLevel, 5);
+        expect(loaded.magnetLevel, 9);
+        expect(loaded.luckLevel, 10);
+        expect(loaded.regenLevel, 1);
+        expect(loaded.critLevel, 2);
+        expect(loaded.ownsSecondWind, isTrue);
+        expect(loaded.ownsItem(ShopItemId.vitalityCharm), isFalse);
       },
     );
   });

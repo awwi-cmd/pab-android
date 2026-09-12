@@ -16,6 +16,15 @@ class ArenaColors {
   static const accent = Color(0xFF6CE0B8);
   static const accentDim = Color(0xFF3E8C6E);
   static const danger = Color(0xFFE0526C);
+
+  /// A warm amber, not `danger`'s bright red-pink (DECISIONS D-083,
+  /// developer's call: "get rid of that bright red for exclusives... a
+  /// little bit more warm, but still pricking players' attention") — the
+  /// LevelUp screen's EXCLUSIVE badge/stripe/warning (`arena_screen.dart`)
+  /// is the one user of this; `danger` itself is untouched everywhere else
+  /// it's used (God Mode's switch, the debug DIE button, ROUND OVER) —
+  /// those are genuinely "danger," exclusivity is more "notice this."
+  static const warning = Color(0xFFE0964B);
   static const textPrimary = Color(0xFFEDEFF7);
   static const textDim = Color(0xFF8B90A6);
   static const locked = Color(0xFF3A3E4E);
@@ -123,6 +132,22 @@ const double kAnimaAspect = 437 / 429;
 /// (`BossComponent._teleportAwayFrom`) — "when he teleports" covers the
 /// whole teleport, not just one end of it.
 const double kBossAnimaWidthPx = kAnimaWidthPx * 0.6;
+
+/// The chest-opening sequence's own anima flourish (DECISIONS D-071,
+/// developer's call: "wayy too big... make it smaller a bit than the
+/// chest") — was flat [kAnimaWidthPx] (160px), dwarfing the 96px chest
+/// (`32 * kChestRenderScale`) it's supposed to precede. Sized relative to
+/// the chest's own rendered width instead (`ChestComponent.size.x *` this
+/// factor) — same "derive VFX size from the actual gameplay size" pattern
+/// `WardenSlamAttack`'s shockwave already uses — rather than a second flat
+/// constant that could drift out of sync with the chest's own size again.
+const double kChestAnimaSizeFactor = 0.85;
+
+/// Same ask, the contrast half — a straight pull-toward-grey, same knob
+/// `AuraComponent`'s own `_contrast` tune uses (DECISIONS D-032),
+/// generalized onto `ArenaGame.spawnEffect` so this one-shot VFX can dial
+/// it down too, not just brightness.
+const double kChestAnimaContrast = 0.7;
 
 /// SFX (DECISIONS D-044) — multiplies `Settings.sfxVolume` (0-100, the
 /// user's own slider) rather than replacing it, capped low per the

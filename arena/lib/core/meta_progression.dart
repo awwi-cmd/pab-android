@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'shop.dart';
+
 /// Persistent, cross-round meta-progression (DECISIONS D-047) — the
 /// character-select screen's new "UPGRADES" tab, developer's spec verbatim:
 /// STR/VIT/DEX/INT/CORRUPTION, 10 levels each, bought with coins earned
@@ -26,7 +28,27 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// this enum's declaration order *is* that page's row order, so a future
 /// 4th dial on that page is an enum member here, not a separate list
 /// somewhere else.
-enum MetaStat { str, vit, dex, intellect, corruption, haste, fortune, resolve }
+/// `magnet`/`luck`/`regen`/`crit` (DECISIONS D-069) are the Upgrades
+/// screen's 3rd page — same "pure dial, not a raw attribute add" shape as
+/// haste/fortune/resolve, each reading straight off `core/game_rules.dart`'s
+/// own per-level formula (`magnetPickupRadiusMultiplier`/
+/// `luckGemDropBonus`/`regenHpPerSec`/`critChance`). This enum's declaration
+/// order is that page's row order, same as page 2's own doc comment above
+/// already established.
+enum MetaStat {
+  str,
+  vit,
+  dex,
+  intellect,
+  corruption,
+  haste,
+  fortune,
+  resolve,
+  magnet,
+  luck,
+  regen,
+  crit,
+}
 
 extension MetaStatLabels on MetaStat {
   String get label {
@@ -40,13 +62,25 @@ extension MetaStatLabels on MetaStat {
       case MetaStat.intellect:
         return 'INT';
       case MetaStat.corruption:
-        return 'CORRUPTION';
+        // DECISIONS D-071: displayed name only, shortened ("CORRUPTION" ->
+        // "CHAOS") -- the enum member, field names, and every multiplier
+        // function in game_rules.dart stay `corruption*`, same
+        // functionality end to end, just a shorter label on the row.
+        return 'CHAOS';
       case MetaStat.haste:
         return 'HASTE';
       case MetaStat.fortune:
         return 'FORTUNE';
       case MetaStat.resolve:
         return 'RESOLVE';
+      case MetaStat.magnet:
+        return 'MAGNET';
+      case MetaStat.luck:
+        return 'LUCK';
+      case MetaStat.regen:
+        return 'REGEN';
+      case MetaStat.crit:
+        return 'CRIT';
     }
   }
 
@@ -65,6 +99,14 @@ extension MetaStatLabels on MetaStat {
         return '+10% coin value per level, every run.';
       case MetaStat.resolve:
         return 'Less damage taken, faster HP regen, every run.';
+      case MetaStat.magnet:
+        return '+15% pickup radius per level, every run.';
+      case MetaStat.luck:
+        return '+1% gem drop chance per level, every run.';
+      case MetaStat.regen:
+        return '+HP regen per level, every run.';
+      case MetaStat.crit:
+        return '+3% crit chance per level, every run.';
     }
   }
 }
@@ -102,7 +144,12 @@ class MetaProgression {
     this.hasteLevel = 0,
     this.fortuneLevel = 0,
     this.resolveLevel = 0,
-  });
+    this.magnetLevel = 0,
+    this.luckLevel = 0,
+    this.regenLevel = 0,
+    this.critLevel = 0,
+    Set<String>? ownedItemIds,
+  }) : ownedItemIds = ownedItemIds ?? {};
 
   int coins;
 
@@ -128,6 +175,15 @@ class MetaProgression {
   int hasteLevel;
   int fortuneLevel;
   int resolveLevel;
+  int magnetLevel;
+  int luckLevel;
+  int regenLevel;
+  int critLevel;
+
+  /// SHOP's owned items (DECISIONS D-069) — `ShopItemId.name` strings rather
+  /// than the enum itself, so `SharedPreferences.getStringList` can store it
+  /// directly (same reasoning as every other primitive-only field here).
+  final Set<String> ownedItemIds;
 
   int levelOf(MetaStat stat) {
     switch (stat) {
@@ -147,6 +203,14 @@ class MetaProgression {
         return fortuneLevel;
       case MetaStat.resolve:
         return resolveLevel;
+      case MetaStat.magnet:
+        return magnetLevel;
+      case MetaStat.luck:
+        return luckLevel;
+      case MetaStat.regen:
+        return regenLevel;
+      case MetaStat.crit:
+        return critLevel;
     }
   }
 
@@ -176,6 +240,18 @@ class MetaProgression {
       case MetaStat.resolve:
         resolveLevel = value;
         return;
+      case MetaStat.magnet:
+        magnetLevel = value;
+        return;
+      case MetaStat.luck:
+        luckLevel = value;
+        return;
+      case MetaStat.regen:
+        regenLevel = value;
+        return;
+      case MetaStat.crit:
+        critLevel = value;
+        return;
     }
   }
 
@@ -200,6 +276,55 @@ class MetaProgression {
   int get bonusVit => vitLevel;
   int get bonusDex => dexLevel;
   int get bonusIntellect => intLevel;
+
+  // SHOP (DECISIONS D-069) -- permanent one-time purchases, priced in gems,
+  // distinct from the leveled coin dials above.
+  bool ownsItem(ShopItemId id) => ownedItemIds.contains(id.name);
+
+  /// Buys [item] if not already owned and enough gems are on hand. Same
+  /// afford/cap-check-then-deduct shape as [buy] above.
+  bool buyItem(ShopItem item) {
+    if (ownsItem(item.id)) return false;
+    if (gems < item.costGems) return false;
+    gems -= item.costGems;
+    ownedItemIds.add(item.id.name);
+    return true;
+  }
+
+  double get bonusMaxHpFromShop =>
+      ownsItem(ShopItemId.vitalityCharm) ? kVitalityCharmBonusMaxHp : 0;
+  double get bonusMoveSpeedFromShop =>
+      ownsItem(ShopItemId.swiftBoots) ? kSwiftBootsBonusMoveSpeed : 0;
+  double get damageMultiplierFromShop =>
+      ownsItem(ShopItemId.sharpEdge) ? kSharpEdgeDamageMultiplier : 1.0;
+  double get damageResistanceFromShop =>
+      ownsItem(ShopItemId.ironWill) ? kIronWillDamageResistance : 0.0;
+  bool get ownsSecondWind => ownsItem(ShopItemId.secondWind);
+
+  // SHOP page 2/3 (DECISIONS D-070) -- same "owned or not, magnitude lives
+  // in shop.dart" shape as page 1's getters above. Battle Fury's own
+  // conditional (only below half HP) needs the live player, so it's just an
+  // `ownsItem` check here -- `ArenaGame.resolveAttackDamage` applies the
+  // threshold itself, this isn't a bare magnitude getter like the others.
+  double get attackSpeedMultiplierFromShop =>
+      ownsItem(ShopItemId.quickHands) ? kQuickHandsAttackSpeedMultiplier : 1.0;
+  double get potionHealMultiplierFromShop =>
+      ownsItem(ShopItemId.potionMaster) ? kPotionMasterHealMultiplier : 1.0;
+  double get eliteChanceMultiplierFromShop =>
+      ownsItem(ShopItemId.steelNerves) ? kSteelNervesEliteChanceMultiplier : 1.0;
+  double get vampiricHealPerKillFromShop =>
+      ownsItem(ShopItemId.vampiricTouch) ? kVampiricTouchHealPerKill : 0.0;
+  double get chestGemMultiplierFromShop =>
+      ownsItem(ShopItemId.treasureHunter)
+          ? kTreasureHunterGemRewardMultiplier
+          : 1.0;
+  double get xpMultiplierFromShop =>
+      ownsItem(ShopItemId.scholarsInsight) ? kScholarsInsightXpMultiplier : 1.0;
+  double get coinMultiplierFromShop =>
+      ownsItem(ShopItemId.goldenTouch) ? kGoldenTouchCoinMultiplier : 1.0;
+  double get gemDropBonusFromShop =>
+      ownsItem(ShopItemId.gemHoarder) ? kGemHoarderDropBonus : 0.0;
+  bool get ownsBossHunter => ownsItem(ShopItemId.bossHunter);
 }
 
 /// Reads/writes [MetaProgression] to `SharedPreferences` — same shape as
@@ -216,6 +341,11 @@ class MetaProgressionRepository {
   static const _kHaste = 'meta.haste';
   static const _kFortune = 'meta.fortune';
   static const _kResolve = 'meta.resolve';
+  static const _kMagnet = 'meta.magnet';
+  static const _kLuck = 'meta.luck';
+  static const _kRegen = 'meta.regen';
+  static const _kCrit = 'meta.crit';
+  static const _kOwnedItems = 'meta.ownedItems';
 
   Future<MetaProgression> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -231,6 +361,11 @@ class MetaProgressionRepository {
       hasteLevel: prefs.getInt(_kHaste) ?? 0,
       fortuneLevel: prefs.getInt(_kFortune) ?? 0,
       resolveLevel: prefs.getInt(_kResolve) ?? 0,
+      magnetLevel: prefs.getInt(_kMagnet) ?? 0,
+      luckLevel: prefs.getInt(_kLuck) ?? 0,
+      regenLevel: prefs.getInt(_kRegen) ?? 0,
+      critLevel: prefs.getInt(_kCrit) ?? 0,
+      ownedItemIds: (prefs.getStringList(_kOwnedItems) ?? const []).toSet(),
     );
   }
 
@@ -247,6 +382,11 @@ class MetaProgressionRepository {
     await prefs.setInt(_kHaste, meta.hasteLevel);
     await prefs.setInt(_kFortune, meta.fortuneLevel);
     await prefs.setInt(_kResolve, meta.resolveLevel);
+    await prefs.setInt(_kMagnet, meta.magnetLevel);
+    await prefs.setInt(_kLuck, meta.luckLevel);
+    await prefs.setInt(_kRegen, meta.regenLevel);
+    await prefs.setInt(_kCrit, meta.critLevel);
+    await prefs.setStringList(_kOwnedItems, meta.ownedItemIds.toList());
   }
 
   /// Round-over credit (DECISIONS D-047) — read-modify-write against
