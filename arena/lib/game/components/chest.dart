@@ -79,6 +79,10 @@ class ChestComponent extends SpriteAnimationComponent
       position.clone(),
       size: Vector2(animaWidth, animaWidth * kAnimaAspect),
       contrast: kChestAnimaContrast,
+      // DECISIONS D-074 ("needs to be behind the chest asset"): spawnEffect's
+      // own default (ArenaPriority.hitEffects, 25) sits above the chest's
+      // own priority (ArenaPriority.pickup, 7).
+      priority: ArenaPriority.groundEffects,
     );
   }
 

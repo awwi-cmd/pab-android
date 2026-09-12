@@ -16,6 +16,15 @@ class ArenaColors {
   static const accent = Color(0xFF6CE0B8);
   static const accentDim = Color(0xFF3E8C6E);
   static const danger = Color(0xFFE0526C);
+
+  /// A warm amber, not `danger`'s bright red-pink (DECISIONS D-083,
+  /// developer's call: "get rid of that bright red for exclusives... a
+  /// little bit more warm, but still pricking players' attention") — the
+  /// LevelUp screen's EXCLUSIVE badge/stripe/warning (`arena_screen.dart`)
+  /// is the one user of this; `danger` itself is untouched everywhere else
+  /// it's used (God Mode's switch, the debug DIE button, ROUND OVER) —
+  /// those are genuinely "danger," exclusivity is more "notice this."
+  static const warning = Color(0xFFE0964B);
   static const textPrimary = Color(0xFFEDEFF7);
   static const textDim = Color(0xFF8B90A6);
   static const locked = Color(0xFF3A3E4E);

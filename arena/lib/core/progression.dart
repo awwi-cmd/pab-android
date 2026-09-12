@@ -116,6 +116,26 @@ extension UpgradeKindLabels on UpgradeKind {
         return 'An orbiting crystal grants damage resistance and a small HP regen';
     }
   }
+
+  /// Short category badge for the LevelUp card (DECISIONS D-072) — purely a
+  /// display grouping, no gameplay weight of its own.
+  String get tag {
+    switch (this) {
+      case UpgradeKind.vit:
+      case UpgradeKind.dex:
+      case UpgradeKind.str:
+      case UpgradeKind.intellect:
+        return 'STAT';
+      case UpgradeKind.defenceCrystal:
+        return 'PASSIVE';
+      case UpgradeKind.aura:
+      case UpgradeKind.knifeMastery:
+      case UpgradeKind.ultimateMirror:
+      case UpgradeKind.projectileRay:
+      case UpgradeKind.projectileThunder:
+        return 'SKILL';
+    }
+  }
 }
 
 /// Placeholder per-pick bonus amounts — named and centralised the same way
@@ -284,6 +304,74 @@ const Map<UpgradeKind, String> kCharacterLockedUpgrades = {
   UpgradeKind.knifeMastery: 'bruiser',
 };
 
+/// Mutually-exclusive skill *pairs* (DECISIONS D-072, generalized by D-078
+/// — developer's call: "too much to have only one exclusive, we need to
+/// pair them, have at least 2-3 exclusives") — D-072 originally locked all
+/// 4 of the independent screen-clearing damage skills (a DOT ring, a
+/// turret squad, a piercing beam, and a random-target strike) into one
+/// all-or-nothing clique: pick any one, lose the other 3. That read as too
+/// restrictive for one design decision to own, so it's now 3 separate
+/// pairwise exclusions instead — each pair still has *some* real
+/// "redundant together" justification (see below), but a kind only loses
+/// its *paired* partner(s), not the whole roster:
+/// - **Aura ⟷ Ultimate Mirror** — both are always-on, zero-further-input
+///   area damage (a DOT ring vs. a turret squad); together they clear a
+///   room with no active play at all.
+/// - **Ultimate Mirror ⟷ Projectile Thunder** — a turret squad plus a
+///   shrinking-cooldown multi-target nuke both scale toward "hits
+///   everything, constantly," with little reason to ever pick just one.
+/// - **Projectile Thunder ⟷ Projectile Ray** — both are the character's
+///   *second* independently-cooling attack; stacking two of those is a
+///   second and third attack rotation on top of the base one.
+///
+/// This chains all 4 kinds together (Aura—Mirror—Thunder—Ray) without
+/// making any single pick block the *other* two: e.g. Aura + Projectile
+/// Ray is a perfectly valid combo (they don't share a pair), same for
+/// Ultimate Mirror + Projectile Ray, or Aura + Projectile Thunder. Stat
+/// bumps (vit/dex/str/intellect), `knifeMastery` (a modifier on an
+/// existing base attack, not a 5th independent damage source), and
+/// `defenceCrystal` (pure survivability, not damage) still aren't in any
+/// pair — they keep stacking freely regardless of which of these 4 gets
+/// picked. A kind *can* appear in more than one pair (Ultimate Mirror does,
+/// deliberately) — [lockedOutByExclusiveGroups] unions across every pair a
+/// picked kind belongs to, so that's not a special case.
+const List<Set<UpgradeKind>> kExclusiveUpgradeGroups = [
+  {UpgradeKind.aura, UpgradeKind.ultimateMirror},
+  {UpgradeKind.ultimateMirror, UpgradeKind.projectileThunder},
+  {UpgradeKind.projectileThunder, UpgradeKind.projectileRay},
+];
+
+/// True if [kind] is in at least one exclusive pair — drives the LevelUp
+/// card's "EXCLUSIVE" badge (`arena_screen.dart`) so the tradeoff is
+/// visible before picking, not just discovered by its absence next
+/// level-up.
+bool isExclusiveUpgrade(UpgradeKind kind) =>
+    kExclusiveUpgradeGroups.any((group) => group.contains(kind));
+
+/// Every kind locked out of the roll because [pickCounts] already has a
+/// pick in a *different* member of the same exclusive group — the one
+/// already being picked stays eligible (so it can keep leveling toward its
+/// own [kUpgradeMaxPicks] cap), every paired partner does not.
+Set<UpgradeKind> lockedOutByExclusiveGroups(Map<UpgradeKind, int> pickCounts) {
+  final locked = <UpgradeKind>{};
+  for (final group in kExclusiveUpgradeGroups) {
+    final alreadyPicked = group.where((kind) => (pickCounts[kind] ?? 0) > 0);
+    if (alreadyPicked.isEmpty) continue;
+    for (final kind in group) {
+      if (!alreadyPicked.contains(kind)) locked.add(kind);
+    }
+  }
+  return locked;
+}
+
+/// What picking [kind] *right now* (with no other picks yet) would lock
+/// out — the LevelUp card's own "Locks out: X" line reads this directly
+/// (`arena_screen.dart`) so it always names the real paired partner(s)
+/// instead of a hardcoded, now-inaccurate "the other 3" from D-072's
+/// original single-clique design.
+Set<UpgradeKind> exclusiveLockTargets(UpgradeKind kind) =>
+    lockedOutByExclusiveGroups({kind: 1});
+
 /// The upgrade kinds eligible for [characterId] this round — everything
 /// except another character's locked upgrades (`kCharacterLockedUpgrades`).
 /// Pass the result as [rollUpgradeChoices]'s `candidates`.
@@ -297,9 +385,10 @@ List<UpgradeKind> upgradeKindsFor(String characterId) {
 }
 
 /// Picks [count] distinct upgrade kinds, weighted by [kUpgradeWeights] and
-/// excluding anything already at its [kUpgradeMaxPicks] cap (pass the
-/// round's current `PlayerUpgrades.pickCounts`; omit it where the cap
-/// doesn't matter, e.g. tests). [candidates] narrows the pool before any of
+/// excluding anything already at its [kUpgradeMaxPicks] cap, or locked out
+/// by [kExclusiveUpgradeGroups] (DECISIONS D-072) — both read off the
+/// round's current `PlayerUpgrades.pickCounts`; omit it where neither
+/// matters, e.g. tests. [candidates] narrows the pool before any of
 /// that — pass `upgradeKindsFor(character.id)` to respect character-locked
 /// upgrades (DECISIONS D-031); defaults to every kind. Weighted sampling
 /// without replacement via the Efraimidis-Spirakis key trick: draw
@@ -314,7 +403,9 @@ List<UpgradeKind> rollUpgradeChoices(
   int count = 3,
   Iterable<UpgradeKind> candidates = UpgradeKind.values,
 }) {
+  final lockedOut = lockedOutByExclusiveGroups(pickCounts);
   final eligible = candidates.where((kind) {
+    if (lockedOut.contains(kind)) return false;
     final max = kUpgradeMaxPicks[kind];
     return max == null || (pickCounts[kind] ?? 0) < max;
   });

@@ -6,6 +6,7 @@ import 'package:flame/components.dart';
 import '../../core/constants.dart';
 import '../../core/game_rules.dart';
 import '../../core/progression.dart';
+import '../../core/sfx_player.dart';
 import '../../core/shop.dart';
 import '../../core/stats.dart';
 import '../../data/characters.dart';
@@ -59,6 +60,16 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
 
   final Vector2 _velocity = Vector2.zero(); // scratch, reused every frame
 
+  /// Footstep SFX (DECISIONS D-076) — alternates the two step sounds on a
+  /// fixed cadence while actually moving; not tied to a specific run-cycle
+  /// frame (a first-guess cadence, same disclaimer as every other tuning
+  /// number in this project). Resets the instant movement stops, so the
+  /// first step after standing still always starts a fresh interval rather
+  /// than potentially firing immediately off whatever was left over.
+  double _footstepTimer = 0;
+  bool _footstepAlternate = false;
+  static const _footstepIntervalSec = 0.32;
+
   bool get isAlive => current != AnimState.death;
 
   /// Base stat plus whatever level-up picks have added this round
@@ -107,8 +118,13 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
       opacity = 1.0;
     }
 
+    // DECISIONS D-074 ("when the character takes damage, he is slowed
+    // down, we need to remove this"): movement used to be skipped
+    // outright for the whole `hurt` recoil pose's duration, reading as a
+    // freeze/slow every time a hit landed -- applies unconditionally now,
+    // the `hurt` pose is purely visual.
     final moving = !input.direction.isZero();
-    if (moving && current != AnimState.hurt) {
+    if (moving) {
       _velocity
         ..setFrom(input.direction)
         ..scale(effectiveMoveSpeed * dt);
@@ -118,6 +134,15 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
       if (input.direction.x != 0) {
         scale.x = input.direction.x < 0 ? -1 : 1;
       }
+
+      _footstepTimer -= dt;
+      if (_footstepTimer <= 0) {
+        _footstepTimer = _footstepIntervalSec;
+        _footstepAlternate = !_footstepAlternate;
+        SfxPlayer.instance.playFootstep(_footstepAlternate);
+      }
+    } else {
+      _footstepTimer = 0;
     }
     // No bounds clamp (DECISIONS D-040 — the arena is no longer a fixed
     // rect; the camera follows the player anywhere in the world instead of
@@ -133,9 +158,16 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
     current = moving ? AnimState.run : AnimState.idle;
   }
 
+  /// Called once per shot/swing by every base `AttackBehavior`
+  /// (`ProjectileAttack`/`KnifeAttack`/`SpiralFireAttack`/
+  /// `WardenSlamAttack`) — the SFX here (DECISIONS D-076) rides along for
+  /// free and, just as importantly, stays *out* of every power-up
+  /// (Ray/Thunder/Aura/Mirror never call this) without any extra
+  /// bookkeeping — "not power-ups" is true by construction, not a filter.
   void playFire() {
     if (current == AnimState.hurt || current == AnimState.death) return;
     current = AnimState.fire;
+    SfxPlayer.instance.playProjectileShoot();
   }
 
   /// Contact damage from an enemy (PRD §6.2). No-ops during i-frames or
@@ -157,6 +189,7 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
     hp = (hp - amount * resistanceMultiplier).clamp(0, effectiveMaxHp);
     _invulnTimer = _invulnDurationSec;
     game.spawnBloodImpact(); // DECISIONS D-033: only on damage that lands
+    SfxPlayer.instance.playDamage(); // DECISIONS D-076: same, only on a real hit
 
     if (hp <= 0) {
       // SHOP's Second Wind (DECISIONS D-069) — a lethal hit is caught here,

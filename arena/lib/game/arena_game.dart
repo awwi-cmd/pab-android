@@ -14,6 +14,7 @@ import '../core/game_rules.dart';
 import '../core/meta_progression.dart';
 import '../core/progression.dart';
 import '../core/settings.dart';
+import '../core/sfx_player.dart';
 import '../core/shop.dart';
 import '../core/stats.dart';
 import '../data/characters.dart';
@@ -36,6 +37,7 @@ import 'components/potion_spawner.dart';
 import 'components/ray_beam.dart';
 import 'components/spawner.dart';
 import 'components/tracking_effect.dart';
+import 'components/xp_bar.dart';
 import 'game_assets.dart';
 import 'input/movement_input.dart';
 
@@ -194,6 +196,13 @@ class ArenaGame extends FlameGame {
   int level = 1;
   double xp = 0;
   double _xpToNextLevel = xpThresholdForLevel(1);
+
+  /// Exposed for `XpBarComponent` (DECISIONS D-076) — `_xpToNextLevel`
+  /// itself stays private (round state `ArenaGame` owns, CLAUDE.md §4.5);
+  /// this is just the ratio the HUD actually needs to draw the fill.
+  double get xpFraction =>
+      _xpToNextLevel <= 0 ? 0 : (xp / _xpToNextLevel).clamp(0.0, 1.0);
+
   final PlayerUpgrades upgrades = PlayerUpgrades();
   List<UpgradeKind> currentLevelUpChoices = const [];
   int _pendingLevelUps = 0;
@@ -315,6 +324,7 @@ class ArenaGame extends FlameGame {
     // ArenaGame).
     character.attackBehavior.onEquipped(this);
     addToHud(HpBarComponent());
+    addToHud(XpBarComponent()); // DECISIONS D-076: "like the HP bar up top"
     addToWorld(Spawner());
     addToWorld(PotionSpawner());
     addToWorld(ChestSpawner());
@@ -472,16 +482,19 @@ class ArenaGame extends FlameGame {
         .round();
   }
 
-  /// The boss (DECISIONS D-042) — same shape as [onEnemyKilled] but no gem
-  /// drop (not designed yet what a boss should drop beyond currency/XP) and
-  /// a flat bonus on both the coins and XP it grants, since it's meant to
-  /// feel like a real milestone.
+  /// The boss (DECISIONS D-042) — same shape as [onEnemyKilled] plus a flat
+  /// bonus on both the coins and XP it grants, since it's meant to feel
+  /// like a real milestone. No regular gem drop of its own (Boss Hunter's
+  /// flat exception below aside) — DECISIONS D-079 gives it a real-world
+  /// milestone reward instead: a chest, always, right where it died.
   void onBossKilled(BossComponent boss) {
+    final deathPosition = boss.position.clone();
     boss.removeFromParent();
     _boss = null;
     kills++;
     grantXp(kBossXpReward);
     coinsEarned += _rollCoins() * kBossCoinMultiplier;
+    spawnChest(deathPosition); // DECISIONS D-079: "make boss drop a chest"
     // Boss Hunter (DECISIONS D-070) -- bosses otherwise drop no gems at all
     // (see the class doc's own note on that gap); this is the one flat
     // exception, gated on owning the item rather than a rarity roll.
@@ -514,6 +527,7 @@ class ArenaGame extends FlameGame {
       level++;
       _xpToNextLevel = xpThresholdForLevel(level);
       _pendingLevelUps++;
+      SfxPlayer.instance.playLevelUp(); // DECISIONS D-076
       _checkBossSpawnThreshold();
     }
     _maybeShowNextLevelUp();
@@ -525,6 +539,7 @@ class ArenaGame extends FlameGame {
   void debugGrantLevelUp() {
     level++;
     _pendingLevelUps++;
+    SfxPlayer.instance.playLevelUp(); // DECISIONS D-076
     _checkBossSpawnThreshold();
     _maybeShowNextLevelUp();
   }

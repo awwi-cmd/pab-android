@@ -25,15 +25,22 @@ positioning.
 - **A round ends on death.** Survive as long as you can, level up mid-run,
   bank whatever you earned, and go again.
 - **Two progression layers stack on top of each other:**
-  - *In-round:* kill enemies → gain XP → level up → pick 1 of 3 random
-    upgrades (stat boosts or a real skill — an aura, orbiting mirrors, a
-    piercing ray, a chain-lightning burst, a defensive crystal). All of it
-    resets when the round ends.
-  - *Persistent, across every round:* coins and gems you bring home buy
-    permanent STR/VIT/DEX/INT/CORRUPTION levels from the character-select
-    screen, and lifetime kills gate which of the four characters are
-    unlocked. Corruption is the odd one out — it's a difficulty/reward
-    dial, not a stat: tougher, faster enemies in exchange for bigger drops.
+  - *In-round:* kill enemies → gain XP (a bottom XP bar tracks the climb
+    to the next level, mirroring the HP bar up top) → level up → pick 1 of
+    3 random upgrades (stat boosts or a real skill — an aura, orbiting
+    mirrors, a piercing ray, a chain-lightning burst, a defensive
+    crystal). 4 of those skills are paired into mutually-exclusive
+    rivalries (pick one, its paired rival is off the table for the rest of
+    the round) — real build identity instead of collecting everything. All
+    of it resets when the round ends.
+  - *Persistent, across every round:* coins buy permanent STR/VIT/DEX/INT/
+    CORRUPTION/HASTE/FORTUNE/RESOLVE/MAGNET/LUCK/REGEN/CRIT levels (12
+    dials across 3 pages) from the character-select screen's UPGRADES tab;
+    gems buy 15 one-time permanent items (extra max HP, a once-per-round
+    revive, better loot odds, and more) from the SHOP tab. Lifetime kills
+    separately gate which of the four characters are unlocked. Corruption
+    is the odd one out among the dials — it's a difficulty/reward knob, not
+    a stat: tougher, faster enemies in exchange for bigger drops.
 
 ## The four characters
 
@@ -51,14 +58,22 @@ The Bruiser, Skirmisher, and Warden unlock as lifetime kill totals climb
 
 ## Beyond the core loop
 
-- **A boss** telegraphs and teleports around the arena, adding a real fight
-  on top of the trash-mob stream.
+- **A boss** telegraphs and teleports around the arena (on a cooldown, so
+  it can't chain-teleport back to back), adding a real fight on top of the
+  trash-mob stream — and always drops a chest on death.
 - **A loot economy** — enemies and chests drop gems/coins/potions; chests
   play out a real card-draw reveal (a full 52-card + jokers deck) before
-  paying out.
-- **A shop and an upgrades screen**, reachable from character select,
-  spend the persistent coin/gem wallet on permanent stat levels (the shop
-  itself is still an empty placeholder — nothing to spend gems on yet).
+  paying out, with its own landing sparkle burst.
+- **A shop and an upgrades screen**, reachable from character select — 15
+  real gem-priced permanent items in SHOP, 12 coin-priced leveled dials
+  across 3 pages in UPGRADES, both spending the same persistent wallet the
+  HUD shows.
+- **A real sound layer** — footsteps, hits, level-ups, shots, and a tap on
+  every button, plus background music, all pooled/latency-tuned to survive
+  a long, sound-heavy round without desyncing or crashing.
+- **A first-time tutorial** — 3 slides built from the game's own real
+  assets, shown once on a fresh save and reachable any time from a "?"
+  button on the main menu.
 - **Three control schemes** (floating joystick, fixed joystick, drag
   anywhere), each switchable from Settings.
 
@@ -67,11 +82,15 @@ The Bruiser, Skirmisher, and Warden unlock as lifetime kill totals climb
 - The demo's original scope (`PRD.md` §9) is long since exceeded, but a
   few things are still deliberately unbuilt: no object pooling yet (not
   needed until a perf check says otherwise), no real enemy-type variety
-  (three cosmetic skins share one stat profile), the shop screen is empty.
-  See [`NEXT.md`](NEXT.md) for the current extension points and open rough
-  edges in detail.
+  (three cosmetic skins share one stat profile). See [`NEXT.md`](NEXT.md)
+  for the current extension points and open rough edges in detail.
 - Several recent phases are built but not yet verified on a real device —
   `TASKS.md` marks exactly which checklist items are still open.
+- Currency-HUD polish is queued next: the gem icon isn't size/position
+  matched against the coin and kill counters on Round Over, the coin
+  count's color doesn't match the gem count's, and Character Select's
+  wallet row isn't aligned with the SHOP/UPGRADES buttons it actually
+  spends on. See `TASKS.md` Phase 35.
 
 ---
 
@@ -84,9 +103,11 @@ The Bruiser, Skirmisher, and Warden unlock as lifetime kill totals climb
   Round-over/level-up/pause/chest-reveal are Flame overlays, not routes, so
   the frame underneath stays visible.
 - **`shared_preferences`** for settings and the persistent meta-progression
-  wallet. No other dependencies, no state-management library — deliberate,
-  see `CLAUDE.md` §4.9.
-- Pixel art throughout, nearest-neighbour filtered (no smoothing).
+  wallet. **`flame_audio`** for BGM and every SFX, pooled and tuned to
+  survive a long session without desyncing. No other dependencies, no
+  state-management library — deliberate, see `CLAUDE.md` §4.9.
+- Pixel art throughout, nearest-neighbour filtered (no smoothing), with a
+  dedicated pixel font applied app-wide.
 
 ## Project layout
 

@@ -73,6 +73,7 @@ flutter:
     - assets/images/scenes/
     - assets/images/consumables/
     - assets/images/ui/
+    - assets/images/bg/
     - assets/images/cards/Back Cards/
     - assets/images/cards/Clubs/
     - assets/images/cards/Diamonds/
@@ -81,6 +82,14 @@ flutter:
     - assets/images/cards/Spades/
     - assets/audio/
     - assets/audio/core/
+
+  # DECISIONS D-077 -- the game's main font, used app-wide via app.dart's
+  # ThemeData (every Text widget inherits it unless it sets its own
+  # fontFamily, and none currently do).
+  fonts:
+    - family: PixelFont
+      fonts:
+        - asset: assets/fonts/pixel.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

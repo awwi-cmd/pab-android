@@ -79,7 +79,56 @@ relative to the chest itself, chest-reveal confetti falls with independent
 per-piece motion (+30% count and spawn spread), CORRUPTION is shortened to
 CHAOS (display only), and Round Over gained a kill counter with a
 golden-star landing bounce reusing the chest card's own jump/land tween,
-on-device verification pending** — see D-071. This is real, ongoing post-demo work
+on-device verification pending** — see D-071. **The LevelUp ("choose a
+power") screen is redesigned around bordered `_LevelUpCard`s that can't
+overflow their text, 4 skills (Aura/Ultimate Mirror/Projectile Ray/
+Projectile Thunder) are now mutually exclusive per round (a real build
+choice, not stack-everything), and the chest-reveal confetti is gone,
+replaced with a sparkle burst reusing the gem counter's own VFX language,
+on-device verification pending** — see D-072. **The app-wide BGM track is
+swapped to `electric-eel-fishing.ogg`, on-device verification pending** —
+see D-073. **The chest/boss anima flourishes now render behind their
+sprite, the chest reveal's landing-sparkle bug (visible before the card
+was even chosen) is fixed and a new pulsing 4-corner sparkle VFX plays
+behind the card while still choosing, the boss got a 3s teleport cooldown,
+and taking damage no longer freezes/slows the player's movement, on-device
+verification pending** — see D-074. **BGM static noise fixed by switching
+`FlameAudio.loop` (SoundPool) to `FlameAudio.loopLongAudio` (MediaPlayer),
+on-device verification pending** — see D-075. **A real SFX layer is wired
+in end to end — footsteps, player damage, a tap sound on every button app-
+wide, projectile-shoot on the base auto-attack only, level-up, and
+pitch-varied self-interrupting chest-card select/chosen sounds
+(`core/sfx_player.dart`, a second app-wide singleton alongside
+BgmController) — plus a bottom XP bar matching the existing HP bar,
+on-device verification pending** — see D-076. **`pixel.ttf` is now the
+app's font everywhere (`ThemeData.fontFamily`), the chest-reveal's
+still-visible-pre-choice sparkle bug is fixed by removing that ambient
+corner-sparkle feature outright, the 4-way exclusive-skill clique is now 3
+overlapping pairs instead of one all-or-nothing group, and LevelUp cards
+got a real redesign (per-skill icon art, shadow, double border), on-device
+verification pending** — see D-077/D-078. **Root-caused and fixed a real
+SFX resource leak (every one-shot was a fresh, never-disposed
+`AudioPlayer`, leaking hundreds of native objects within under a minute of
+play) that fully explained 4 reported symptoms at once — BGM stopping and
+restarting, persistent static, sounds desyncing from actions, and a
+freeze — by switching `SfxPlayer` onto pre-warmed `AudioPool`s; the boss
+now also drops a chest on death, and the D-077 pixel font is scaled down
+25% app-wide, on-device verification pending** — see D-079/D-080.
+**Root-caused (via actual device logcat, not theory) a real crash and the
+persistent audio issues to D-079's SFX pools running on `PlayerMode.
+mediaPlayer` — the wrong Android audio backend for rapid repeated short
+clips, causing a real `FATAL EXCEPTION` and a 30s BGM prepare timeout from
+native-pipeline contention — fixed by moving every pooled SFX to
+`PlayerMode.lowLatency` plus drop-not-queue guards against overlapping
+triggers, on-device verification pending** — see D-081. **`splash_bg.png` is now
+both the native Android launch screen and the main menu's own background
+(its old redundant "ARENA" title text is gone, the art bakes the logo in),
+the LevelUp screen's exclusive-skill accent is a warm amber
+(`ArenaColors.warning`) instead of bright red, and a first-time-user
+3-slide tutorial (`TutorialScreen`, built from real game assets) now
+auto-opens on a fresh save and is reachable any time from a new circular
+"?" button on the main menu, on-device verification pending** — see
+D-082/D-083/D-084. This is real, ongoing post-demo work
 now, not speculative scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
@@ -143,7 +192,7 @@ batch files. Always `set FLUTTER=C:\src\flutter\bin\flutter.bat`.
 
 ## 3. Repository layout
 
-Kept current as of Phase 13 (2026-09-09) — update this tree when you add a
+Kept current as of Phase 34 (2026-09-12) — update this tree when you add a
 file that will confuse the next person if it's missing here, same discipline
 as `TASKS.md`.
 
@@ -172,48 +221,52 @@ ArenaDemo/                    <- repo root, open this in your editor
     │   │   │                            //   anima — 9x7 grid PNGs — D-032/D-033/D-034/D-035/D-042
     │   │   ├── consumables/            // gems/money/potions.png, 5 rarity cols x N anim rows (D-043); coin-icon.png real coin sheet, 15-frame single row (D-064)
     │   │   ├── ui/                     // currency-counter.png (old placeholder badge, superseded by coin-icon.png — D-064)
+    │   │   ├── bg/                     // splash_bg.png — native launch screen + main menu background — D-082
     │   │   ├── cards/                  // real 52-card deck + 2 Jokers + backs, chest reveal draw (D-057)
     │   │   └── scenes/                // floor tile variants + border tile (D-023)
     │   └── audio/
-    │       └── core/                  // sfx-explosion.wav, sfx-you-died.wav (D-044); 1-4.wav delivered as layered BGM tracks (D-062), only 2.wav still wired after D-064's revert
+    │       └── core/                  // sfx-explosion.wav, sfx-you-died.wav (D-044); 1-4.wav delivered as layered BGM tracks (D-062), unwired since D-064's revert; electric-eel-fishing.ogg is the wired BGM track as of D-073 (2.wav now also unwired)
     └── lib/
         ├── main.dart              // runApp only
-        ├── app.dart               // MaterialApp, routes, theme; starts BgmController once (D-062)
+        ├── app.dart               // MaterialApp, routes, theme; starts BgmController once (D-062); seeds+preloads SfxPlayer at boot too (D-076/D-079); ThemeData.fontFamily = PixelFont (D-077), MediaQuery textScaler 0.75 (D-080)
         ├── core/
-        │   ├── constants.dart     // design size, colors, layer priorities, render scales
+        │   ├── constants.dart     // design size, colors (ArenaColors.warning is the warm-amber exclusive-skill accent, D-083), layer priorities, render scales
         │   ├── stats.dart         // StatBlock + ALL derived-stat formulas, EnemyStats
         │   ├── settings.dart      // Settings model + SharedPreferences I/O
-        │   ├── bgm_controller.dart // app-wide singleton: single base-layer BGM (2.wav) — D-062, layering reverted by D-064
+        │   ├── bgm_controller.dart // app-wide singleton: single base-layer BGM — D-062, layering reverted by D-064, track swapped to electric-eel-fishing.ogg by D-073, FlameAudio.loopLongAudio (MediaPlayer, static-free) by D-075
         │   ├── game_rules.dart    // pure gameplay math (targeting, spawn decay, knockback,
         │   │                      //   enemy/boss level-scaling D-026/D-042, randomPerimeterPoint D-041,
         │   │                      //   Corruption/Haste/Fortune/Resolve/Magnet/Luck/Regen/Crit dials D-047/D-067/D-069,
         │   │                      //   rollIsElite's chanceMultiplier D-070)
-        │   ├── progression.dart   // XP curve, UpgradeKind (Aura + Mirror/Ray/Thunder/Crystal), PlayerUpgrades — D-025/D-027/D-049
+        │   ├── progression.dart   // XP curve, UpgradeKind (Aura + Mirror/Ray/Thunder/Crystal), PlayerUpgrades — D-025/D-027/D-049; kExclusiveUpgradeGroups is 3 overlapping pairs (not one 4-way clique), exclusiveLockTargets — D-072/D-078
         │   ├── economy.dart       // ItemRarity + gem/coin/potion value tables; kChestDeck/rollChestCard (54-card chest reward) — D-043/D-057
         │   ├── shop.dart          // ShopItemId/ShopItem/kShopPages (3 pages of 5) + derived kShopItems — 15 gem-priced permanent one-time SHOP purchases — D-069/D-070
-        │   └── meta_progression.dart // MetaStat (STR/VIT/DEX/INT/CORRUPTION [displayed "CHAOS", D-071]/HASTE/FORTUNE/RESOLVE/MAGNET/LUCK/REGEN/CRIT), coins+gems+lifetimeKills+ownedItemIds wallet; debugAdjustCoins/debugAdjustGems/debugResetWallet — D-047/D-055/D-059/D-067/D-069
+        │   ├── sfx_player.dart    // app-wide singleton: every one-shot SFX except explosion/death (footsteps, damage, tap, projectile-shoot, level-up, chest-card select/chosen) — D-076; pooled via AudioPool (fixed a real resource leak) — D-079; PlayerMode.lowLatency + drop-not-queue guards (fixed a real crash, root-caused via logcat) — D-081
+        │   ├── meta_progression.dart // MetaStat (STR/VIT/DEX/INT/CORRUPTION [displayed "CHAOS", D-071]/HASTE/FORTUNE/RESOLVE/MAGNET/LUCK/REGEN/CRIT), coins+gems+lifetimeKills+ownedItemIds wallet; debugAdjustCoins/debugAdjustGems/debugResetWallet — D-047/D-055/D-059/D-067/D-069
+        │   └── tutorial_state.dart // one persisted bool (hasSeenIntro) gating the D-084 first-boot tutorial
         ├── data/
         │   └── characters.dart    // CharacterDef list; unlockKillThreshold gates slots 2-4 — D-028/D-055
         ├── ui/
         │   ├── screens/
-        │   │   ├── main_menu_screen.dart
+        │   │   ├── main_menu_screen.dart      // Stateful: auto-pushes TutorialScreen on a fresh save, splash_bg.png as full-bleed background (title art baked in, own Text('ARENA') removed), circular "?" button — D-082/D-084
+        │   │   ├── tutorial_screen.dart // 3-slide first-boot tutorial, same carousel chrome as other multi-page screens, built from real game assets (SkillIcon/CoinIcon/GemIcon/chest sprite) — D-084
         │   │   ├── settings_screen.dart        // currency debug always shown; god mode/grant-level-up/end-round only when opened from pause (D-025/D-059); Music Volume live-drives BgmController (D-062)
         │   │   ├── credits_screen.dart
         │   │   ├── character_select_screen.dart // swipe carousel, one character at a time; locked slots show a bar-fill unlock panel, fill height bug fixed — D-055/D-064; gem wallet uses the real GemIcon, not a star — D-069
         │   │   ├── shop_screen.dart       // 3-page non-scrolling carousel, 15 buyable kShopItems, gem-priced — D-069/D-070 (superseded D-047's empty placeholder)
         │   │   ├── upgrades_screen.dart   // 3-page non-scrolling carousel, 12 MetaStat rows total (STR/VIT/DEX/INT — CORRUPTION/HASTE/FORTUNE/RESOLVE — MAGNET/LUCK/REGEN/CRIT) — D-047/D-067/D-069
-        │   │   └── arena_screen.dart      // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu/ChestReveal); ChestReveal confetti, independent-falling +30% count/spread — D-061/D-063/D-071; Round Over's _GemCounter mirrors _CoinCounter's flying pieces + its own sparkle VFX — D-069/D-070; _KillCounter reuses the chest card's jump/land bounce — D-071
-        │   └── widgets/                   // buttons, stat bars, shared chrome; coin_icon.dart crops the real coin asset (D-064), gem_icon.dart crops the legendary-tier gem sprite (D-069)
+        │   │   └── arena_screen.dart      // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu/ChestReveal); Round Over's _GemCounter mirrors _CoinCounter's flying pieces + its own sparkle VFX — D-069/D-070; _KillCounter reuses the chest card's jump/land bounce — D-071; LevelUp's _LevelUpCard (EXCLUSIVE badge, per-skill icon art, shadow+double border) — D-072/D-078; ChestReveal confetti removed, replaced by a sparkle burst — D-072; landing-burst visibility bug fixed — D-074; the corner-sparkle-while-choosing feature (D-074) removed outright, still read as sparkles-visible-pre-choice — D-078
+        │   └── widgets/                   // buttons, stat bars, shared chrome; coin_icon.dart crops the real coin asset (D-064), gem_icon.dart crops the legendary-tier gem sprite (D-069); tap_sfx.dart's withTapSfx wraps any raw button's onPressed with the shared tap SFX (D-076), PixelButton/CarouselArrow/ScreenScaffold's back button play it internally; skill_icon.dart's SkillIcon/SpriteCellIcon — promoted out of arena_screen.dart's _LevelUpCard, shared with TutorialScreen — D-078/D-084
         └── game/
             ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling; addToWorld/addToHud split — D-040.
             │                              //   Split from ~820 lines (D-045/D-048): asset loading moved to game_assets.dart
             ├── game_assets.dart           // GameAssets — every SpriteAnimation/Sprite, loaded once, held by ArenaGame — D-045/D-048
             ├── attack_behavior.dart       // AttackBehavior (+ onEquipped hook) + ProjectileAttack + KnifeAttack + SpiralFireAttack + WardenSlamAttack — D-024/D-029/D-034/D-036/D-056; every damage calc routed through ArenaGame.resolveAttackDamage (Sharp Edge + CRIT) — D-069
             ├── components/
-            │   ├── player.dart              // takeDamage applies Defence Crystal resistance + blood-impact VFX (D-033/D-049); heal() for potions (D-043); free movement, no bounds clamp (D-040); SHOP bonuses (max HP/move speed/resistance/Second Wind revive) + REGEN dial — D-069
+            │   ├── player.dart              // takeDamage applies Defence Crystal resistance + blood-impact VFX (D-033/D-049); heal() for potions (D-043); free movement, no bounds clamp (D-040); SHOP bonuses (max HP/move speed/resistance/Second Wind revive) + REGEN dial — D-069; movement no longer freezes during the hurt pose — D-074; footstep timer, damage SFX, playFire's projectile-shoot SFX — D-076
             │   ├── enemy.dart              // hp/contactDamage scaled by level at spawn (D-026); implements Damageable (D-042)
             │   ├── damageable.dart          // shared hit-detection interface, enemy + boss — D-042
-            │   ├── boss.dart                // idle/walk/fire/death state machine; teleport is telegraph->0.5s delay->pop-in, longer distance — D-042/D-060
+            │   ├── boss.dart                // idle/walk/fire/death state machine; teleport is telegraph->0.5s delay->pop-in, longer distance — D-042/D-060; 3s teleport cooldown + anima renders behind the boss — D-074
             │   ├── projectile.dart          // _outOfBounds (bare edge, bounce trigger) vs _farOutOfBounds (margin, real despawn) — D-040/D-042/D-051/D-052/D-059/D-061; tint/targetsPlayer/maxBounces/neverExpire params
             │   ├── projectile_poof.dart     // shrink+drift despawn flourish, shared by every projectile type — D-053
             │   ├── knife_projectile.dart    // Bruiser kit: pierces, clean->bloody sprite swap; despawn margin — D-029/D-061
@@ -223,9 +276,10 @@ ArenaDemo/                    <- repo root, open this in your editor
             │   ├── gem.dart                  // world pickup, float bob, self-collects near the player — D-043/D-059; pickup radius widened by MAGNET — D-069
             │   ├── potion.dart               // world pickup + float bob, heals on touch — D-043/D-059; pickup radius widened by MAGNET — D-069
             │   ├── potion_spawner.dart       // periodic random-area drop — D-043
-            │   ├── chest.dart                // world chest: anima+explosion then chest_01-12 opening sequence — D-055; pickup radius widened by MAGNET — D-069; anima sized off the chest's own render size + reduced contrast — D-071
+            │   ├── chest.dart                // world chest: anima+explosion then chest_01-12 opening sequence — D-055; pickup radius widened by MAGNET — D-069; anima sized off the chest's own render size + reduced contrast — D-071; anima renders behind the chest — D-074
             │   ├── chest_spawner.dart        // periodic random-area drop, same shape as potion_spawner.dart — D-055
             │   ├── hp_bar.dart               // now on camera.viewport (HUD), not world — D-040
+            │   ├── xp_bar.dart               // bottom-anchored twin of hp_bar.dart, positioned via onGameResize — D-076
             │   ├── damage_text.dart
             │   ├── arena_floor.dart          // endless tiling from camera.visibleWorldRect, no border — D-041
             │   ├── aura.dart                // Aura skill: shield-ring visual, area-tick damage — D-027/D-032

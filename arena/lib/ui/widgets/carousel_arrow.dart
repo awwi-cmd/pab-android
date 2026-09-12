@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
+import 'tap_sfx.dart';
 
 enum ArrowDirection { left, right }
 
@@ -37,7 +38,7 @@ class CarouselArrow extends StatelessWidget {
         shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),
-          onTap: enabled ? onPressed : null,
+          onTap: enabled ? withTapSfx(onPressed) : null,
           child: Center(
             child: Icon(
               direction == ArrowDirection.left

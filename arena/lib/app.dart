@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'core/bgm_controller.dart';
 import 'core/constants.dart';
 import 'core/settings.dart';
+import 'core/sfx_player.dart';
 import 'ui/screens/arena_screen.dart';
 import 'ui/screens/character_select_screen.dart';
 import 'ui/screens/credits_screen.dart';
 import 'ui/screens/main_menu_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'ui/screens/shop_screen.dart';
+import 'ui/screens/tutorial_screen.dart';
 import 'ui/screens/upgrades_screen.dart';
 
 class ArenaApp extends StatefulWidget {
@@ -31,6 +33,15 @@ class _ArenaAppState extends State<ArenaApp> {
   Future<void> _startBgm() async {
     final settings = await SettingsRepository().load();
     BgmController.instance.setMasterVolume(settings.musicVolume);
+    // DECISIONS D-076: SfxPlayer (button taps and every other one-shot SFX)
+    // needs its own volume read at boot too -- same reasoning as BGM, it
+    // has to work on the very first menu screen, before Settings is ever
+    // opened once.
+    SfxPlayer.instance.setVolumeMultiplier(settings.sfxVolume);
+    // DECISIONS D-079: warms every pooled SFX's players up front so the
+    // very first tap/footstep/shot in a session doesn't pay the one-time
+    // pool-creation cost itself.
+    SfxPlayer.instance.preload();
     await BgmController.instance.start();
   }
 
@@ -48,8 +59,23 @@ class _ArenaAppState extends State<ArenaApp> {
         CharacterSelectScreen.route: (_) => const CharacterSelectScreen(),
         ShopScreen.route: (_) => const ShopScreen(),
         UpgradesScreen.route: (_) => const UpgradesScreen(),
+        TutorialScreen.route: (_) => const TutorialScreen(),
         ArenaScreen.route: (_) => const ArenaScreen(),
       },
+      // DECISIONS D-080 ("the font is too big, reduce it by 25%") — a flat
+      // app-wide text scale rather than touching every one of the ~40
+      // existing `TextStyle`'s own `fontSize`. Deliberately overrides
+      // (doesn't compose with) the platform's own accessibility text-scale
+      // setting: this is a pixel-art game with hand-fitted panel layouts,
+      // not a text-heavy app, so a user's system font-scaling setting
+      // stacking on top would just as easily break those layouts the
+      // other way.
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: const TextScaler.linear(0.75)),
+        child: child!,
+      ),
     );
   }
 }
@@ -58,6 +84,12 @@ final ThemeData _theme = ThemeData(
   useMaterial3: true,
   brightness: Brightness.dark,
   scaffoldBackgroundColor: ArenaColors.background,
+  // DECISIONS D-077: the game's main font, applied here rather than on
+  // each individual `TextStyle` -- every `Text` in the app inherits it for
+  // free (none of the existing `TextStyle`s set their own `fontFamily` or
+  // `inherit: false`, so `Text`'s own merge-with-ambient-default logic
+  // picks this up everywhere, menus and Flame overlays alike).
+  fontFamily: 'PixelFont',
   colorScheme: ColorScheme.fromSeed(
     seedColor: ArenaColors.accent,
     brightness: Brightness.dark,
