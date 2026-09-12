@@ -66,7 +66,20 @@ see D-062/D-063. **The BGM layering was then reverted back to a single
 track (`2.wav` only, developer's explicit call), a character-select
 unlock bar-fill sizing bug is fixed, and the coin-icon placeholder is
 replaced with the real coin asset everywhere it's shown, on-device
-verification pending** — see D-064. This is real, ongoing post-demo work
+verification pending** — see D-064. **A real gem-currency display
+(character select + Round Over, using the highest-tier gem sprite), a
+SHOP filled with 5 gem-priced permanent items, and 3 more Upgrades dials
+(MAGNET/LUCK/REGEN/CRIT, closing the "COMING SOON" 3rd page) are built,
+on-device verification pending** — see D-069. **SHOP was then repaged into
+a 3-page non-scrolling carousel (10 more working items across pages 2-3,
+15 total) and Round Over's gem reveal gained the coin reveal's flying-piece
+animation plus its own looping sparkle VFX, on-device verification
+pending** — see D-070. **The chest anima flourish is resized/de-contrasted
+relative to the chest itself, chest-reveal confetti falls with independent
+per-piece motion (+30% count and spawn spread), CORRUPTION is shortened to
+CHAOS (display only), and Round Over gained a kill counter with a
+golden-star landing bounce reusing the chest card's own jump/land tween,
+on-device verification pending** — see D-071. This is real, ongoing post-demo work
 now, not speculative scope;
 new post-demo phases get their own section in `TASKS.md` the same way, not
 dumped in the Backlog.
@@ -172,10 +185,13 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   ├── settings.dart      // Settings model + SharedPreferences I/O
         │   ├── bgm_controller.dart // app-wide singleton: single base-layer BGM (2.wav) — D-062, layering reverted by D-064
         │   ├── game_rules.dart    // pure gameplay math (targeting, spawn decay, knockback,
-        │   │                      //   enemy/boss level-scaling D-026/D-042, randomPerimeterPoint D-041)
+        │   │                      //   enemy/boss level-scaling D-026/D-042, randomPerimeterPoint D-041,
+        │   │                      //   Corruption/Haste/Fortune/Resolve/Magnet/Luck/Regen/Crit dials D-047/D-067/D-069,
+        │   │                      //   rollIsElite's chanceMultiplier D-070)
         │   ├── progression.dart   // XP curve, UpgradeKind (Aura + Mirror/Ray/Thunder/Crystal), PlayerUpgrades — D-025/D-027/D-049
         │   ├── economy.dart       // ItemRarity + gem/coin/potion value tables; kChestDeck/rollChestCard (54-card chest reward) — D-043/D-057
-        │   └── meta_progression.dart // MetaStat (STR/VIT/DEX/INT/CORRUPTION), coins+gems+lifetimeKills wallet; debugAdjustCoins/debugAdjustGems/debugResetWallet — D-047/D-055/D-059
+        │   ├── shop.dart          // ShopItemId/ShopItem/kShopPages (3 pages of 5) + derived kShopItems — 15 gem-priced permanent one-time SHOP purchases — D-069/D-070
+        │   └── meta_progression.dart // MetaStat (STR/VIT/DEX/INT/CORRUPTION [displayed "CHAOS", D-071]/HASTE/FORTUNE/RESOLVE/MAGNET/LUCK/REGEN/CRIT), coins+gems+lifetimeKills+ownedItemIds wallet; debugAdjustCoins/debugAdjustGems/debugResetWallet — D-047/D-055/D-059/D-067/D-069
         ├── data/
         │   └── characters.dart    // CharacterDef list; unlockKillThreshold gates slots 2-4 — D-028/D-055
         ├── ui/
@@ -183,18 +199,18 @@ ArenaDemo/                    <- repo root, open this in your editor
         │   │   ├── main_menu_screen.dart
         │   │   ├── settings_screen.dart        // currency debug always shown; god mode/grant-level-up/end-round only when opened from pause (D-025/D-059); Music Volume live-drives BgmController (D-062)
         │   │   ├── credits_screen.dart
-        │   │   ├── character_select_screen.dart // swipe carousel, one character at a time; locked slots show a bar-fill unlock panel, fill height bug fixed — D-055/D-064
-        │   │   ├── shop_screen.dart       // empty placeholder, back button only — D-047
-        │   │   ├── upgrades_screen.dart   // 5 MetaStat rows, buy buttons — D-047
-        │   │   └── arena_screen.dart      // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu/ChestReveal); ChestReveal confetti — D-061/D-063
-        │   └── widgets/                   // buttons, stat bars, shared chrome; coin_icon.dart crops the real coin asset (D-064)
+        │   │   ├── character_select_screen.dart // swipe carousel, one character at a time; locked slots show a bar-fill unlock panel, fill height bug fixed — D-055/D-064; gem wallet uses the real GemIcon, not a star — D-069
+        │   │   ├── shop_screen.dart       // 3-page non-scrolling carousel, 15 buyable kShopItems, gem-priced — D-069/D-070 (superseded D-047's empty placeholder)
+        │   │   ├── upgrades_screen.dart   // 3-page non-scrolling carousel, 12 MetaStat rows total (STR/VIT/DEX/INT — CORRUPTION/HASTE/FORTUNE/RESOLVE — MAGNET/LUCK/REGEN/CRIT) — D-047/D-067/D-069
+        │   │   └── arena_screen.dart      // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu/ChestReveal); ChestReveal confetti, independent-falling +30% count/spread — D-061/D-063/D-071; Round Over's _GemCounter mirrors _CoinCounter's flying pieces + its own sparkle VFX — D-069/D-070; _KillCounter reuses the chest card's jump/land bounce — D-071
+        │   └── widgets/                   // buttons, stat bars, shared chrome; coin_icon.dart crops the real coin asset (D-064), gem_icon.dart crops the legendary-tier gem sprite (D-069)
         └── game/
             ├── arena_game.dart            // FlameGame subclass, ALL round state incl. leveling; addToWorld/addToHud split — D-040.
             │                              //   Split from ~820 lines (D-045/D-048): asset loading moved to game_assets.dart
             ├── game_assets.dart           // GameAssets — every SpriteAnimation/Sprite, loaded once, held by ArenaGame — D-045/D-048
-            ├── attack_behavior.dart       // AttackBehavior (+ onEquipped hook) + ProjectileAttack + KnifeAttack + SpiralFireAttack + WardenSlamAttack — D-024/D-029/D-034/D-036/D-056
+            ├── attack_behavior.dart       // AttackBehavior (+ onEquipped hook) + ProjectileAttack + KnifeAttack + SpiralFireAttack + WardenSlamAttack — D-024/D-029/D-034/D-036/D-056; every damage calc routed through ArenaGame.resolveAttackDamage (Sharp Edge + CRIT) — D-069
             ├── components/
-            │   ├── player.dart              // takeDamage applies Defence Crystal resistance + blood-impact VFX (D-033/D-049); heal() for potions (D-043); free movement, no bounds clamp (D-040)
+            │   ├── player.dart              // takeDamage applies Defence Crystal resistance + blood-impact VFX (D-033/D-049); heal() for potions (D-043); free movement, no bounds clamp (D-040); SHOP bonuses (max HP/move speed/resistance/Second Wind revive) + REGEN dial — D-069
             │   ├── enemy.dart              // hp/contactDamage scaled by level at spawn (D-026); implements Damageable (D-042)
             │   ├── damageable.dart          // shared hit-detection interface, enemy + boss — D-042
             │   ├── boss.dart                // idle/walk/fire/death state machine; teleport is telegraph->0.5s delay->pop-in, longer distance — D-042/D-060
@@ -204,10 +220,10 @@ ArenaDemo/                    <- repo root, open this in your editor
             │   ├── spiral_fire_projectile.dart // Skirmisher kit: orbiting yin-yang pair; despawn margin — D-034/D-061
             │   ├── tracking_effect.dart      // VFX glued to a moving target, optional fade-out — D-034/D-035/D-036
             │   ├── spawner.dart              // camera-relative spawn ring + straggler culling — D-041
-            │   ├── gem.dart                  // world pickup, float bob, self-collects near the player — D-043/D-059
-            │   ├── potion.dart               // world pickup + float bob, heals on touch — D-043/D-059
+            │   ├── gem.dart                  // world pickup, float bob, self-collects near the player — D-043/D-059; pickup radius widened by MAGNET — D-069
+            │   ├── potion.dart               // world pickup + float bob, heals on touch — D-043/D-059; pickup radius widened by MAGNET — D-069
             │   ├── potion_spawner.dart       // periodic random-area drop — D-043
-            │   ├── chest.dart                // world chest: anima+explosion then chest_01-12 opening sequence — D-055
+            │   ├── chest.dart                // world chest: anima+explosion then chest_01-12 opening sequence — D-055; pickup radius widened by MAGNET — D-069; anima sized off the chest's own render size + reduced contrast — D-071
             │   ├── chest_spawner.dart        // periodic random-area drop, same shape as potion_spawner.dart — D-055
             │   ├── hp_bar.dart               // now on camera.viewport (HUD), not world — D-040
             │   ├── damage_text.dart

@@ -19,10 +19,11 @@ import '../widgets/stat_bar.dart';
 /// non-scrolling `PageView` of 3 pages: STR/VIT/DEX/INT (raw attribute
 /// adds, `ArenaGame.effectiveStats`), CORRUPTION plus 3 more per-level
 /// dials in the same spirit (HASTE/FORTUNE/RESOLVE, `core/game_rules.dart`),
-/// and a placeholder third page for whatever comes next. Each page lays its
-/// rows out with `Expanded`, not a scroll view — the row order per page
-/// comes straight from `MetaStat.values`' own declaration order (see that
-/// enum's doc comment), not a separate list here.
+/// and a 3rd page of 4 more (DECISIONS D-069: MAGNET/LUCK/REGEN/CRIT,
+/// closing out the "COMING SOON" placeholder D-067 shipped on purpose).
+/// Each page lays its rows out with `Expanded`, not a scroll view — the row
+/// order per page comes straight from `MetaStat.values`' own declaration
+/// order (see that enum's doc comment), not a separate list here.
 ///
 /// Loads/saves its own `MetaProgression` copy (no state-management library,
 /// CLAUDE.md §4.9) — same pattern as `SettingsScreen`.
@@ -42,14 +43,15 @@ class _UpgradesScreenState extends State<UpgradesScreen> {
   int _pageIndex = 0;
 
   /// Row-order source of truth (see class doc) — page 1 is the 4 raw
-  /// attributes, page 2 is Corruption plus the 3 new dials that share its
-  /// shape. A 3rd real page (not the COMING SOON placeholder) is a new
-  /// entry in this list, not a change to how paging itself works.
+  /// attributes, page 2 is Corruption plus the 3 dials that share its shape,
+  /// page 3 (DECISIONS D-069) is 4 more in the same spirit. A future page
+  /// is one more entry here, not a change to how paging itself works.
   static const _statPages = [
     [MetaStat.str, MetaStat.vit, MetaStat.dex, MetaStat.intellect],
     [MetaStat.corruption, MetaStat.haste, MetaStat.fortune, MetaStat.resolve],
+    [MetaStat.magnet, MetaStat.luck, MetaStat.regen, MetaStat.crit],
   ];
-  static final _pageCount = _statPages.length + 1; // +1 for COMING SOON
+  static final _pageCount = _statPages.length;
 
   @override
   void initState() {
@@ -118,13 +120,11 @@ class _UpgradesScreenState extends State<UpgradesScreen> {
                     controller: _pageController,
                     itemCount: _pageCount,
                     onPageChanged: (i) => setState(() => _pageIndex = i),
-                    itemBuilder: (context, i) => i < _statPages.length
-                        ? _StatPage(
-                            stats: _statPages[i],
-                            meta: meta,
-                            onBuy: _buy,
-                          )
-                        : const _ComingSoonPage(),
+                    itemBuilder: (context, i) => _StatPage(
+                      stats: _statPages[i],
+                      meta: meta,
+                      onBuy: _buy,
+                    ),
                   ),
                 ),
                 CarouselArrowRow(
@@ -241,26 +241,6 @@ class _UpgradeRow extends StatelessWidget {
             onPressed: onBuy,
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Placeholder 3rd page (developer's explicit spec) — same empty-state
-/// pattern as `ShopScreen`, not a new one.
-class _ComingSoonPage extends StatelessWidget {
-  const _ComingSoonPage();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'COMING SOON',
-        style: TextStyle(
-          color: ArenaColors.textDim,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 2,
-        ),
       ),
     );
   }

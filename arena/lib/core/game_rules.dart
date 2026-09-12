@@ -87,7 +87,12 @@ double enemyStatMultiplier(int playerLevel) {
 /// above. Rolled independently per spawn, not tied to player level.
 const double kEliteChance = 0.15;
 
-bool rollIsElite(Random random) => random.nextDouble() < kEliteChance;
+/// [chanceMultiplier] scales the base chance down (or up) -- SHOP's Steel
+/// Nerves (DECISIONS D-070) halves it. Defaults to 1 so every existing call
+/// site (and test) is unaffected.
+bool rollIsElite(Random random, {double chanceMultiplier = 1.0}) {
+  return random.nextDouble() < kEliteChance * chanceMultiplier;
+}
 
 /// DECISIONS D-042: the boss gets ~20% stronger each time it spawns
 /// (levels 3, 6, 9 — `spawnIndex` 0/1/2), compounding rather than flat, so
@@ -164,6 +169,45 @@ double resolveDamageResistance(int resolveLevel) {
 /// Crystal's `bonusHpRegenPerSec`.
 double resolveHpRegenPerSec(int resolveLevel) {
   return resolveLevel * kResolveHpRegenPerLevel;
+}
+
+/// 4 more Upgrades-screen dials, the 3rd page (DECISIONS D-069) — same
+/// per-level-multiplier-off-`MetaProgression` shape as Corruption/Haste/
+/// Fortune/Resolve above. First-guess placeholders, not tuned on-device.
+const double kMagnetPickupRadiusPerLevel = 0.15;
+const double kLuckGemDropChancePerLevel = 0.01;
+const double kRegenHpPerSecPerLevel = 0.08;
+const double kCritChancePerLevel = 0.03;
+const double kCritDamageMultiplier = 1.5;
+
+/// Multiplies every pickup's collect radius (gems/potions/chests) — above 1
+/// means the player sweeps up loot from further away. +150% at max level.
+double magnetPickupRadiusMultiplier(int magnetLevel) {
+  return 1 + magnetLevel * kMagnetPickupRadiusPerLevel;
+}
+
+/// An additive bonus on top of `economy.dart`'s own `gemDropChance` curve,
+/// not a second multiplier — Luck raises the flat odds a kill drops a gem
+/// at all, the same axis the base chance already scales on. +10 points at
+/// max level.
+double luckGemDropBonus(int luckLevel) {
+  return luckLevel * kLuckGemDropChancePerLevel;
+}
+
+/// A flat HP-regen-per-second bonus, same additive-layer shape as Defence
+/// Crystal's/Resolve's own regen bonuses (`resolveHpRegenPerSec` above) —
+/// this one is REGEN's own dial, not a duplicate of Resolve's.
+double regenHpPerSec(int regenLevel) {
+  return regenLevel * kRegenHpPerSecPerLevel;
+}
+
+/// Chance the base auto-attack's hit rolls as a critical, dealing
+/// [kCritDamageMultiplier]x damage (`ArenaGame.resolveAttackDamage`) — same
+/// deliberately narrow "base attack only, not every skill" scope Haste
+/// already set for attack speed (see `hasteAttackSpeedMultiplier`'s own
+/// doc comment). 30% at max level.
+double critChance(int critLevel) {
+  return critLevel * kCritChancePerLevel;
 }
 
 /// A random point *inside* [visible], inset by [marginFactor] of its own

@@ -13,6 +13,7 @@ import '../../data/characters.dart';
 import '../../game/arena_game.dart';
 import '../../game/input/joystick_overlay.dart';
 import '../widgets/coin_icon.dart';
+import '../widgets/gem_icon.dart';
 import 'settings_screen.dart';
 
 /// Hosts the single `GameWidget` for the arena (CLAUDE.md §4.1 — Flame owns
@@ -240,15 +241,20 @@ class _RoundOverOverlay extends StatelessWidget {
                 label: 'Time survived',
                 value: _formatElapsed(game.elapsed),
               ),
-              _StatRow(label: 'Enemies killed', value: '${game.kills}'),
               _StatRow(
                 label: 'Damage dealt',
                 value: '${game.damageDealt.round()}',
               ),
               _StatRow(label: 'Level reached', value: '${game.level}'),
-              _StatRow(label: 'Gems collected', value: '${game.gemsCollected}'),
               const SizedBox(height: 16),
+              // DECISIONS D-069/D-071: coins/gems/kills all get the same
+              // real-asset icon+counting treatment instead of a plain text
+              // stat row. Stacked (not side-by-side) so `_CoinCounter`'s own
+              // `LayoutBuilder` still resolves against a real bounded width
+              // from the Column, not an unbounded `Row` main axis.
               _CoinCounter(total: game.coinsEarned),
+              _GemCounter(total: game.gemsCollected),
+              _KillCounter(total: game.kills),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
@@ -443,6 +449,377 @@ class _FlyingCoinSpec {
   final double startDistance;
   final double startYOffset;
   final Interval interval;
+}
+
+/// Round Over's gem reveal (DECISIONS D-069, flying pieces + sparkle VFX
+/// added D-070 — "same animation gems in end of match screen that coins
+/// have... add more VFX to them") — the real gem icon (`GemIcon`, legendary
+/// tier) with the round's `gemsCollected` total counting up from 0, small
+/// gem sprites flying in and shrinking exactly like `_CoinCounter`'s coins,
+/// plus a looping twinkle burst (`_GemSparkleSpec`) orbiting the icon that
+/// coins don't get — gems are the premium currency, so this reveal reads a
+/// notch fancier than the coin one rather than an identical reskin.
+class _GemCounter extends StatefulWidget {
+  const _GemCounter({required this.total});
+
+  final int total;
+
+  @override
+  State<_GemCounter> createState() => _GemCounterState();
+}
+
+class _GemCounterState extends State<_GemCounter>
+    with TickerProviderStateMixin {
+  static const _duration = Duration(milliseconds: 1600);
+  static const _maxFlyingGems = 10;
+
+  late final AnimationController _controller;
+  late final Animation<int> _count;
+  late final List<_FlyingCoinSpec> _flyingGems;
+
+  /// The extra VFX coins don't have — a handful of sparkle glints looping
+  /// around the gem icon for as long as the overlay is up, independent of
+  /// the count-up (which finishes and stops).
+  static const _sparkleDuration = Duration(milliseconds: 2400);
+  late final AnimationController _sparkleController;
+  late final List<_GemSparkleSpec> _sparkles;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: _duration)
+      ..forward();
+    _count = IntTween(
+      begin: 0,
+      end: widget.total,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+
+    final random = Random();
+    // Capped regardless of the real total, same reasoning as _CoinCounter.
+    final gemCount = widget.total > 0 ? _maxFlyingGems : 0;
+    _flyingGems = List.generate(gemCount, (i) {
+      final startDelay = i / gemCount * 0.5; // staggered, not simultaneous
+      return _FlyingCoinSpec(
+        fromLeft: random.nextBool(),
+        startDistance:
+            1.2 + random.nextDouble() * 0.8, // x half-width, off-widget
+        startYOffset: (random.nextDouble() - 0.5) * 72,
+        interval: Interval(
+          startDelay,
+          (startDelay + 0.5).clamp(0.0, 1.0),
+          curve: Curves.easeIn,
+        ),
+      );
+    });
+
+    _sparkleController = AnimationController(
+      vsync: this,
+      duration: _sparkleDuration,
+    )..repeat();
+    _sparkles = List.generate(6, (i) {
+      final angle = i / 6 * 2 * pi;
+      return _GemSparkleSpec(
+        dx: cos(angle) * (30 + random.nextDouble() * 10),
+        dy: sin(angle) * (18 + random.nextDouble() * 8),
+        phase: random.nextDouble(),
+        size: 12 + random.nextDouble() * 8,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _sparkleController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 88,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return AnimatedBuilder(
+            animation: Listenable.merge([_controller, _sparkleController]),
+            builder: (context, _) => Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                for (final gem in _flyingGems)
+                  _buildFlyingGem(gem, constraints.maxWidth),
+                SizedBox(
+                  width: 128,
+                  height: 64,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      for (final sparkle in _sparkles) _buildSparkle(sparkle),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const GemIcon(size: 40),
+                          const SizedBox(width: 10),
+                          Text(
+                            '${_count.value}',
+                            style: const TextStyle(
+                              color: ArenaColors.textPrimary,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Same flight math `_CoinCounterState._buildFlyingCoin` uses, rendering
+  /// the legendary-tier gem cell instead of the coin cell.
+  Widget _buildFlyingGem(_FlyingCoinSpec gem, double width) {
+    final t = gem.interval.transform(_controller.value);
+    final startX = (gem.fromLeft ? -1 : 1) * gem.startDistance * width / 2;
+    final remaining = 1 - t;
+    return Transform.translate(
+      offset: Offset(startX * remaining, gem.startYOffset * remaining),
+      child: Opacity(
+        opacity: remaining,
+        child: Transform.scale(
+          scale: remaining,
+          child: const _SpriteCell(
+            asset: 'assets/images/consumables/gems.png',
+            sheetWidth: 80,
+            sheetHeight: 144,
+            cellSize: 16,
+            column: 4, // legendary -- same tier GemIcon crops
+            row: 0,
+            displaySize: 26,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// One twinkle glint — fades and grows in, then back out, on its own
+  /// looping local timeline (`_sparkleController` + [_GemSparkleSpec.phase]
+  /// staggers each one so they don't all pulse in lockstep).
+  Widget _buildSparkle(_GemSparkleSpec sparkle) {
+    final t = (_sparkleController.value + sparkle.phase) % 1.0;
+    final opacity = (t < 0.5 ? t / 0.5 : 1 - (t - 0.5) / 0.5).clamp(0.0, 1.0);
+    return Positioned(
+      left: 64 + sparkle.dx - sparkle.size / 2,
+      top: 32 + sparkle.dy - sparkle.size / 2,
+      child: Opacity(
+        opacity: opacity,
+        child: Transform.scale(
+          scale: 0.6 + 0.4 * opacity,
+          child: Icon(
+            Icons.auto_awesome,
+            size: sparkle.size,
+            color: ArenaColors.accent,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GemSparkleSpec {
+  const _GemSparkleSpec({
+    required this.dx,
+    required this.dy,
+    required this.phase,
+    required this.size,
+  });
+
+  /// Fixed offset from the gem icon's own center — the sparkle orbits
+  /// nowhere, it just blinks in place at this spot (cheaper, and reads fine
+  /// for a small twinkle burst).
+  final double dx;
+  final double dy;
+
+  /// Where in the shared [AnimationController]'s loop this piece starts its
+  /// own fade in/out cycle, so the 6 sparkles don't pulse in lockstep.
+  final double phase;
+  final double size;
+}
+
+/// Round Over's kill-count reveal (DECISIONS D-071, "add the kills in end
+/// of match screen as well, use the hollow star... turn it a golden star
+/// with the same jump and land animation the card has") — the hollow star
+/// (`star-empty.png`) with `game.kills` counting up, small golden stars
+/// (`star-full.png`) flying in exactly like `_CoinCounter`'s coins, and the
+/// instant the count finishes, the center icon itself swaps to the golden
+/// star and plays the *exact* jump/land bounce `_ChestRevealOverlay`'s card
+/// landing uses (same tween weights/curves/duration) — reused directly
+/// rather than a second hand-tuned bounce.
+class _KillCounter extends StatefulWidget {
+  const _KillCounter({required this.total});
+
+  final int total;
+
+  @override
+  State<_KillCounter> createState() => _KillCounterState();
+}
+
+class _KillCounterState extends State<_KillCounter>
+    with TickerProviderStateMixin {
+  static const _duration = Duration(milliseconds: 1600);
+  static const _maxFlyingStars = 10;
+
+  static const _starEmptyAsset = 'assets/images/ui/star-empty.png';
+  static const _starFullAsset = 'assets/images/ui/star-full.png';
+
+  late final AnimationController _controller;
+  late final Animation<int> _count;
+  late final List<_FlyingCoinSpec> _flyingStars;
+
+  /// The landing bounce — identical shape to `_ChestRevealOverlayState`'s
+  /// own `_landController`/`_jumpOffset` (same 520ms duration, same 35/65
+  /// easeOut-then-bounceOut weights) so a star "landing" reads as the same
+  /// physical event a card landing does, not a different one that happens
+  /// to look similar.
+  late final AnimationController _landController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 520),
+  );
+  late final Animation<double> _jumpOffset = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 0.0,
+        end: -22.0,
+      ).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 35,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: -22.0,
+        end: 0.0,
+      ).chain(CurveTween(curve: Curves.bounceOut)),
+      weight: 65,
+    ),
+  ]).animate(_landController);
+
+  /// Flips from the hollow star to the golden one the instant the count-up
+  /// finishes, in lockstep with [_landController] firing.
+  bool _golden = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: _duration)
+      ..addStatusListener((status) {
+        if (status != AnimationStatus.completed) return;
+        setState(() => _golden = true);
+        _landController.forward(from: 0);
+      })
+      ..forward();
+    _count = IntTween(
+      begin: 0,
+      end: widget.total,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+
+    final random = Random();
+    final starCount = widget.total > 0 ? _maxFlyingStars : 0;
+    _flyingStars = List.generate(starCount, (i) {
+      final startDelay = i / starCount * 0.5;
+      return _FlyingCoinSpec(
+        fromLeft: random.nextBool(),
+        startDistance: 1.2 + random.nextDouble() * 0.8,
+        startYOffset: (random.nextDouble() - 0.5) * 72,
+        interval: Interval(
+          startDelay,
+          (startDelay + 0.5).clamp(0.0, 1.0),
+          curve: Curves.easeIn,
+        ),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _landController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 88,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return AnimatedBuilder(
+            animation: Listenable.merge([_controller, _landController]),
+            builder: (context, _) => Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                for (final star in _flyingStars)
+                  _buildFlyingStar(star, constraints.maxWidth),
+                Transform.translate(
+                  offset: Offset(0, _jumpOffset.value),
+                  child: SizedBox(
+                    width: 128,
+                    height: 64,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Image.asset(
+                          _golden ? _starFullAsset : _starEmptyAsset,
+                          height: 40,
+                          filterQuality: FilterQuality.none,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          '${_count.value}',
+                          style: const TextStyle(
+                            color: ArenaColors.textPrimary,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Same flight math `_CoinCounterState._buildFlyingCoin` uses, rendering
+  /// the golden star sprite directly (a standalone image, not a sheet, so
+  /// no `_SpriteCell` crop needed).
+  Widget _buildFlyingStar(_FlyingCoinSpec star, double width) {
+    final t = star.interval.transform(_controller.value);
+    final startX = (star.fromLeft ? -1 : 1) * star.startDistance * width / 2;
+    final remaining = 1 - t;
+    return Transform.translate(
+      offset: Offset(startX * remaining, star.startYOffset * remaining),
+      child: Opacity(
+        opacity: remaining,
+        child: Transform.scale(
+          scale: remaining,
+          child: Image.asset(
+            _starFullAsset,
+            height: 26,
+            filterQuality: FilterQuality.none,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Crops one cell out of a sprite sheet for a plain Flutter `Image.asset`
@@ -742,7 +1119,9 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
   /// rather than a confetti package (CLAUDE.md §4.9: no new dependencies)
   /// — plain rotated rects are enough for a burst, no image asset exists
   /// for this either.
-  static const _confettiCount = 26;
+  // DECISIONS D-071 ("increase the number of confetti and spawn locations
+  // by 30%"): 26 -> 34 (26 * 1.3, rounded).
+  static const _confettiCount = 34;
   static const _confettiDurationMs = 1400;
   static const _confettiColors = [
     Color(0xFFE0526C), // ArenaColors.danger
@@ -779,9 +1158,13 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
     return [
       for (var i = 0; i < _confettiCount; i++)
         _ConfettiParticle(
+          // DECISIONS D-071: the spawn-location spread itself widened 30%
+          // (1.4/0.9 -> 1.82/1.17, -0.4/0.8 -> -0.52/1.04) -- pieces now
+          // launch from a wider band off-screen, not just more of them from
+          // the same old band.
           startAlign: Alignment(
-            (i.isEven ? -1 : 1) * (1.4 + _random.nextDouble() * 0.9),
-            -0.4 + _random.nextDouble() * 0.8,
+            (i.isEven ? -1 : 1) * (1.82 + _random.nextDouble() * 1.17),
+            -0.52 + _random.nextDouble() * 1.04,
           ),
           endAlign: Alignment(
             (_random.nextBool() ? -1 : 1) * (0.4 + _random.nextDouble() * 1.6),
@@ -793,6 +1176,14 @@ class _ChestRevealOverlayState extends State<_ChestRevealOverlay>
           rotationTurns: 1 + _random.nextDouble() * 2.5,
           arcHeight: 0.12 + _random.nextDouble() * 0.18,
           front: i.isOdd,
+          // DECISIONS D-071 ("make each confetti move independently when
+          // it's falling"): a per-piece horizontal flutter layered on top
+          // of the shared start->end flight path below, each with its own
+          // amplitude/frequency/phase so pieces visibly diverge mid-flight
+          // instead of every one tracing a plain straight line.
+          wobbleAmplitudePx: 8 + _random.nextDouble() * 14,
+          wobbleFrequency: 1.5 + _random.nextDouble() * 2.5,
+          wobblePhase: _random.nextDouble() * 2 * pi,
         ),
     ];
   }
@@ -1006,6 +1397,9 @@ class _ConfettiParticle {
     required this.arcHeight,
     required this.front,
     required this.startDelayFraction,
+    required this.wobbleAmplitudePx,
+    required this.wobbleFrequency,
+    required this.wobblePhase,
   });
 
   final Alignment startAlign;
@@ -1022,6 +1416,14 @@ class _ConfettiParticle {
   /// launching individually over time rather than the whole set moving in
   /// perfect lockstep.
   final double startDelayFraction;
+
+  /// DECISIONS D-071 — a per-piece horizontal flutter layered on top of the
+  /// shared start->end lerp (`_ConfettiPainter.paint`), each with its own
+  /// amplitude/frequency/phase so falling pieces visibly diverge from one
+  /// another instead of all tracing the same straight line, just offset.
+  final double wobbleAmplitudePx;
+  final double wobbleFrequency;
+  final double wobblePhase;
 }
 
 /// One side of the chest reveal's confetti burst (DECISIONS D-061) — [front]
@@ -1097,9 +1499,15 @@ class _ConfettiPainter extends CustomPainter {
       final pos = Offset.lerp(start, end, eased)!;
       final arc = p.arcHeight * size.height * sin(pi * eased);
       final rotation = p.rotationTurns * 2 * pi * localT;
+      // DECISIONS D-071: an independent per-piece horizontal flutter while
+      // falling, on top of the shared lerp -- each particle's own
+      // amplitude/frequency/phase means no two pieces trace the same path.
+      final wobble =
+          sin(localT * p.wobbleFrequency * 2 * pi + p.wobblePhase) *
+          p.wobbleAmplitudePx;
 
       canvas.save();
-      canvas.translate(pos.dx, pos.dy - arc);
+      canvas.translate(pos.dx + wobble, pos.dy - arc);
       canvas.rotate(rotation);
       final paint = Paint()..color = p.color.withValues(alpha: opacity);
       canvas.drawRect(

@@ -38,13 +38,21 @@ ItemRarity rollRarity(Random random) {
 const double kGemBaseDropChance = 0.16 * 0.75;
 const double kGemDropChancePerLevel = 0.002 * 0.75;
 
-double gemDropChance(int playerLevel) {
-  return (kGemBaseDropChance + (playerLevel - 1) * kGemDropChancePerLevel)
+/// [bonusChance] is an extra additive term folded in before the clamp —
+/// the LUCK dial's own per-level bonus (`game_rules.dart`'s
+/// `luckGemDropBonus`) layers on here rather than as a second multiplier,
+/// same axis the base/per-level terms already scale on. Defaults to 0 so
+/// every existing call site (and test) is unaffected.
+double gemDropChance(int playerLevel, {double bonusChance = 0}) {
+  return (kGemBaseDropChance +
+          (playerLevel - 1) * kGemDropChancePerLevel +
+          bonusChance)
       .clamp(0.0, 1.0);
 }
 
-bool rollGemDrop(Random random, int playerLevel) {
-  return random.nextDouble() < gemDropChance(playerLevel);
+bool rollGemDrop(Random random, int playerLevel, {double bonusChance = 0}) {
+  return random.nextDouble() <
+      gemDropChance(playerLevel, bonusChance: bonusChance);
 }
 
 /// Coin value granted per kill (DECISIONS D-043) — "coin gathering... based

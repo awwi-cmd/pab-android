@@ -100,6 +100,20 @@ void main() {
       final rate = trueCount / trials;
       expect(rate, closeTo(kEliteChance, 0.02)); // generous tolerance
     });
+
+    test(
+      'chanceMultiplier (Steel Nerves, DECISIONS D-070) scales the rate',
+      () {
+        const trials = 20000;
+        var trueCount = 0;
+        final random = Random(1);
+        for (var i = 0; i < trials; i++) {
+          if (rollIsElite(random, chanceMultiplier: 0.5)) trueCount++;
+        }
+        final rate = trueCount / trials;
+        expect(rate, closeTo(kEliteChance * 0.5, 0.02));
+      },
+    );
   });
 
   group('bossStatMultiplier', () {
@@ -151,6 +165,27 @@ void main() {
       expect(hasteAttackSpeedMultiplier(10), closeTo(1.5, 1e-9));
       expect(fortuneRewardMultiplier(10), closeTo(2.0, 1e-9));
       expect(resolveDamageResistance(10), closeTo(0.2, 1e-9));
+    });
+  });
+
+  group('magnet/luck/regen/crit dials (DECISIONS D-069)', () {
+    test('are neutral (or zero) at level 0', () {
+      expect(magnetPickupRadiusMultiplier(0), 1.0);
+      expect(luckGemDropBonus(0), 0.0);
+      expect(regenHpPerSec(0), 0.0);
+      expect(critChance(0), 0.0);
+    });
+
+    test('scale linearly with level', () {
+      expect(magnetPickupRadiusMultiplier(5), closeTo(1.75, 1e-9));
+      expect(luckGemDropBonus(5), closeTo(0.05, 1e-9));
+      expect(regenHpPerSec(5), closeTo(0.4, 1e-9));
+      expect(critChance(5), closeTo(0.15, 1e-9));
+    });
+
+    test('max level (10) lands on the documented caps', () {
+      expect(magnetPickupRadiusMultiplier(10), closeTo(2.5, 1e-9));
+      expect(critChance(10), closeTo(0.3, 1e-9));
     });
   });
 

@@ -14,6 +14,7 @@ import '../core/game_rules.dart';
 import '../core/meta_progression.dart';
 import '../core/progression.dart';
 import '../core/settings.dart';
+import '../core/shop.dart';
 import '../core/stats.dart';
 import '../data/characters.dart';
 import 'anim/enemy_animations.dart' show EnemySkin;
@@ -210,6 +211,12 @@ class ArenaGame extends FlameGame {
   /// gates the death SFX in `_endRound` (DECISIONS D-054).
   bool _realDeath = false;
 
+  /// SHOP's Second Wind item (DECISIONS D-069) — "survive one lethal hit
+  /// *per round*," so unlike [MetaProgression.ownsSecondWind] (a permanent,
+  /// forever-owned flag) this is round state, reset every `resetRound` like
+  /// everything else (CLAUDE.md §4.5).
+  bool _reviveUsedThisRound = false;
+
   @override
   Color backgroundColor() => ArenaColors.background;
 
@@ -257,6 +264,7 @@ class ArenaGame extends FlameGame {
     _fireCooldown = 0;
     _roundEndDelay = null;
     _realDeath = false;
+    _reviveUsedThisRound = false;
 
     level = 1;
     xp = 0;
@@ -346,7 +354,8 @@ class ArenaGame extends FlameGame {
       // everything in the round.
       _fireCooldown =
           character.attackBehavior.cooldownSeconds(effectiveStats) /
-          hasteAttackSpeedMultiplier(meta.hasteLevel);
+          hasteAttackSpeedMultiplier(meta.hasteLevel) /
+          meta.attackSpeedMultiplierFromShop;
       character.attackBehavior.perform(this);
     }
 
@@ -399,7 +408,10 @@ class ArenaGame extends FlameGame {
     // top-level components. Fades out (not a hard cut) the instant the
     // enemy starts dying, rather than staying at full brightness through
     // the whole death animation and then vanishing on removal.
-    if (rollIsElite(_random)) {
+    if (rollIsElite(
+      _random,
+      chanceMultiplier: meta.eliteChanceMultiplierFromShop,
+    )) {
       final width = enemy.size.x; // never wider than the enemy, per the ask
       addToWorld(
         TrackingSpriteEffect(
@@ -424,8 +436,14 @@ class ArenaGame extends FlameGame {
     grantXp(kXpPerKill);
 
     // Economy (DECISIONS D-043) -- gems drop in the world, coins are a
-    // silent running total shown only at round-over.
-    if (rollGemDrop(_random, level)) {
+    // silent running total shown only at round-over. LUCK's dial and SHOP's
+    // Gem Hoarder (DECISIONS D-069/D-070) both layer an extra flat bonus
+    // onto the same drop-chance curve.
+    if (rollGemDrop(
+      _random,
+      level,
+      bonusChance: luckGemDropBonus(meta.luckLevel) + meta.gemDropBonusFromShop,
+    )) {
       final rarity = rollRarity(_random);
       addToWorld(
         GemComponent(
@@ -436,15 +454,21 @@ class ArenaGame extends FlameGame {
       );
     }
     coinsEarned += _rollCoins();
+    // Vampiric Touch (DECISIONS D-070) -- a no-op `heal(0)` when unowned,
+    // same "bonus getter reads 0/neutral when not bought" shape every other
+    // SHOP hook uses.
+    player.heal(meta.vampiricHealPerKillFromShop);
   }
 
-  /// A single coin roll, scaled by Corruption's and Fortune's reward
-  /// bonuses (DECISIONS D-047/D-067) — shared by grunt and boss kills so
-  /// the multipliers can't drift between the two call sites.
+  /// A single coin roll, scaled by Corruption's, Fortune's, and SHOP's
+  /// Golden Touch reward bonuses (DECISIONS D-047/D-067/D-070) — shared by
+  /// grunt and boss kills so the multipliers can't drift between the two
+  /// call sites.
   int _rollCoins() {
     return (rollCoinValue(_random) *
             corruptionRewardMultiplier(meta.corruptionLevel) *
-            fortuneRewardMultiplier(meta.fortuneLevel))
+            fortuneRewardMultiplier(meta.fortuneLevel) *
+            meta.coinMultiplierFromShop)
         .round();
   }
 
@@ -458,6 +482,12 @@ class ArenaGame extends FlameGame {
     kills++;
     grantXp(kBossXpReward);
     coinsEarned += _rollCoins() * kBossCoinMultiplier;
+    // Boss Hunter (DECISIONS D-070) -- bosses otherwise drop no gems at all
+    // (see the class doc's own note on that gap); this is the one flat
+    // exception, gated on owning the item rather than a rarity roll.
+    if (meta.ownsBossHunter) {
+      gemsCollected += kBossHunterGemReward;
+    }
     _maybeSpawnBoss(); // in case another spawn was queued while this one was up
   }
 
@@ -476,7 +506,9 @@ class ArenaGame extends FlameGame {
   /// one grant crosses more than one threshold at once.
   void grantXp(double amount) {
     if (roundOver.value) return;
-    xp += amount;
+    // Scholar's Insight (DECISIONS D-070) -- a flat multiplier on top,
+    // neutral (1.0) until bought.
+    xp += amount * meta.xpMultiplierFromShop;
     while (xp >= _xpToNextLevel) {
       xp -= _xpToNextLevel;
       level++;
@@ -737,6 +769,51 @@ class ArenaGame extends FlameGame {
     player.takeDamage(enemy.contactDamage);
   }
 
+  /// Folds in every persistent per-hit damage modifier scoped to just the
+  /// base auto-attack (DECISIONS D-069): SHOP's Sharp Edge multiplier, then
+  /// a CRIT roll off the CRIT dial — same deliberately narrow "base attack
+  /// only, not every skill" precedent Haste already set for attack speed
+  /// (`hasteAttackSpeedMultiplier`'s own doc comment). Called by every
+  /// `AttackBehavior` (`attack_behavior.dart`) right where it used to read
+  /// `stats.damagePerHit + game.upgrades.bonusDamage` bare — Ray/Thunder/
+  /// Aura/Mirror stay unaffected, same scope Haste already drew.
+  double resolveAttackDamage(double baseDamage) {
+    var damage = baseDamage * meta.damageMultiplierFromShop;
+    // Battle Fury (DECISIONS D-070) -- conditional on the player's *current*
+    // HP, so unlike every other shop bonus this can't be a bare getter on
+    // `MetaProgression` (it has no access to a live player); checked here,
+    // the one place `resolveAttackDamage` already has both `meta` and
+    // `player`.
+    if (meta.ownsItem(ShopItemId.battleFury) &&
+        player.hp <= player.effectiveMaxHp * kBattleFuryHpThreshold) {
+      damage *= kBattleFuryDamageMultiplier;
+    }
+    return rollCrit(damage);
+  }
+
+  double rollCrit(double damage) {
+    return _random.nextDouble() < critChance(meta.critLevel)
+        ? damage * kCritDamageMultiplier
+        : damage;
+  }
+
+  /// SHOP's Second Wind (DECISIONS D-069) — true only if the item is owned
+  /// AND it hasn't already saved the player this round. Consuming it
+  /// (`tryConsumeRevive`) is a separate step so `PlayerComponent.takeDamage`
+  /// can check availability and act on the *same* answer atomically, rather
+  /// than a check-then-act race against itself.
+  bool get reviveAvailable =>
+      meta.ownsSecondWind && !_reviveUsedThisRound;
+
+  /// Called by `PlayerComponent.takeDamage` the instant a hit would
+  /// otherwise be lethal. Returns whether the revive actually fired —
+  /// `false` means take the death path as normal.
+  bool tryConsumeRevive() {
+    if (!reviveAvailable) return false;
+    _reviveUsedThisRound = true;
+    return true;
+  }
+
   void onProjectileHit(Vector2 at, double damage) {
     damageDealt += damage;
     addToWorld(
@@ -756,16 +833,19 @@ class ArenaGame extends FlameGame {
   /// finishes — for effects tied to a moment (a hit, a kill), not to a
   /// still-living target's body (that's `TrackingSpriteEffect`, DECISIONS
   /// D-033/D-034/D-035). [opacity] defaults to fully opaque. [brightness] is
-  /// a multiply-up on every channel (1 = untouched, >1 brighter) — same
-  /// color-matrix trick `AuraComponent`'s contrast tune already uses
-  /// (D-032), added here for Projectile Thunder's own brightness tune
-  /// (D-050) rather than duplicating this method.
+  /// a multiply-up on every channel (1 = untouched, >1 brighter), added here
+  /// for Projectile Thunder's own brightness tune (D-050). [contrast]
+  /// (DECISIONS D-071) is the other half of `AuraComponent`'s own tuning
+  /// knob (D-032) — a pull-toward-mid-grey (1 = untouched, <1 flatter) — now
+  /// available to any one-shot VFX, the chest anima's own tune (D-071)
+  /// being the first user beyond Aura's ring.
   void spawnEffect(
     SpriteAnimation animation,
     Vector2 at, {
     required Vector2 size,
     double opacity = 1,
     double brightness = 1,
+    double contrast = 1,
     int priority = ArenaPriority.hitEffects,
   }) {
     addToWorld(
@@ -780,39 +860,29 @@ class ArenaGame extends FlameGame {
           ..filterQuality = FilterQuality
               .none // D-011
           ..color = Color.fromRGBO(255, 255, 255, opacity)
-          ..colorFilter = brightness == 1
+          ..colorFilter = (brightness == 1 && contrast == 1)
               ? null
-              : ColorFilter.matrix(_brightnessMatrix(brightness)),
+              : ColorFilter.matrix(_colorMatrix(contrast, brightness)),
       ),
     );
   }
 
-  /// Scales every RGB channel by [factor], alpha untouched (last row
-  /// `0 0 0 1 0`) — values above 255 clip automatically, which is exactly
-  /// what "brighter" should do. No translate term, unlike `AuraComponent`'s
-  /// contrast matrix: this is a pure multiply, not a pull-toward-grey.
-  static List<double> _brightnessMatrix(double factor) {
+  /// Combines a contrast pull-toward-grey and a flat brightness multiply
+  /// into one matrix (alpha untouched, last row `0 0 0 1 0`) rather than
+  /// chaining two `ColorFilter`s, which `Paint.colorFilter` can only hold
+  /// one of at a time — the exact same formula `AuraComponent._colorMatrix`
+  /// uses (DECISIONS D-032), generalized here so any [spawnEffect] caller
+  /// can reach for either knob. `contrast == 1` collapses the translate term
+  /// to 0, leaving a pure multiply — the old `_brightnessMatrix` this
+  /// replaced was exactly this special case.
+  static List<double> _colorMatrix(double contrast, double brightness) {
+    final scale = contrast * brightness;
+    final translate = (1 - contrast) * 255 / 2 * brightness;
     return [
-      factor,
-      0,
-      0,
-      0,
-      0,
-      0,
-      factor,
-      0,
-      0,
-      0,
-      0,
-      0,
-      factor,
-      0,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
+      scale, 0, 0, 0, translate,
+      0, scale, 0, 0, translate,
+      0, 0, scale, 0, translate,
+      0, 0, 0, 1, 0,
     ];
   }
 
@@ -875,7 +945,8 @@ class ArenaGame extends FlameGame {
   /// — a flat heal by tier is the whole mechanic for now.
   void collectPotion(ItemRarity rarity) {
     potionCount--;
-    player.heal(potionHealAmount(rarity));
+    // Potion Master (DECISIONS D-070) -- neutral (1.0) until bought.
+    player.heal(potionHealAmount(rarity) * meta.potionHealMultiplierFromShop);
   }
 
   /// Called by [PotionSpawner] on its own timer.
@@ -910,7 +981,8 @@ class ArenaGame extends FlameGame {
   /// [_maybeShowChestReveal]'s gate, same as a level-up's, so it can't pop
   /// up on top of the Pause Menu or Level Up.
   void onChestOpened(ChestCard card) {
-    gemsCollected += card.gemReward;
+    // Treasure Hunter (DECISIONS D-070) -- neutral (1.0) until bought.
+    gemsCollected += (card.gemReward * meta.chestGemMultiplierFromShop).round();
     chestCount--;
     _pendingChestCard = card;
     _maybeShowChestReveal();

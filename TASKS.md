@@ -1200,6 +1200,133 @@ count only, no progress bar.
 
 ---
 
+## Phase 24 — Gem currency display, a real SHOP, 3rd Upgrades page
+*Goal: gems get shown properly and finally spent on something; the
+Upgrades screen's "COMING SOON" 3rd page becomes real. Developer asked for
+all three in one message; SHOP's currency/item-type and the 3 new dials
+were asked and confirmed rather than guessed (DECISIONS D-069).*
+
+- [x] **24.1** `ui/widgets/gem_icon.dart` — `GemIcon`, cropping
+      `consumables/gems.png`'s legendary column (highest tier), same
+      technique `CoinIcon` (D-064) uses for coins. Character select's
+      wallet row swaps `star-full.png` for it; Round Over gets a new
+      `_GemCounter` (icon + tweened count) replacing the old plain
+      `'Gems collected: N'` text row.
+- [x] **24.2** `core/shop.dart` — `ShopItemId`/`ShopItem`/`kShopItems` (5
+      gem-priced, permanent one-time items: Vitality Charm, Swift Boots,
+      Sharp Edge, Iron Will, Second Wind). `MetaProgression` gained
+      `ownedItemIds` + `buyItem`/`ownsItem` + bonus getters, persisted via
+      `SharedPreferences`.
+- [x] **24.3** All 5 items wired into real gameplay effects: max HP/move
+      speed (`PlayerComponent`), auto-attack damage multiplier
+      (`ArenaGame.resolveAttackDamage`, base-attack-only scope), damage
+      resistance (`PlayerComponent.takeDamage`), and a once-per-round
+      revive (`ArenaGame.tryConsumeRevive`/`reviveAvailable`).
+- [x] **24.4** `ShopScreen` rebuilt from the D-047 empty placeholder into a
+      real scrollable list of buyable items (same visual language as
+      `UpgradesScreen`'s rows).
+- [x] **24.5** `core/game_rules.dart` gained 4 more dials — MAGNET (pickup
+      radius), LUCK (gem drop chance), REGEN (HP regen), CRIT (crit chance
+      + damage) — wired into `gem`/`potion`/`chest` pickup radius,
+      `economy.dart`'s `gemDropChance`, `PlayerComponent`'s regen calc, and
+      `ArenaGame.resolveAttackDamage`. `MetaStat` gained the 4 matching
+      members; `UpgradesScreen`'s 3rd page is now real, `_ComingSoonPage`
+      deleted.
+- [x] **24.6** `flutter analyze` clean, `flutter test` green (new cases:
+      the 4 dial functions, `gemDropChance`'s new optional param,
+      `MetaProgression.buyItem`/`ownsItem`), `flutter build apk --debug`
+      succeeds.
+- [ ] **24.7** On-device verification — **developer**: gem icon (legendary
+      sprite, not a star) shows on character select and Round Over with
+      the right count; SHOP purchases deduct gems, persist across an app
+      restart, and are actually felt next round (HP/speed/damage/
+      resistance/a lethal hit surviving once at 50% HP with Second Wind
+      owned); Upgrades page 3's MAGNET/LUCK/REGEN/CRIT buy and level with
+      coins same as pages 1-2, and each is felt in a round (wider pickup
+      range, more gem drops, passive regen, occasional bigger hits).
+
+**Exit criterion:** gems are a real, visible, spendable currency; SHOP has
+5 working items; Upgrades has 12 total dials across 3 full pages, no
+placeholder left.
+
+---
+
+## Phase 25 — SHOP paged (10 more items), Round Over gem reveal gets flying pieces + sparkle VFX
+*Goal: SHOP stops scrolling and gets 2 more real pages; gems' Round Over
+reveal matches coins' flying-piece animation, plus its own extra flourish.
+Developer asked for both in one message (DECISIONS D-070).*
+
+- [x] **25.1** `core/shop.dart` — `kShopItems` (flat) restructured into
+      `kShopPages` (3 pages of 5, `kShopItems` now a derived flattening so
+      nothing downstream changed shape). 10 new `ShopItemId`s across pages
+      2-3: Quick Hands, Battle Fury, Potion Master, Steel Nerves, Vampiric
+      Touch, Treasure Hunter, Scholar's Insight, Golden Touch, Gem Hoarder,
+      Boss Hunter.
+- [x] **25.2** All 10 wired into real gameplay effects — attack cooldown,
+      `ArenaGame.resolveAttackDamage` (Battle Fury's live-HP check),
+      potion heal, `game_rules.dart`'s `rollIsElite` (new optional
+      `chanceMultiplier` param), on-kill heal, chest gem reward, XP gain,
+      coin roll, gem drop chance, and a boss-kill gem bonus (bosses
+      previously dropped none at all).
+- [x] **25.3** `ShopScreen` rebuilt into the exact `UpgradesScreen` shape —
+      `PageController` + `CarouselArrowRow`/`PageDots`, `Expanded` rows, no
+      scroll view anywhere.
+- [x] **25.4** `_GemCounter` (`arena_screen.dart`) gained `_CoinCounter`'s
+      flying-piece mechanic (reusing `_FlyingCoinSpec`/`_SpriteCell` as-is,
+      cropping the legendary gem cell instead of the coin cell), plus a
+      looping 6-glint sparkle burst (`_GemSparkleSpec`) coins don't have.
+- [x] **25.5** `flutter analyze` clean, `flutter test` green (new cases:
+      `kShopPages` shape, all 10 new bonus getters, `rollIsElite`'s new
+      param), `flutter build apk --debug` succeeds.
+- [ ] **25.6** On-device verification — **developer**: SHOP pages through
+      3 screens with arrows/dots and never scrolls on any page; each of
+      the 10 new items is felt once bought (attack speed, a damage spike
+      under 50% HP, bigger potion heals, fewer Elites, on-kill healing,
+      bigger chest/XP/coin payouts, more frequent gem drops, a bonus gem
+      haul on a boss kill); Round Over's gem counter shows gems flying in
+      and shrinking like the coins do, with a sparkle twinkle looping
+      around the total the whole time the overlay is up.
+
+**Exit criterion:** SHOP is a 3-page, non-scrolling carousel of 15 working
+items; Round Over's gem reveal visually matches the coin reveal's flying
+pieces and reads fancier, not just a reskin.
+
+---
+
+## Phase 26 — Chest anima tune, independent-falling confetti, CHAOS rename, Round Over kill counter
+*Goal: 4 small, unrelated polish asks in one message (DECISIONS D-071).*
+
+- [x] **26.1** `ArenaGame.spawnEffect` gained a `contrast` param (folded into
+      one generalized `_colorMatrix`, replacing the old pure-multiply
+      `_brightnessMatrix`); `ChestComponent`'s anima now sizes off its own
+      chest's rendered width (`kChestAnimaSizeFactor`, 0.85) instead of the
+      much-bigger flat `kAnimaWidthPx`, plus a reduced-contrast tune
+      (`kChestAnimaContrast`, 0.7).
+- [x] **26.2** Chest-reveal confetti: count 26 -> 34 (+30%), spawn-location
+      spread widened 30%, and each `_ConfettiParticle` gained its own
+      wobble amplitude/frequency/phase so pieces visibly diverge while
+      falling instead of all tracing the same line.
+- [x] **26.3** `MetaStatLabels`'s CORRUPTION label shortened to CHAOS
+      (display only — enum member/fields/formulas all still `corruption*`).
+- [x] **26.4** New `_KillCounter` (`arena_screen.dart`) — hollow star +
+      counting kills, golden stars flying in like coins/gems, center icon
+      swaps to gold and plays the exact same jump/land bounce
+      `_ChestRevealOverlay`'s card landing uses, once the count finishes.
+      Replaces the old plain `'Enemies killed'` text row.
+- [x] **26.5** `flutter analyze` clean, `flutter test` 111/111 (unchanged —
+      no new pure-function logic), `flutter build apk --debug` succeeds.
+- [ ] **26.6** On-device verification — **developer**: chest anima reads
+      smaller than the chest itself and flatter/less punchy; confetti burst
+      is bigger, wider, and pieces drift independently as they fall; CHAOS
+      shows on Upgrades page 2 and still functions exactly like Corruption
+      did; Round Over's kill counter shows golden stars flying in and the
+      hollow star turning gold with a jump/bounce right as the count lands.
+
+**Exit criterion:** all 4 asks land as specced with no regression to the
+existing chest/confetti/Upgrades/Round-Over behavior around them.
+
+---
+
 ## Backlog (post-demo — do not start)
 
 Kept here so ideas have somewhere to go that isn't the current sprint.

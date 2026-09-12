@@ -3075,6 +3075,224 @@ is the developer's to run.
 
 ---
 
+## D-069 — Gem currency display, a real SHOP, and 4 more Upgrades dials (MAGNET/LUCK/REGEN/CRIT)
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer asked for three things in one message: (1) gem
+currency shown on character select and Round Over, (2) SHOP filled with
+items that actually do something, using the highest-tier gem asset for the
+gem counter icon, (3) more upgrades on the Upgrades screen's 3rd page
+(D-067 shipped it as a "COMING SOON" placeholder). Two real design
+questions — what SHOP sells and priced in what, what the 4 new dials are —
+were asked and confirmed rather than guessed (`AskUserQuestion`, both
+"Recommended" options chosen): SHOP sells **gem-priced, permanent one-time
+boosts** (distinct from the leveled coin dials); the 3 new dials are
+**MAGNET / LUCK / REGEN / CRIT**.
+
+**Decision, gem icon:** `ui/widgets/gem_icon.dart`'s `GemIcon` crops
+`consumables/gems.png`'s legendary column (rightmost, frame 0) — same
+"crop one real frame out of the actual sheet" approach `CoinIcon` (D-064)
+already uses for coins. Character select's wallet row swaps the
+`star-full.png` placeholder for this; Round Over gets a new `_GemCounter`
+(`arena_screen.dart`) — the same icon+tweened-count treatment `_CoinCounter`
+already has, minus the flying-particle flourish (one currency reveal
+already sells the moment), replacing the old plain `'Gems collected: N'`
+text row.
+
+**Decision, SHOP:** new `core/shop.dart` — `ShopItemId` enum, `ShopItem`
+(label/description/`costGems`), `kShopItems` (5 entries, declaration order
+is display order). `MetaProgression` gained `ownedItemIds` (a
+`Set<String>` of `ShopItemId.name`, persisted via
+`SharedPreferences.setStringList`) and `buyItem`/`ownsItem` (same
+afford-check-then-deduct shape as `.buy()`), plus bonus getters
+(`bonusMaxHpFromShop` etc.) combat code reads directly. The 5 items:
+- **Vitality Charm** (200 gems) — +30 max HP, read in
+  `PlayerComponent.effectiveMaxHp`.
+- **Swift Boots** (200 gems) — +20 move speed, read in
+  `PlayerComponent.effectiveMoveSpeed`.
+- **Sharp Edge** (250 gems) — +15% auto-attack damage. Scoped to just the
+  base attack (`ArenaGame.resolveAttackDamage`, called from every
+  `AttackBehavior`), same deliberately narrow precedent Haste already set
+  for attack speed — Ray/Thunder/Aura/Mirror stay unaffected.
+- **Iron Will** (250 gems) — +8% damage resistance, folded into
+  `PlayerComponent.takeDamage`'s existing resistance clamp alongside
+  Defence Crystal's and Resolve's.
+- **Second Wind** (500 gems) — survive one lethal hit per round at 50% HP.
+  `ArenaGame.tryConsumeRevive()`/`reviveAvailable` gate it to once per
+  round (`_reviveUsedThisRound`, reset in `resetRound` — the *ownership* is
+  permanent, the *use* is round state, CLAUDE.md §4.5); checked in
+  `PlayerComponent.takeDamage` right where the death path used to fire
+  unconditionally.
+`ShopScreen` (`ui/screens/shop_screen.dart`) is a scrolling list of
+`_ShopItemRow`s (same visual language as `UpgradesScreen`'s `_UpgradeRow` —
+label/description/buy button, OWNED once bought) instead of the D-047
+empty-state placeholder.
+
+**Decision, new dials:** `core/game_rules.dart` gained 4 more pure
+functions, same per-level-multiplier shape as Corruption/Haste/Fortune/
+Resolve: `magnetPickupRadiusMultiplier` (widens `gem`/`potion`/`chest`
+pickup radius, +15%/level), `luckGemDropBonus` (an additive term
+`economy.dart`'s `gemDropChance` now takes as an optional `bonusChance`
+param, +1pt/level), `regenHpPerSec` (a 4th additive HP-regen layer in
+`PlayerComponent.update`, alongside Defence Crystal's/Resolve's own),
+`critChance` (rolled by `ArenaGame.resolveAttackDamage`, same narrow
+base-attack-only scope Sharp Edge above shares — ×1.5 damage on a hit,
++3%/level). `MetaStat` gained `magnet`/`luck`/`regen`/`crit` members;
+`UpgradesScreen._statPages` gained a 3rd real entry
+`[magnet, luck, regen, crit]`, and `_ComingSoonPage` is deleted (nothing
+references it anymore).
+
+**Consequences:** `flutter analyze` clean, `flutter test` green (new cases
+added for the 4 dial functions, `gemDropChance`'s new optional param, and
+`MetaProgression.buyItem`/`ownsItem`). `flutter build apk --debug`
+succeeds. On-device verification is the developer's to run: gem icon/count
+reads correctly on both screens; SHOP purchases deduct gems, persist
+across an app restart, and are actually felt next round (HP/speed/damage/
+resistance/revive); the 3rd Upgrades page's 4 rows buy and level
+correctly with coins, same as pages 1-2.
+
+---
+
+## D-070 — SHOP paged (no scrolling) with 2 more pages of items; Round Over's gem reveal gets coin-style flying pieces plus its own sparkle VFX
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer, in one message: (1) SHOP (D-069) should page like
+Upgrades instead of scrolling, with 2 more pages of items that actually do
+something; (2) Round Over's gem counter (D-069) should get the same flying-
+piece animation the coin counter has, plus additional VFX of its own.
+
+**Decision, SHOP paging:** `core/shop.dart`'s `kShopItems` (one flat list)
+became `kShopPages` (`List<List<ShopItem>>`, 3 pages of 5 — page order and
+in-page order are both just the list's own declaration order, same
+convention `MetaStat.values` already set); `kShopItems` is now a derived
+flattening (`[for (final page in kShopPages) ...page]`) so every existing
+buy-lookup/test that read it as a flat list is untouched. `ShopScreen`
+rebuilt around the exact `UpgradesScreen` shape: `PageController` +
+`CarouselArrowRow`/`PageDots`, each page laying its rows out with
+`Expanded` — no scroll view anywhere, can't overflow regardless of screen
+height.
+
+**Decision, 10 new items (pages 2-3):** Same "permanent one-time, gem-
+priced" shape as page 1, but reaching into gameplay hooks that were already
+single choke points, so almost none of this touched `attack_behavior.dart`
+or added new per-kit branches:
+- **Quick Hands** (220g) — +10% attack speed, folded into `ArenaGame`'s
+  `_fireCooldown` calc alongside Haste's own multiplier.
+- **Battle Fury** (280g) — +20% auto-attack damage while below 50% HP. The
+  one item that can't be a bare `MetaProgression` getter (it needs the
+  *live* player's current HP) — checked directly in
+  `ArenaGame.resolveAttackDamage`, the one place that already has both
+  `meta` and `player`.
+- **Potion Master** (180g) — potions heal 50% more (`ArenaGame.
+  collectPotion`).
+- **Steel Nerves** (200g) — halves the Elite spawn roll. `game_rules.dart`'s
+  `rollIsElite` gained an optional `chanceMultiplier` param (default 1,
+  every existing call/test unaffected), same shape `gemDropChance`'s
+  `bonusChance` param already set.
+- **Vampiric Touch** (260g) — a small flat heal on every kill
+  (`ArenaGame.onEnemyKilled`); the bonus getter reads 0 when unowned, so
+  the call site is an unconditional `player.heal(...)`, no branch needed.
+- **Treasure Hunter** (260g) — +30% gems from chests (`ArenaGame.
+  onChestOpened`).
+- **Scholar's Insight** (220g) — +20% XP from every kill (`ArenaGame.
+  grantXp`).
+- **Golden Touch** (240g) — +20% coin value, folded into `ArenaGame.
+  _rollCoins` alongside Corruption's/Fortune's own multipliers.
+- **Gem Hoarder** (220g) — +5% flat gem drop chance, summed into the same
+  `bonusChance` term LUCK's dial already feeds `gemDropChance`.
+- **Boss Hunter** (350g) — bosses (which otherwise drop no gems at all —
+  `onBossKilled`'s own long-standing "not designed yet" gap) now drop a
+  flat 50-gem bonus haul.
+
+**Decision, gem reveal VFX:** `_GemCounter` (`arena_screen.dart`) gained
+the same flying-piece mechanic `_CoinCounter` has — `_FlyingCoinSpec`
+(already generic, no coin-specific fields) reused as-is, rendering a
+legendary-tier gem cell via the existing `_SpriteCell` instead of the coin
+cell. On top of that, gems get VFX coins don't: a looping burst of 6
+sparkle glints (`_GemSparkleSpec`, `Icons.auto_awesome`) fixed around the
+gem icon, each fading in/out on its own staggered local timeline off one
+shared repeating `AnimationController` — reads as gems being the fancier,
+premium currency rather than an identical reskin of the coin reveal.
+
+**Consequences:** `flutter analyze` clean, `flutter test` green (new cases:
+`kShopPages`/`kShopItems` shape, the new bonus getters neutral-until-owned
+and reflecting ownership, `rollIsElite`'s `chanceMultiplier`).
+`flutter build apk --debug` succeeds. On-device verification is the
+developer's to run: SHOP pages through 3 screens with arrows/dots, never
+scrolls on any page; all 10 new items are felt in a round once bought
+(attack speed, low-HP damage spike, potion heal size, fewer Elites,
+on-kill healing, chest/XP/coin/gem-drop bumps, a bonus gem drop on a boss
+kill); Round Over's gem counter shows small gems flying in and shrinking
+like the coins do, plus the sparkle twinkle looping around it.
+
+---
+
+## D-071 — Chest anima resized/de-contrasted, independent-falling confetti +30%, CORRUPTION shortened to CHAOS, Round Over gets a kill counter with a golden-star landing bounce
+
+**Date:** 2026-09-12 · **Status:** Accepted
+**Context:** Developer, four asks in one message: (1) the chest-opening
+anima flourish reads "wayy too big," reduce its size and contrast, smaller
+than the chest itself; (2) chest-reveal confetti should fall with each
+piece moving independently, plus +30% count and +30% spawn-location
+spread; (3) shorten CORRUPTION's displayed name, same functionality; (4)
+add a kill counter to Round Over using the hollow star, golden stars flying
+in the way coins/gems do, the icon itself turning into a golden star with
+the same jump/land bounce the chest reveal's card has.
+
+**Decision, chest anima:** `ArenaGame.spawnEffect` gained a `contrast`
+param (default 1, no-op) — generalized from `AuraComponent`'s own private
+`_colorMatrix` (D-032) so any one-shot VFX can dial contrast down, not just
+brightness; the old pure-multiply `_brightnessMatrix` is gone, folded into
+this one function (`contrast == 1` reduces to exactly the old formula).
+`ChestComponent._startOpening` now sizes the anima off its *own* rendered
+width (`size.x * kChestAnimaSizeFactor`, 0.85 — DECISIONS constants.dart)
+instead of the flat, much bigger `kAnimaWidthPx` (160px vs. the chest's own
+96px) every other anima flourish shares, and passes `kChestAnimaContrast`
+(0.7).
+
+**Decision, confetti:** `_confettiCount` 26 -> 34 (+30%, rounded).
+`_buildConfetti`'s start-position (`startAlign`) random ranges widened 30%
+(1.4/0.9 -> 1.82/1.17 horizontal magnitude, -0.4/0.8 -> -0.52/1.04
+vertical) — only the *spawn* range, `endAlign`'s landing spread is
+untouched. `_ConfettiParticle` gained `wobbleAmplitudePx`/
+`wobbleFrequency`/`wobblePhase`, randomized per piece; `_ConfettiPainter.
+paint` adds a `sin(localT * frequency * 2π + phase) * amplitude` horizontal
+offset on top of the shared start->end lerp, so pieces now visibly diverge
+mid-flight instead of all tracing the same line with just different
+endpoints.
+
+**Decision, CORRUPTION rename:** Display label only —
+`MetaStatLabels.label`'s `MetaStat.corruption` case now returns `'CHAOS'`.
+The enum member, every field (`corruptionLevel` etc.), and all 3 multiplier
+functions in `game_rules.dart` keep the `corruption` name — "same
+functionality," nothing to migrate in `SharedPreferences` or anywhere else.
+
+**Decision, kill counter:** New `_KillCounter` (`arena_screen.dart`),
+replacing the plain `'Enemies killed'` text row, sitting alongside
+`_CoinCounter`/`_GemCounter`. Center icon starts as `star-empty.png`
+(hollow) with `game.kills` counting up; small `star-full.png` (golden)
+stars fly in exactly like `_CoinCounter`'s coins (`_FlyingCoinSpec` reused
+as-is, plain `Image.asset` since stars aren't a sprite sheet). The instant
+the count-up finishes, the center icon swaps to `star-full.png` and plays
+the *literal same* jump/land bounce `_ChestRevealOverlayState`'s card
+landing uses — identical `TweenSequence` (520ms, 35% easeOut to -22 / 65%
+bounceOut back to 0) rather than a second hand-tuned bounce that happens to
+look similar.
+
+**Consequences:** `flutter analyze` clean, `flutter test` 111/111
+(unchanged — no new pure-function logic to unit test; the changed code is
+either UI/VFX or a generalized private color-matrix helper, same
+untestable-by-design shape `AuraComponent`'s own version already has,
+CLAUDE.md §4.11/rule 11). `flutter build apk --debug` succeeds. On-device
+verification is the developer's to run: chest anima reads smaller than the
+chest and flatter/less punchy; confetti burst is visibly bigger and wider,
+individual pieces drifting differently as they fall; CHAOS shows correctly
+on Upgrades page 2 and still does everything Corruption always did; Round
+Over's kill counter shows golden stars flying in, and the hollow star
+visibly turns gold with a jump/bounce the instant the count finishes.
+
+---
+
 ## Open questions
 
 Not decisions yet — things that need play-testing or a call from the developer

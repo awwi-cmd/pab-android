@@ -124,6 +124,22 @@ const double kAnimaAspect = 437 / 429;
 /// whole teleport, not just one end of it.
 const double kBossAnimaWidthPx = kAnimaWidthPx * 0.6;
 
+/// The chest-opening sequence's own anima flourish (DECISIONS D-071,
+/// developer's call: "wayy too big... make it smaller a bit than the
+/// chest") — was flat [kAnimaWidthPx] (160px), dwarfing the 96px chest
+/// (`32 * kChestRenderScale`) it's supposed to precede. Sized relative to
+/// the chest's own rendered width instead (`ChestComponent.size.x *` this
+/// factor) — same "derive VFX size from the actual gameplay size" pattern
+/// `WardenSlamAttack`'s shockwave already uses — rather than a second flat
+/// constant that could drift out of sync with the chest's own size again.
+const double kChestAnimaSizeFactor = 0.85;
+
+/// Same ask, the contrast half — a straight pull-toward-grey, same knob
+/// `AuraComponent`'s own `_contrast` tune uses (DECISIONS D-032),
+/// generalized onto `ArenaGame.spawnEffect` so this one-shot VFX can dial
+/// it down too, not just brightness.
+const double kChestAnimaContrast = 0.7;
+
 /// SFX (DECISIONS D-044) — multiplies `Settings.sfxVolume` (0-100, the
 /// user's own slider) rather than replacing it, capped low per the
 /// developer's explicit "make sure they are not that loud" ask.

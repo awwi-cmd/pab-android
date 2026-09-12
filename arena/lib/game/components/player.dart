@@ -6,6 +6,7 @@ import 'package:flame/components.dart';
 import '../../core/constants.dart';
 import '../../core/game_rules.dart';
 import '../../core/progression.dart';
+import '../../core/shop.dart';
 import '../../core/stats.dart';
 import '../../data/characters.dart';
 import '../anim/anim_state.dart';
@@ -63,9 +64,14 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
   /// Base stat plus whatever level-up picks have added this round
   /// (`ArenaGame.upgrades`, DECISIONS D-025) — a flat additive layer on
   /// top of `StatBlock`, not a re-derivation of it.
-  double get effectiveMaxHp => stats.maxHp + game.upgrades.bonusMaxHp;
+  // SHOP (DECISIONS D-069) layers its own permanent bonuses on top, same
+  // additive shape as the in-round upgrade bonus.
+  double get effectiveMaxHp =>
+      stats.maxHp + game.upgrades.bonusMaxHp + game.meta.bonusMaxHpFromShop;
   double get effectiveMoveSpeed =>
-      stats.moveSpeedPxPerS + game.upgrades.bonusMoveSpeed;
+      stats.moveSpeedPxPerS +
+      game.upgrades.bonusMoveSpeed +
+      game.meta.bonusMoveSpeedFromShop;
 
   @override
   void update(double dt) {
@@ -81,15 +87,16 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
       }
     }
 
-    // Defence Crystal (in-round, DECISIONS D-049) and Resolve (persistent,
-    // DECISIONS D-067) both add a flat regen bonus, same additive-layer
-    // pattern as effectiveMaxHp/effectiveMoveSpeed above.
+    // Defence Crystal (in-round, DECISIONS D-049), Resolve, and REGEN
+    // (persistent, DECISIONS D-067/D-069) all add a flat regen bonus, same
+    // additive-layer pattern as effectiveMaxHp/effectiveMoveSpeed above.
     hp = min(
       effectiveMaxHp,
       hp +
           (stats.hpRegenPerSec +
                   game.upgrades.bonusHpRegenPerSec +
-                  resolveHpRegenPerSec(game.meta.resolveLevel)) *
+                  resolveHpRegenPerSec(game.meta.resolveLevel) +
+                  regenHpPerSec(game.meta.regenLevel)) *
               dt,
     );
 
@@ -137,19 +144,28 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
   void takeDamage(double amount) {
     if (game.debugGodMode) return;
     if (_invulnTimer > 0 || current == AnimState.death) return;
-    // Defence Crystal (in-round, DECISIONS D-049) and Resolve (persistent,
-    // DECISIONS D-067) both add flat damage resistance, clamped together so
-    // a future bug/overstack can't invert it into bonus damage.
+    // Defence Crystal (in-round, DECISIONS D-049), Resolve, and SHOP's Iron
+    // Will (persistent, DECISIONS D-067/D-069) all add flat damage
+    // resistance, clamped together so a future bug/overstack can't invert
+    // it into bonus damage.
     final resistanceMultiplier =
         (1 -
                 game.upgrades.damageResistance -
-                resolveDamageResistance(game.meta.resolveLevel))
+                resolveDamageResistance(game.meta.resolveLevel) -
+                game.meta.damageResistanceFromShop)
             .clamp(0.0, 1.0);
     hp = (hp - amount * resistanceMultiplier).clamp(0, effectiveMaxHp);
     _invulnTimer = _invulnDurationSec;
     game.spawnBloodImpact(); // DECISIONS D-033: only on damage that lands
 
     if (hp <= 0) {
+      // SHOP's Second Wind (DECISIONS D-069) — a lethal hit is caught here,
+      // before the death path, and consumed at most once per round.
+      if (game.tryConsumeRevive()) {
+        hp = effectiveMaxHp * kReviveHpFraction;
+        current = AnimState.hurt;
+        return;
+      }
       current = AnimState.death;
       game.onPlayerDied();
     } else {
