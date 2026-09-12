@@ -4,6 +4,7 @@ import '../../core/constants.dart';
 import '../../core/tutorial_state.dart';
 import '../widgets/pixel_button.dart';
 import '../widgets/tap_sfx.dart';
+import 'achievements_screen.dart';
 import 'character_select_screen.dart';
 import 'credits_screen.dart';
 import 'settings_screen.dart';
@@ -83,6 +84,14 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                     ).pushNamed(CharacterSelectScreen.route),
                   ),
                   const SizedBox(height: 16),
+                  // DECISIONS D-091: "in between start and settings."
+                  PixelButton(
+                    label: 'ACHIEVEMENTS',
+                    onPressed: () => Navigator.of(
+                      context,
+                    ).pushNamed(AchievementsScreen.route),
+                  ),
+                  const SizedBox(height: 16),
                   PixelButton(
                     label: 'SETTINGS',
                     onPressed: () =>
@@ -95,10 +104,11 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                         Navigator.of(context).pushNamed(CreditsScreen.route),
                   ),
                   const Spacer(flex: 2),
+                  // DECISIONS D-001: rebrand -- was 'v0.1.0 (debug)'.
                   const Padding(
                     padding: EdgeInsets.only(bottom: 12),
                     child: Text(
-                      'v0.1.0 (debug)',
+                      'PAB Alpha 1.0.0',
                       style: TextStyle(color: ArenaColors.textDim, fontSize: 12),
                     ),
                   ),

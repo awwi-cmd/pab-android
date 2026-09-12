@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'achievements.dart';
 import 'shop.dart';
 
 /// Persistent, cross-round meta-progression (DECISIONS D-047) — the
@@ -149,7 +150,16 @@ class MetaProgression {
     this.regenLevel = 0,
     this.critLevel = 0,
     Set<String>? ownedItemIds,
-  }) : ownedItemIds = ownedItemIds ?? {};
+    this.lifetimeBossKills = 0,
+    this.lifetimeGemsCollected = 0,
+    this.lifetimeCoinsEarned = 0,
+    this.lifetimeChestsOpened = 0,
+    this.lifetimePotionsCollected = 0,
+    this.highestLevelReached = 1,
+    this.longestSurvivalTimeSec = 0,
+    Set<String>? claimedAchievementIds,
+  }) : ownedItemIds = ownedItemIds ?? {},
+       claimedAchievementIds = claimedAchievementIds ?? {};
 
   int coins;
 
@@ -184,6 +194,34 @@ class MetaProgression {
   /// than the enum itself, so `SharedPreferences.getStringList` can store it
   /// directly (same reasoning as every other primitive-only field here).
   final Set<String> ownedItemIds;
+
+  // ACHIEVEMENTS (DECISIONS D-091) -- lifetime counters distinct from the
+  // *spendable* `coins`/`gems` balances above, which go down when the
+  // player buys something: an achievement like "earn 10,000 coins" needs a
+  // total that only ever goes up, the same way `lifetimeKills` already does
+  // for the kill-count unlock gate. Each is credited once per round from
+  // `MetaProgressionRepository.recordRoundEnd` (`ArenaGame._persistRoundRewards`),
+  // reading a matching round-scoped counter on `ArenaGame`.
+  int lifetimeBossKills;
+  int lifetimeGemsCollected;
+  int lifetimeCoinsEarned;
+  int lifetimeChestsOpened;
+  int lifetimePotionsCollected;
+
+  /// The highest in-round level ever reached, across every round —
+  /// `ArenaGame.level` is round-scoped (resets every round, CLAUDE.md
+  /// §4.5), this is `max(this, that)` credited at round-over.
+  int highestLevelReached;
+
+  /// The longest single round's survival time in seconds — `ArenaGame.
+  /// elapsed`'s own high-water mark, same `max()` treatment as
+  /// [highestLevelReached].
+  double longestSurvivalTimeSec;
+
+  /// `Achievement.id` strings already granted their one-time reward
+  /// (`core/achievements.dart`) — same "own it or don't, no re-granting"
+  /// shape [ownedItemIds] already has for SHOP.
+  final Set<String> claimedAchievementIds;
 
   int levelOf(MetaStat stat) {
     switch (stat) {
@@ -346,6 +384,14 @@ class MetaProgressionRepository {
   static const _kRegen = 'meta.regen';
   static const _kCrit = 'meta.crit';
   static const _kOwnedItems = 'meta.ownedItems';
+  static const _kLifetimeBossKills = 'meta.lifetimeBossKills';
+  static const _kLifetimeGemsCollected = 'meta.lifetimeGemsCollected';
+  static const _kLifetimeCoinsEarned = 'meta.lifetimeCoinsEarned';
+  static const _kLifetimeChestsOpened = 'meta.lifetimeChestsOpened';
+  static const _kLifetimePotionsCollected = 'meta.lifetimePotionsCollected';
+  static const _kHighestLevelReached = 'meta.highestLevelReached';
+  static const _kLongestSurvivalTimeSec = 'meta.longestSurvivalTimeSec';
+  static const _kClaimedAchievements = 'meta.claimedAchievements';
 
   Future<MetaProgression> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -366,6 +412,15 @@ class MetaProgressionRepository {
       regenLevel: prefs.getInt(_kRegen) ?? 0,
       critLevel: prefs.getInt(_kCrit) ?? 0,
       ownedItemIds: (prefs.getStringList(_kOwnedItems) ?? const []).toSet(),
+      lifetimeBossKills: prefs.getInt(_kLifetimeBossKills) ?? 0,
+      lifetimeGemsCollected: prefs.getInt(_kLifetimeGemsCollected) ?? 0,
+      lifetimeCoinsEarned: prefs.getInt(_kLifetimeCoinsEarned) ?? 0,
+      lifetimeChestsOpened: prefs.getInt(_kLifetimeChestsOpened) ?? 0,
+      lifetimePotionsCollected: prefs.getInt(_kLifetimePotionsCollected) ?? 0,
+      highestLevelReached: prefs.getInt(_kHighestLevelReached) ?? 1,
+      longestSurvivalTimeSec: prefs.getDouble(_kLongestSurvivalTimeSec) ?? 0,
+      claimedAchievementIds:
+          (prefs.getStringList(_kClaimedAchievements) ?? const []).toSet(),
     );
   }
 
@@ -387,6 +442,23 @@ class MetaProgressionRepository {
     await prefs.setInt(_kRegen, meta.regenLevel);
     await prefs.setInt(_kCrit, meta.critLevel);
     await prefs.setStringList(_kOwnedItems, meta.ownedItemIds.toList());
+    await prefs.setInt(_kLifetimeBossKills, meta.lifetimeBossKills);
+    await prefs.setInt(_kLifetimeGemsCollected, meta.lifetimeGemsCollected);
+    await prefs.setInt(_kLifetimeCoinsEarned, meta.lifetimeCoinsEarned);
+    await prefs.setInt(_kLifetimeChestsOpened, meta.lifetimeChestsOpened);
+    await prefs.setInt(
+      _kLifetimePotionsCollected,
+      meta.lifetimePotionsCollected,
+    );
+    await prefs.setInt(_kHighestLevelReached, meta.highestLevelReached);
+    await prefs.setDouble(
+      _kLongestSurvivalTimeSec,
+      meta.longestSurvivalTimeSec,
+    );
+    await prefs.setStringList(
+      _kClaimedAchievements,
+      meta.claimedAchievementIds.toList(),
+    );
   }
 
   /// Round-over credit (DECISIONS D-047) — read-modify-write against
@@ -418,6 +490,78 @@ class MetaProgressionRepository {
     final current = await load();
     current.lifetimeKills += amount;
     await save(current);
+  }
+
+  /// The single round-over write (DECISIONS D-091) — supersedes calling
+  /// [addCoins]/[addGems]/[addLifetimeKills] separately for this call site
+  /// (they stay available for any other future single-field bump): one
+  /// load, every lifetime counter updated in memory, achievements evaluated
+  /// and claimed against the *updated* totals (so a round that both earns
+  /// its 500th lifetime coin and its 10,000th claims both in the same
+  /// write), one save. Sequential in-memory updates, not concurrent
+  /// separate load-modify-saves — DECISIONS D-089 found that shape racing
+  /// itself and silently dropping updates; this method's whole point is to
+  /// not repeat that mistake for the new counters. Returns the achievements
+  /// newly claimed by this call, if a future UI wants to celebrate them.
+  Future<List<Achievement>> recordRoundEnd({
+    required int coins,
+    required int gems,
+    required int kills,
+    required int bossKills,
+    required int chestsOpened,
+    required int potionsCollected,
+    required int levelReached,
+    required double survivalTimeSec,
+  }) async {
+    final current = await load();
+    if (coins > 0) {
+      current.coins += coins;
+      current.lifetimeCoinsEarned += coins;
+    }
+    if (gems > 0) {
+      current.gems += gems;
+      current.lifetimeGemsCollected += gems;
+    }
+    if (kills > 0) current.lifetimeKills += kills;
+    if (bossKills > 0) current.lifetimeBossKills += bossKills;
+    if (chestsOpened > 0) current.lifetimeChestsOpened += chestsOpened;
+    if (potionsCollected > 0) {
+      current.lifetimePotionsCollected += potionsCollected;
+    }
+    if (levelReached > current.highestLevelReached) {
+      current.highestLevelReached = levelReached;
+    }
+    if (survivalTimeSec > current.longestSurvivalTimeSec) {
+      current.longestSurvivalTimeSec = survivalTimeSec;
+    }
+
+    final statValues = buildStatValues(
+      lifetimeKills: current.lifetimeKills,
+      lifetimeBossKills: current.lifetimeBossKills,
+      lifetimeGemsCollected: current.lifetimeGemsCollected,
+      lifetimeCoinsEarned: current.lifetimeCoinsEarned,
+      lifetimeChestsOpened: current.lifetimeChestsOpened,
+      lifetimePotionsCollected: current.lifetimePotionsCollected,
+      highestLevelReached: current.highestLevelReached,
+      longestSurvivalTimeSec: current.longestSurvivalTimeSec,
+    );
+
+    final newlyUnlocked = <Achievement>[];
+    for (final achievement in kAchievements) {
+      if (current.claimedAchievementIds.contains(achievement.id)) continue;
+      if (!isAchievementMet(achievement, statValues)) continue;
+      current.claimedAchievementIds.add(achievement.id);
+      switch (achievement.reward) {
+        case AchievementReward.coins:
+          current.coins += achievement.rewardAmount;
+        case AchievementReward.gems:
+          current.gems += achievement.rewardAmount;
+      }
+      newlyUnlocked.add(achievement);
+    }
+
+    await save(current);
+    return newlyUnlocked;
   }
 
   /// Debug-only direct wallet edits (Settings' DEBUG section, DECISIONS

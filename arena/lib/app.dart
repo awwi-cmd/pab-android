@@ -4,6 +4,7 @@ import 'core/bgm_controller.dart';
 import 'core/constants.dart';
 import 'core/settings.dart';
 import 'core/sfx_player.dart';
+import 'ui/screens/achievements_screen.dart';
 import 'ui/screens/arena_screen.dart';
 import 'ui/screens/character_select_screen.dart';
 import 'ui/screens/credits_screen.dart';
@@ -83,6 +84,7 @@ class _ArenaAppState extends State<ArenaApp> with WidgetsBindingObserver {
       initialRoute: MainMenuScreen.route,
       routes: {
         MainMenuScreen.route: (_) => const MainMenuScreen(),
+        AchievementsScreen.route: (_) => const AchievementsScreen(),
         SettingsScreen.route: (_) => const SettingsScreen(),
         CreditsScreen.route: (_) => const CreditsScreen(),
         CharacterSelectScreen.route: (_) => const CharacterSelectScreen(),

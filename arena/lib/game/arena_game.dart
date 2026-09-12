@@ -142,6 +142,16 @@ class ArenaGame extends FlameGame {
   /// as [potionCount].
   int chestCount = 0;
 
+  // Achievements (DECISIONS D-091) -- round-scoped counts distinct from
+  // [potionCount]/[chestCount] above (those track "how many are live in the
+  // world right now," net of spawns *and* collects/opens, not a cumulative
+  // "how many did the player actually get this round"). Credited into
+  // `MetaProgression`'s matching lifetime totals at round-over
+  // (`_persistRoundRewards`), same as `kills`/[coinsEarned]/[gemsCollected].
+  int bossesKilledThisRound = 0;
+  int chestsOpenedThisRound = 0;
+  int potionsCollectedThisRound = 0;
+
   /// The most recently opened chest's reward card, shown by the ChestReveal
   /// overlay (`ArenaScreen`) until [closeChestReveal] is called — `null`
   /// when nothing is pending. Deferred behind [_maybeShowChestReveal]'s
@@ -298,6 +308,9 @@ class ArenaGame extends FlameGame {
     coinsEarned = 0;
     potionCount = 0;
     chestCount = 0;
+    bossesKilledThisRound = 0; // DECISIONS D-091
+    chestsOpenedThisRound = 0;
+    potionsCollectedThisRound = 0;
     _pendingChestCard = null;
 
     addToWorld(ArenaFloor());
@@ -324,14 +337,24 @@ class ArenaGame extends FlameGame {
     // ArenaGame).
     character.attackBehavior.onEquipped(this);
     addToHud(HpBarComponent());
-    addToHud(XpBarComponent()); // DECISIONS D-076: "like the HP bar up top"
+    // DECISIONS D-091: stacked directly under the HP bar now, both full
+    // width at the top -- was its own bottom-of-screen box (D-076).
+    addToHud(XpBarComponent());
     addToWorld(Spawner());
     addToWorld(PotionSpawner());
     addToWorld(ChestSpawner());
 
     if (settings.showFps) {
-      // Below the HP bar (top-left, 24,24 + 14 tall) so they don't overlap.
-      addToHud(FpsTextComponent(position: Vector2(24, 46)));
+      // Below both top bars (DECISIONS D-091 stacked them: top margin +
+      // 2 bars + the gap between them) so they don't overlap either one.
+      addToHud(
+        FpsTextComponent(
+          position: Vector2(
+            kHudBarSideMarginPx,
+            kHudBarTopMarginPx + kHudBarHeightPx * 2 + kHudBarGapPx * 2,
+          ),
+        ),
+      );
     }
 
     resumeEngine();
@@ -499,6 +522,7 @@ class ArenaGame extends FlameGame {
     boss.removeFromParent();
     _boss = null;
     kills++;
+    bossesKilledThisRound++; // DECISIONS D-091
     grantXp(kBossXpReward);
     coinsEarned += _rollCoins() * kBossCoinMultiplier;
     spawnChest(deathPosition); // DECISIONS D-079: "make boss drop a chest"
@@ -964,6 +988,7 @@ class ArenaGame extends FlameGame {
   /// enough to one.
   void collectGem(ItemRarity rarity) {
     gemsCollected++;
+    SfxPlayer.instance.playPickup(); // DECISIONS D-091
   }
 
   /// DECISIONS D-043 — called by [PotionComponent] when the player walks
@@ -971,8 +996,10 @@ class ArenaGame extends FlameGame {
   /// — a flat heal by tier is the whole mechanic for now.
   void collectPotion(ItemRarity rarity) {
     potionCount--;
+    potionsCollectedThisRound++; // DECISIONS D-091
     // Potion Master (DECISIONS D-070) -- neutral (1.0) until bought.
     player.heal(potionHealAmount(rarity) * meta.potionHealMultiplierFromShop);
+    SfxPlayer.instance.playPickup(); // DECISIONS D-091
   }
 
   /// Called by [PotionSpawner] on its own timer.
@@ -1010,6 +1037,7 @@ class ArenaGame extends FlameGame {
     // Treasure Hunter (DECISIONS D-070) -- neutral (1.0) until bought.
     gemsCollected += (card.gemReward * meta.chestGemMultiplierFromShop).round();
     chestCount--;
+    chestsOpenedThisRound++; // DECISIONS D-091
     _pendingChestCard = card;
     _maybeShowChestReveal();
   }
@@ -1080,25 +1108,32 @@ class ArenaGame extends FlameGame {
     if (_realDeath) {
       SfxPlayer.instance.playPlayerDeath();
     }
-    // The round's coin/gem haul and kill count cross over into the
-    // persistent wallet exactly once, here (DECISIONS D-047/D-055) —
-    // `coinsEarned`/`gemsCollected`/`kills` themselves stay the
-    // round-scoped display values Round Over reads, untouched by this.
-    // Fire-and-forget from the caller's side: nothing on screen is waiting
-    // on these writes landing. DECISIONS D-089: the three `addX` calls
-    // *inside* [_persistRoundRewards] must still run sequentially, not
-    // concurrently like this used to fire them — each is its own
-    // load-modify-save cycle against `SharedPreferences`, and three of
-    // those racing meant whichever `save()` landed last clobbered the
-    // other two fields back to their pre-round values (reported: "coins
-    // and gems not saved... only kills").
+    // The round's coin/gem haul, kill count, and every other lifetime
+    // achievement stat cross over into the persistent wallet exactly once,
+    // here (DECISIONS D-047/D-055/D-091) — `coinsEarned`/`gemsCollected`/
+    // `kills` themselves stay the round-scoped display values Round Over
+    // reads, untouched by this. Fire-and-forget from the caller's side:
+    // nothing on screen is waiting on this write landing. DECISIONS D-089:
+    // this used to be 3 separate concurrent `addX` calls, each its own
+    // load-modify-save cycle against `SharedPreferences` — racing meant
+    // whichever `save()` landed last clobbered the other two fields back to
+    // their pre-round values (reported: "coins and gems not saved... only
+    // kills"). `recordRoundEnd` (DECISIONS D-091) replaced that with one
+    // load, every field updated in memory, one save — not just sequential
+    // awaits anymore, genuinely atomic.
     unawaited(_persistRoundRewards());
   }
 
   Future<void> _persistRoundRewards() async {
-    final repo = MetaProgressionRepository();
-    await repo.addCoins(coinsEarned);
-    await repo.addGems(gemsCollected);
-    await repo.addLifetimeKills(kills);
+    await MetaProgressionRepository().recordRoundEnd(
+      coins: coinsEarned,
+      gems: gemsCollected,
+      kills: kills,
+      bossKills: bossesKilledThisRound,
+      chestsOpened: chestsOpenedThisRound,
+      potionsCollected: potionsCollectedThisRound,
+      levelReached: level,
+      survivalTimeSec: elapsed,
+    );
   }
 }

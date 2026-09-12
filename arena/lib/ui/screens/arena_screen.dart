@@ -158,22 +158,31 @@ class _ArenaScreenState extends State<ArenaScreen> {
 }
 
 /// PRD §3: the arena has no other exit besides death; this is the debug
-/// stand-in until real combat reliably kills the player.
+/// stand-in until real combat reliably kills the player. Padded down below
+/// the HP/XP bars (DECISIONS D-091), same reasoning as `_PauseButton` —
+/// they now span full width, including the top-center this button sits at.
 class _DebugDieButton extends StatelessWidget {
   const _DebugDieButton({required this.game});
 
   final ArenaGame game;
 
+  static const _topOffsetPx =
+      kHudBarTopMarginPx + kHudBarHeightPx * 2 + kHudBarGapPx * 2;
+
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.topCenter,
-      child: SafeArea(
-        child: TextButton(
-          onPressed: withTapSfx(game.debugDie),
-          child: const Text(
-            'DIE (debug)',
-            style: TextStyle(color: ArenaColors.danger, fontSize: 16),
+    return Padding(
+      padding: const EdgeInsets.only(top: _topOffsetPx),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: SafeArea(
+          bottom: false,
+          child: TextButton(
+            onPressed: withTapSfx(game.debugDie),
+            child: const Text(
+              'DIE (debug)',
+              style: TextStyle(color: ArenaColors.danger, fontSize: 16),
+            ),
           ),
         ),
       ),
@@ -182,21 +191,32 @@ class _DebugDieButton extends StatelessWidget {
 }
 
 /// Top-right pause button (developer's spec). Opens the Pause Menu overlay.
+/// Padded down below the HP/XP bars (DECISIONS D-091 stacked both of them
+/// full-width across the top) rather than flush with the safe area — they'd
+/// otherwise sit directly under this button's corner and read as
+/// overlapping it.
 class _PauseButton extends StatelessWidget {
   const _PauseButton({required this.game});
 
   final ArenaGame game;
 
+  static const _topOffsetPx =
+      kHudBarTopMarginPx + kHudBarHeightPx * 2 + kHudBarGapPx * 2;
+
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.topRight,
-      child: SafeArea(
-        child: IconButton(
-          onPressed: withTapSfx(game.openPauseMenu),
-          icon: const Icon(Icons.pause_circle_outline),
-          color: ArenaColors.textPrimary,
-          iconSize: 28,
+    return Padding(
+      padding: const EdgeInsets.only(top: _topOffsetPx),
+      child: Align(
+        alignment: Alignment.topRight,
+        child: SafeArea(
+          bottom: false,
+          child: IconButton(
+            onPressed: withTapSfx(game.openPauseMenu),
+            icon: const Icon(Icons.pause_circle_outline),
+            color: ArenaColors.textPrimary,
+            iconSize: 28,
+          ),
         ),
       ),
     );

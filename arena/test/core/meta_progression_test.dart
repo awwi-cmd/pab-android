@@ -1,3 +1,4 @@
+import 'package:arena/core/achievements.dart';
 import 'package:arena/core/meta_progression.dart';
 import 'package:arena/core/shop.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -174,5 +175,189 @@ void main() {
         expect(loaded.ownsItem(ShopItemId.vitalityCharm), isFalse);
       },
     );
+
+    test(
+      'save then load round-trips the achievement lifetime counters too (DECISIONS D-091)',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final repo = MetaProgressionRepository();
+        final meta = MetaProgression(
+          lifetimeBossKills: 3,
+          lifetimeGemsCollected: 120,
+          lifetimeCoinsEarned: 900,
+          lifetimeChestsOpened: 6,
+          lifetimePotionsCollected: 11,
+          highestLevelReached: 14,
+          longestSurvivalTimeSec: 420.5,
+          claimedAchievementIds: {'first_blood', 'exterminator_1'},
+        );
+        await repo.save(meta);
+        final loaded = await repo.load();
+        expect(loaded.lifetimeBossKills, 3);
+        expect(loaded.lifetimeGemsCollected, 120);
+        expect(loaded.lifetimeCoinsEarned, 900);
+        expect(loaded.lifetimeChestsOpened, 6);
+        expect(loaded.lifetimePotionsCollected, 11);
+        expect(loaded.highestLevelReached, 14);
+        expect(loaded.longestSurvivalTimeSec, 420.5);
+        expect(
+          loaded.claimedAchievementIds,
+          {'first_blood', 'exterminator_1'},
+        );
+      },
+    );
+
+    test('a fresh save defaults highestLevelReached to 1, not 0', () async {
+      SharedPreferences.setMockInitialValues({});
+      final loaded = await MetaProgressionRepository().load();
+      expect(loaded.highestLevelReached, 1);
+    });
+  });
+
+  group('MetaProgressionRepository.recordRoundEnd (DECISIONS D-091)', () {
+    test('credits coins/gems/kills same as the old addX calls did', () async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = MetaProgressionRepository();
+      // kills: 0 here on purpose -- any nonzero kill count crosses
+      // 'first_blood' (threshold 1) and adds its reward on top, which is
+      // exactly what the dedicated achievement-claiming test below checks;
+      // this test is only about the plain crediting mechanism.
+      await repo.recordRoundEnd(
+        coins: 40,
+        gems: 5,
+        kills: 0,
+        bossKills: 0,
+        chestsOpened: 0,
+        potionsCollected: 0,
+        levelReached: 3,
+        survivalTimeSec: 90,
+      );
+      final loaded = await repo.load();
+      expect(loaded.coins, 40);
+      expect(loaded.gems, 5);
+      expect(loaded.lifetimeKills, 0);
+    });
+
+    test('credits every new lifetime counter in one call', () async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = MetaProgressionRepository();
+      await repo.recordRoundEnd(
+        coins: 10,
+        gems: 2,
+        kills: 5,
+        bossKills: 1,
+        chestsOpened: 2,
+        potionsCollected: 3,
+        levelReached: 7,
+        survivalTimeSec: 200,
+      );
+      final loaded = await repo.load();
+      expect(loaded.lifetimeBossKills, 1);
+      expect(loaded.lifetimeGemsCollected, 2);
+      expect(loaded.lifetimeCoinsEarned, 10);
+      expect(loaded.lifetimeChestsOpened, 2);
+      expect(loaded.lifetimePotionsCollected, 3);
+      expect(loaded.highestLevelReached, 7);
+      expect(loaded.longestSurvivalTimeSec, 200);
+    });
+
+    test(
+      'highestLevelReached/longestSurvivalTimeSec only ever go up',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final repo = MetaProgressionRepository();
+        await repo.recordRoundEnd(
+          coins: 0,
+          gems: 0,
+          kills: 0,
+          bossKills: 0,
+          chestsOpened: 0,
+          potionsCollected: 0,
+          levelReached: 10,
+          survivalTimeSec: 500,
+        );
+        // A worse round afterward shouldn't lower either high-water mark.
+        await repo.recordRoundEnd(
+          coins: 0,
+          gems: 0,
+          kills: 0,
+          bossKills: 0,
+          chestsOpened: 0,
+          potionsCollected: 0,
+          levelReached: 4,
+          survivalTimeSec: 50,
+        );
+        final loaded = await repo.load();
+        expect(loaded.highestLevelReached, 10);
+        expect(loaded.longestSurvivalTimeSec, 500);
+      },
+    );
+
+    test(
+      'crossing an achievement threshold claims it and grants its reward, exactly once',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final repo = MetaProgressionRepository();
+        final firstBlood = kAchievements.firstWhere(
+          (a) => a.id == 'first_blood',
+        );
+        final newlyUnlocked = await repo.recordRoundEnd(
+          coins: 0,
+          gems: 0,
+          kills: 1, // crosses first_blood's threshold of 1
+          bossKills: 0,
+          chestsOpened: 0,
+          potionsCollected: 0,
+          levelReached: 1,
+          survivalTimeSec: 1,
+        );
+        expect(newlyUnlocked.map((a) => a.id), contains('first_blood'));
+        final loaded = await repo.load();
+        expect(loaded.claimedAchievementIds, contains('first_blood'));
+        expect(
+          loaded.coins,
+          firstBlood.reward == AchievementReward.coins
+              ? firstBlood.rewardAmount
+              : 0,
+        );
+
+        // A second round that still satisfies the same threshold must not
+        // grant the reward a second time.
+        final secondCall = await repo.recordRoundEnd(
+          coins: 0,
+          gems: 0,
+          kills: 1,
+          bossKills: 0,
+          chestsOpened: 0,
+          potionsCollected: 0,
+          levelReached: 1,
+          survivalTimeSec: 1,
+        );
+        expect(secondCall.map((a) => a.id), isNot(contains('first_blood')));
+        final reloaded = await repo.load();
+        expect(
+          reloaded.coins,
+          firstBlood.reward == AchievementReward.coins
+              ? firstBlood.rewardAmount // unchanged -- not doubled
+              : 0,
+        );
+      },
+    );
+
+    test('a zero-progress round claims nothing', () async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = MetaProgressionRepository();
+      final newlyUnlocked = await repo.recordRoundEnd(
+        coins: 0,
+        gems: 0,
+        kills: 0,
+        bossKills: 0,
+        chestsOpened: 0,
+        potionsCollected: 0,
+        levelReached: 1,
+        survivalTimeSec: 0,
+      );
+      expect(newlyUnlocked, isEmpty);
+    });
   });
 }
