@@ -117,7 +117,7 @@ batch files. Always `set FLUTTER=C:\src\flutter\bin\flutter.bat`.
 
 ## 3. Repository layout
 
-Kept current as of PAB Alpha 1.0.0 (2026-09-12) — update this tree when
+Kept current as of PAB Alpha 1.0.0 (2026-09-13) — update this tree when
 you add a file that will confuse the next person if it's missing here,
 same discipline as `TASKS.md`.
 
@@ -186,7 +186,7 @@ PixelArenaBrawl/               <- repo root, open this in your editor
         │   │   ├── shop_screen.dart             // 3-page non-scrolling carousel, 15 buyable kShopItems, gem-priced
         │   │   ├── character_upgrades_screen.dart // (was upgrades_screen.dart) 3-page non-scrolling carousel, all 3 pages scoped to the CharacterDef passed as this route's arguments -- every dial is per-character
         │   │   └── arena_screen.dart            // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu/ChestReveal); Round Over's coin/gem/kill counters share one visual language; LevelUp's cards show exclusive-skill pairing; ChestReveal is a real card-deck spin+reveal
-        │   └── widgets/                         // buttons, stat bars, shared chrome; coin_icon.dart/gem_icon.dart crop real sprites; tap_sfx.dart's withTapSfx wraps any button's onPressed with the shared tap SFX; skill_icon.dart shared between LevelUp and the tutorial; pixel_button.dart/carousel_arrow.dart use the real medieval UI kit (D-011: wood_panel_tile.png nine-patch background, button_play.png/button_question.png icons -- sliced from assets/images/ui/UI_medieval.png)
+        │   └── widgets/                         // buttons, stat bars, shared chrome; coin_icon.dart/gem_icon.dart crop real sprites; tap_sfx.dart's withTapSfx wraps any button's onPressed with the shared tap SFX; skill_icon.dart shared between LevelUp and the tutorial; pixel_button.dart/carousel_arrow.dart use the real medieval UI kit (D-011: wood_panel_tile.png nine-patch background, button_play.png/button_question.png icons -- sliced from assets/images/ui/UI_medieval.png) and have their hitbox structurally matched to the visible asset (D-013: InkWell wraps the full image+label, not just the label)
         └── game/
             ├── arena_game.dart          // FlameGame subclass, ALL round state incl. leveling/achievements-feeding counters; addToWorld/addToHud split
             ├── game_assets.dart         // GameAssets — every SpriteAnimation/Sprite, loaded once, held by ArenaGame
