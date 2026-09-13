@@ -28,6 +28,7 @@ class SkillIcon extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: ArenaColors.background,
+        borderRadius: BorderRadius.circular(kPanelCornerRadiusPx), // D-010
         border: Border.all(color: accent),
       ),
       child: _iconFor(kind),

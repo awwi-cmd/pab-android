@@ -1173,7 +1173,15 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay>
                 child: IgnorePointer(
                   child: Opacity(
                     opacity: pulse * 0.6,
-                    child: Container(color: ArenaColors.accent),
+                    // D-010: rounded to match _LevelUpCard's own corners
+                    // now, so the flash doesn't bleed square over them.
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: ArenaColors.accent,
+                        borderRadius:
+                            BorderRadius.circular(kPanelCornerRadiusPx),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1264,8 +1272,15 @@ class _LevelUpCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final exclusive = isExclusiveUpgrade(kind);
     final accent = exclusive ? ArenaColors.warning : ArenaColors.accent;
+    // D-010: rounded everywhere now, not just the outer shadow -- the
+    // inner border gets a slightly smaller radius so the two read as
+    // concentric rounded rects (the old "carved edge" look) instead of a
+    // rounded outline around square inner corners.
+    const outerRadius = kPanelCornerRadiusPx;
+    const innerRadius = kPanelCornerRadiusPx - 2;
     return Container(
       decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(outerRadius),
         boxShadow: [
           BoxShadow(
             color: accent.withValues(alpha: 0.25),
@@ -1276,17 +1291,25 @@ class _LevelUpCard extends StatelessWidget {
       ),
       child: Material(
         color: ArenaColors.surface,
+        borderRadius: BorderRadius.circular(outerRadius),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
+          borderRadius: BorderRadius.circular(outerRadius),
           onTap: withTapSfx(onTap),
           child: Container(
             // A double border (outer dim, inner accent) reads as a carved
             // panel edge rather than a single flat outline.
             decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(outerRadius),
               border: Border.all(color: ArenaColors.textDim),
             ),
             padding: const EdgeInsets.all(2),
             child: Container(
-              decoration: BoxDecoration(border: Border.all(color: accent)),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(innerRadius),
+                border: Border.all(color: accent),
+              ),
+              clipBehavior: Clip.antiAlias, // clips the left accent strip below to the rounding
               child: IntrinsicHeight(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1371,7 +1394,10 @@ class _Tag extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(border: Border.all(color: color)),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(4), // D-010, a small tag/badge
+        border: Border.all(color: color),
+      ),
       child: Text(
         text,
         style: TextStyle(

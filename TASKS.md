@@ -301,6 +301,69 @@ during a round.*
 
 ---
 
+## Phase 4 — Medieval palette, rounded buttons/panels, main menu gradient, projectile hit fix
+
+*Goal: real design feedback — buttons read too sharp, the palette doesn't
+feel medieval — plus a real gameplay VFX bug (a hit reads as vanishing
+short of the enemy).*
+
+- [x] **4.1 Medieval palette (DECISIONS D-010)** — `ArenaColors` values
+      replaced app-wide (gold accent, oxblood danger, copper warning,
+      parchment text, warm near-black neutrals); every field kept its
+      name/role, so nothing outside `constants.dart` changed.
+- [x] **4.2 Rounded buttons + panels (DECISIONS D-010)** — `PixelButton`
+      redesigned (rounded corners, soft shadow, subtle gradient fill);
+      every other bordered card/badge app-wide (Shop/Character Upgrades
+      rows, Character Select's summary panels, Achievements cards,
+      SkillIcon, tutorial concept icons, the LevelUp card + its flash +
+      its tag) picked up the same shared corner radius.
+- [x] **4.3 Main menu gradient (DECISIONS D-010)** — `splash_bg.png`
+      removed from the main menu itself (stays as the native launch
+      screen, untouched); a black/gray/muted-red gradient background,
+      plus a restored text title now that the photo isn't there to carry
+      it.
+- [x] **4.4 Projectile hit VFX fix (DECISIONS D-010)** — the main
+      straight-line bolt's hit spark now spawns at the target's own
+      position, not the bolt's — matching every other attack in the
+      project, which already did this. Fixes "disappears at bounding
+      box" without touching collision timing.
+
+- [ ] **4.5 On-device: palette** — the new colors actually read as
+      medieval (not just "different"), and every screen still has enough
+      contrast (gold-on-dark, parchment text) to stay readable.
+- [ ] **4.6 On-device: buttons/panels** — rounded corners don't clip text
+      or icons anywhere at real device text scale; the LevelUp card's
+      rounded corners + its flash pulse still look right together.
+- [ ] **4.7 On-device: main menu** — the gradient + restored title read
+      as an intentional design, not a placeholder; the native launch
+      screen (the photo) still shows correctly on a cold start.
+- [ ] **4.8 On-device: projectile hits** — a hit now visibly lands on the
+      enemy's body instead of the bolt seeming to vanish just short of it.
+
+### Real medieval UI kit art (DECISIONS D-011)
+
+- [x] **4.9 Real art for buttons/arrows/help** — `UI_medieval.png` (an
+      untracked, previously-unused asset) sliced into 3 sprites: a
+      glyph-free wood-plank swatch now backs `PixelButton` (nine-patch
+      `centerSlice` stretch, not a plain squash), a real "play" button
+      icon replaces `CarouselArrow`'s plain circle (flipped for "prev"),
+      and a real "?" button icon replaces the main menu help button's
+      custom-drawn circle+text.
+- [ ] **4.10 On-device: real art** — the stretched button texture doesn't
+      warp at real button widths; the flipped carousel arrow reads as
+      "prev," not upside-down/wrong; the help button's tap target still
+      feels right as a plain image.
+
+**Not done, explicitly out of scope this pass (see DECISIONS D-011):**
+the sheet's flat glyph set (gear/speaker/home — a real candidate for
+Settings' own icons later), the hanging scroll/sign panel (a strong fit
+for framing the main menu title, needs on-device centerSlice tuning),
+`HpBarComponent`'s Flame-canvas bar (a different kind of reskin than
+anything else here), and a handful of ambiguous unlabeled sprite
+fragments on the sheet.
+
+---
+
 ## Backlog (do not start without asking first)
 
 Kept here so ideas have somewhere to go that isn't the current sprint —

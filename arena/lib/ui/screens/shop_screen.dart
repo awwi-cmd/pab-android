@@ -206,6 +206,7 @@ class _ShopItemRow extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: ArenaColors.surface,
+        borderRadius: BorderRadius.circular(kPanelCornerRadiusPx), // D-010
         border: Border.all(color: ArenaColors.surfaceAlt),
       ),
       child: Column(

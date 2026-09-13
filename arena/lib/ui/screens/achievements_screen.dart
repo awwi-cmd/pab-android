@@ -146,7 +146,7 @@ class _AchievementCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: ArenaColors.surface,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(kPanelCornerRadiusPx), // D-010
         border: Border.all(
           color: unlockedLook ? ArenaColors.accent : ArenaColors.surfaceAlt,
           width: unlockedLook ? 2 : 1,

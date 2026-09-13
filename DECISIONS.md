@@ -633,6 +633,171 @@ bar underneath it.
 
 ---
 
+## D-010 — Medieval palette + rounded buttons/panels; main menu gradient; a real projectile-hit VFX fix
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Developer feedback: "the buttons are very sharp compared to
+the text. And the color palette of the game seems out of place with this
+medieval type game. Let's re-think design wise all the buttons and color
+palettes in the game. Remove the main menu background and add a black
+and gray red gradient. Keep the photo we have as a loading screen for
+when we first launch the game." Plus: "main projectiles dissappears at
+bounding box -- either hitmarker on enemy to show hit, or make projectile
+travel to enemy center."
+
+**Decision — palette:** `ArenaColors` replaced wholesale — every field
+kept its exact name/role (so nothing outside `constants.dart` needed to
+change), only the hex values moved from a cool mint/navy/pink palette to
+a warm "iron and gold by torchlight" one: `background`/`surface`/
+`surfaceAlt` are near-black warm charcoals (was cool blue-black);
+`accent` is an antique gold (was mint-teal — the single biggest tonal
+shift, since `accent` borders/highlights nearly every screen in the app);
+`danger` is a deeper oxblood (was a bright pink-red); `warning` is a
+warm copper (was a cooler amber); `textPrimary`/`textDim` are parchment-
+cream/warm-gray (was cool white/blue-gray). `xp` warmed slightly toward
+gold alongside the rest, same reasoning.
+
+**Decision — buttons + panels:** `PixelButton` redesigned — rounded
+corners (`kPanelCornerRadiusPx`, a new shared constant, 8px), a soft drop
+shadow, and a subtle top-to-bottom gradient fill (via a nested `Ink`
+under `Material`, whose own `shape`/`color` stay transparent so the
+gradient — not a flat color — reads as the bevel) instead of the old flat
+zero-radius rectangle. Every other bordered card/badge app-wide picked up
+the same `kPanelCornerRadiusPx` too (`ShopScreen`'s item rows,
+`CharacterUpgradesScreen`'s stat rows, Character Select's summary panels,
+`AchievementsScreen`'s cards, `SkillIcon`'s badge, the tutorial's concept
+icons, the LevelUp card's nested double-border + its flash-pulse overlay
++ its `_Tag` badge) — "re-think... all the buttons and color palettes"
+read as the whole app's flat-rectangle language, not just the one
+button widget. The LevelUp card specifically needed `Clip.antiAlias` in
+two places (the outer `Material`, the inner bordered `Container` around
+the left accent stripe) since rounding a card that has a full-height
+solid color strip glued to its edge would otherwise let that strip poke
+out past the new rounded corner.
+
+**Decision — main menu:** `splash_bg.png`'s two jobs split apart — the
+native Android launch screen (a separate resource, untouched) still shows
+the real photo instantly on cold start ("keep the photo... as a loading
+screen"), but `MainMenuScreen`'s own Flutter background is a plain dark
+gradient now (`_backgroundGradient`: near-black → warm gray → a muted,
+*desaturated* dark red — deliberately not `ArenaColors.danger` at full
+saturation, which would read as a bold red block rather than "black and
+gray" with just a red undertone). Since the photo used to bake in the
+game's entire title lockup (D-084 removed the old plain `Text` title for
+exactly that reason) and is now gone from this screen entirely, a text
+title ("PIXEL ARENA BRAWL," accent gold) is back — otherwise the menu
+would show no name anywhere, a real gap the literal ask didn't mention
+but the photo's removal made unavoidable.
+
+**Decision — projectile hit VFX:** picked the developer's first offered
+option ("hitmarker on enemy to show hit") over the second ("make
+projectile travel to enemy center") — lower risk, and it turned out to
+already be this project's own established convention everywhere *except*
+the one component the bug report was about. `ProjectileComponent`
+(`projectile.dart`, the Apprentice/Warden/boss/mirror's shared straight-
+line bolt) was the only attack in the whole project still passing its
+*own* position to `ArenaGame.onProjectileHit`'s spark VFX at the moment
+of a hit — every other attack (Knife, Spiral Fire, Aura, Warden Slam) was
+already passing the *target's* position. Since a hit is detected the
+instant the two bounding circles first touch (the target's hitbox edge,
+not its visible center), the bolt's own position at that instant reads as
+"vanished in open air" just short of the enemy — moving the spark to
+`target.position`/`player.position` (the 2 call sites in `projectile.dart`)
+fixes exactly that, with no change to collision timing, hit detection, or
+any other gameplay math. Rejected the "travel to center" alternative as
+needlessly invasive: it would mean restructuring every projectile variant
+from "detect hit → resolve → remove, all in one frame" into a two-phase
+state machine (hit detected, keep animating toward the target for N more
+frames, *then* remove), touching `ProjectileComponent`, `KnifeComponent`,
+`SpiralFireProjectile`, and the boss/mirror bolts that reuse
+`ProjectileComponent` — for a problem the simpler, already-proven-in-this-
+codebase fix fully addresses.
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass.
+None of this has dedicated test coverage (pure visual/theme changes, plus
+one Flame-world VFX position tweak — CLAUDE.md §4.11) — needs a real
+on-device pass: the new palette actually reads as "medieval" rather than
+just "different," the rounded buttons/panels don't clip any text at
+small sizes, the main menu gradient + restored title look intentional
+(not like a placeholder), and a hit now visibly lands on the enemy's body
+instead of appearing to stop short of it.
+
+---
+
+## D-011 — Real medieval UI kit art for buttons/carousel arrows/help button
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Mid-D-010, discovered `arena/assets/images/ui/UI_medieval.png`
+sitting untracked and unused (added in an earlier session, never
+mentioned in any request) — a real 256×128, 16×16-cell medieval UI sprite
+kit: wood/stone icon buttons (play/pause/plus/check/x/minus/question/
+dollar, each in ~4 warm color variants), candles, daggers/swords, a
+glyph-free wood-plank swatch, a hanging wood scroll/sign panel, an HP-
+bar-styled frame, and a set of flat orange glyphs (gear, speaker on/off,
+home, etc.). Asked directly whether to use it instead of D-010's
+code-only redesign — "yes, slice and use the real sprite sheet."
+
+**Decision — what got used, and why not more:** the sheet is an
+*icon*-button kit (square, one glyph baked into each cell) — no blank
+button texture exists for a wide text-label button like `PixelButton`
+*except* the wood-plank swatch (cols14-15/rows2-3, 32×32, the one
+glyph-free cell in the whole sheet). Scope kept to 3 sliced sprites and 3
+call sites, not a full app-wide icon audit:
+- `wood_panel_tile.png` (the glyph-free swatch) → `PixelButton`'s
+  background, via `Image.asset`'s `centerSlice` (Flutter's built-in
+  nine-patch support) rather than a plain `BoxFit.fill` stretch —
+  `centerSlice` keeps the swatch's own corner rivets a fixed size while
+  only the middle band stretches, so a wide button doesn't visibly warp
+  them into ellipses the way a uniform stretch would. Disabled state
+  reuses the same texture (`BlendMode.saturation` blended against grey —
+  the standard "desaturate an image" trick — plus a flat opacity dim),
+  not a second asset.
+- `button_play.png` (a right-pointing triangle already drawn as its own
+  wood button) → `CarouselArrow`'s "next"; "prev" is the same asset
+  horizontally flipped (`Transform.flip`), not a second mirrored sprite.
+  Replaces a plain semi-transparent circle + Material `Icon` — that
+  widget's own doc comment used to say "no dedicated pixel-art asset for
+  this exists yet"; now one does.
+- `button_question.png` → the main menu's "?" button, replacing a
+  custom-drawn circle + `Text('?')`.
+- **Not used**: the flat glyph set (gear/speaker/home/etc. — a real
+  future win for Settings' own icons, but a separate, larger pass, not
+  bundled into this one), the hanging scroll/sign panel (a strong fit for
+  framing the main menu title, but centerSlice-stretching a multi-element
+  bordered panel convincingly needs real on-device tuning this session
+  can't do), the HP-bar frame (`HpBarComponent` is a Flame canvas-drawn
+  bar, not a Flutter widget — reskinning it is a different kind of change
+  than anything else in this decision), the candles/daggers (no current
+  UI slot calls for them), and the ambiguous curled hand/claw-shaped
+  fragment cells (purpose genuinely unclear from the sheet alone — safer
+  to leave unused than guess).
+- The 3 sprites were sliced once via a local Python/PIL script (not a
+  runtime crop-from-sheet widget like `SpriteCellIcon`/`_SpriteCell`
+  elsewhere in this project use) into their own small PNG files under the
+  already-pubspec-declared `assets/images/ui/` folder — chosen
+  specifically so `centerSlice` could be used at all (it's a property of
+  `Image`/`DecorationImage` operating on the file it's given directly; it
+  can't apply through this project's usual OverflowBox-crop-a-sheet
+  trick, which hands `Image.asset` the *whole* sheet stretched, not the
+  cropped piece alone).
+
+**Test fix:** `test/widget_test.dart`'s "The '?' button reopens the
+tutorial manually" used `find.text('?')` — broken outright once that
+became an `Image`, not a `Text`. Fixed with a stable `Key('helpButton')`
+on `_HelpButton` instead (needed its own `package:flutter/widgets.dart`
+import in the test file, which had never needed a direct Flutter import
+before this).
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass.
+No test coverage for how any of the 3 sprites actually *look* rendered
+(pure visual, CLAUDE.md §4.11) — needs a real on-device pass: the
+stretched button texture doesn't warp oddly at the actual button widths
+in this app, the flipped carousel arrow reads correctly as "prev," and
+the help button's hit target still feels right now that it's a plain
+image rather than a bordered circle.
+
+---
+
 ## Open questions
 
 Carried forward from the pre-alpha archive — still genuinely open, not

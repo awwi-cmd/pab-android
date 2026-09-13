@@ -452,6 +452,7 @@ class _SummaryPanel extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: ArenaColors.surface,
+        borderRadius: BorderRadius.circular(kPanelCornerRadiusPx), // D-010
         border: Border.all(color: ArenaColors.surfaceAlt),
       ),
       child: Column(

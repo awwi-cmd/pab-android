@@ -1,5 +1,6 @@
 import 'dart:ui' show Size;
 
+import 'package:flutter/widgets.dart' show Key;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -93,7 +94,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('HOW TO PLAY'), findsNothing); // already seen, no auto-push
 
-    await tester.tap(find.text('?'));
+    // DECISIONS D-011: the '?' is a real pixel-art button now, not a
+    // `Text('?')` widget -- `Key('helpButton')` is what's stable to find.
+    await tester.tap(find.byKey(const Key('helpButton')));
     await tester.pumpAndSettle();
     expect(find.text('HOW TO PLAY'), findsOneWidget);
   });

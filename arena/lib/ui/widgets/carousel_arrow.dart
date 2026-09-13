@@ -11,9 +11,17 @@ enum ArrowDirection { left, right }
 /// exact same control, not two near-identical copies. A fixed row under the
 /// page content (below whatever the page's own "primary action" is), not
 /// floating over it — sits in the same thumb-reach band as the arena's own
-/// HUD controls. A small semi-transparent circle rather than a square
-/// panel, so it still reads as an overlay-style control. No dedicated
-/// pixel-art asset for this exists yet.
+/// HUD controls.
+///
+/// DECISIONS D-011: the real medieval UI kit's own "play" button
+/// (`assets/images/ui/button_play.png`, cropped from `UI_medieval.png`) —
+/// a right-pointing triangle already drawn as its own wood button, so
+/// "next" uses it as-is and "prev" just flips it horizontally
+/// (`Transform.flip`) rather than needing a second mirrored asset. Was a
+/// plain semi-transparent circle + Material `Icon` before this (no
+/// dedicated pixel-art asset existed yet); disabled state is a plain
+/// opacity dim, same language `_RewardBadge`/`_LockedPanel` etc. already
+/// use elsewhere for "greyed out until available."
 class CarouselArrow extends StatelessWidget {
   const CarouselArrow({
     super.key,
@@ -26,27 +34,32 @@ class CarouselArrow extends StatelessWidget {
   final bool enabled;
   final VoidCallback onPressed;
 
+  // +15% over the original 44/28 floating-button sizing (developer ask,
+  // still honored — the wood button art fills the same footprint).
+  static const _size = 51.0;
+
   @override
   Widget build(BuildContext context) {
-    final fg = enabled ? ArenaColors.textPrimary : ArenaColors.textDim;
-    // +15% over the original 44/28 floating-button sizing (developer ask).
+    final icon = Image.asset(
+      'assets/images/ui/button_play.png',
+      width: _size,
+      height: _size,
+      filterQuality: FilterQuality.none,
+    );
     return SizedBox(
-      width: 51,
-      height: 51,
-      child: Material(
-        color: ArenaColors.surfaceAlt.withValues(alpha: enabled ? 0.55 : 0.3),
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: enabled ? withTapSfx(onPressed) : null,
-          child: Center(
-            child: Icon(
-              direction == ArrowDirection.left
-                  ? Icons.chevron_left
-                  : Icons.chevron_right,
-              color: fg,
-              size: 32,
-            ),
+      width: _size,
+      height: _size,
+      child: Opacity(
+        opacity: enabled ? 1.0 : 0.4,
+        child: Material(
+          type: MaterialType.transparency,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: enabled ? withTapSfx(onPressed) : null,
+            child: direction == ArrowDirection.left
+                ? Transform.flip(flipX: true, child: icon)
+                : icon,
           ),
         ),
       ),

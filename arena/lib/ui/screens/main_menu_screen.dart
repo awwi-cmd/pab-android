@@ -12,13 +12,19 @@ import 'credits_screen.dart';
 import 'settings_screen.dart';
 import 'tutorial_screen.dart';
 
-/// DECISIONS D-082/D-084: `splash_bg.png` is both the native launch-screen
-/// art (`android/app/src/main/res/drawable*/launch_background.xml`) and,
-/// here, the main menu's own full-bleed background — "background only in
-/// the main menu," nowhere else. The image already bakes in the game's
-/// title lockup, so the plain `Text('ARENA')` title this screen used to
-/// draw on top of a flat background is gone; the art itself is the title
-/// now.
+/// DECISIONS D-082/D-084/D-010: `splash_bg.png` was both the native
+/// launch-screen art (`android/app/src/main/res/drawable*/
+/// launch_background.xml`) *and*, here, the main menu's own full-bleed
+/// background. D-010 ("remove the main menu background and add a black
+/// and gray red gradient. Keep the photo... as a loading screen") split
+/// those two roles apart: the native launch screen (unaffected — a
+/// separate Android resource, not part of this widget tree at all) still
+/// shows the real photo the instant the process starts, but this screen's
+/// own background is a plain dark gradient (`_backgroundGradient`) now.
+/// Since the photo used to bake in the game's whole title lockup and this
+/// screen no longer shows it at all, a plain text title is back (removed
+/// by D-084 when the photo took over that job) — otherwise the menu had
+/// no name on it anywhere.
 ///
 /// Stateful (was stateless) only to run the one-time first-boot check:
 /// `TutorialState.hasSeenIntro()` — on a genuinely fresh save, this pushes
@@ -81,12 +87,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       backgroundColor: ArenaColors.background,
       body: Stack(
         children: [
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/bg/splash_bg.png',
-              fit: BoxFit.cover,
-              filterQuality: FilterQuality.none, // D-011
-            ),
+          const Positioned.fill(
+            child: DecoratedBox(decoration: BoxDecoration(gradient: _backgroundGradient)),
           ),
           SafeArea(
             child: Align(
@@ -94,6 +96,10 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: _HelpButton(
+                  // DECISIONS D-011: the '?' is real art now, not a `Text`
+                  // widget a test can `find.text('?')` for -- a stable Key
+                  // is what `widget_test.dart` finds instead.
+                  key: const Key('helpButton'),
                   onPressed: () =>
                       Navigator.of(context).pushNamed(TutorialScreen.route),
                 ),
@@ -105,7 +111,18 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Column(
                 children: [
-                  const Spacer(flex: 5),
+                  const Spacer(flex: 3),
+                  const Text(
+                    'PIXEL ARENA BRAWL',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: ArenaColors.accent,
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
                   PixelButton(
                     label: 'START',
                     onPressed: () async {
@@ -201,33 +218,49 @@ class _PendingPip extends StatelessWidget {
 /// The main menu's circular "?" tutorial button (DECISIONS D-084,
 /// developer's spec verbatim: "a circular ? button" top-right).
 class _HelpButton extends StatelessWidget {
-  const _HelpButton({required this.onPressed});
+  const _HelpButton({super.key, required this.onPressed});
 
   final VoidCallback onPressed;
 
+  static const _size = 40.0;
+
   @override
   Widget build(BuildContext context) {
+    // DECISIONS D-011: the real medieval UI kit's own "?" button
+    // (`assets/images/ui/button_question.png`), replacing the
+    // custom-drawn circle + Text('?').
     return SizedBox(
-      width: 40,
-      height: 40,
+      width: _size,
+      height: _size,
       child: Material(
-        color: ArenaColors.surfaceAlt.withValues(alpha: 0.7),
-        shape: const CircleBorder(side: BorderSide(color: ArenaColors.accent)),
+        type: MaterialType.transparency,
+        shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: withTapSfx(onPressed),
-          child: const Center(
-            child: Text(
-              '?',
-              style: TextStyle(
-                color: ArenaColors.accent,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
+          child: Image.asset(
+            'assets/images/ui/button_question.png',
+            width: _size,
+            height: _size,
+            filterQuality: FilterQuality.none,
           ),
         ),
       ),
     );
   }
 }
+
+/// DECISIONS D-010: "black and gray red gradient" — mostly black/gray with
+/// a muted red undertone bleeding in at the bottom, not a bold red block
+/// (a much darker, desaturated red than `ArenaColors.danger` itself, which
+/// stays reserved for real "danger" UI elsewhere).
+const _backgroundGradient = LinearGradient(
+  begin: Alignment.topCenter,
+  end: Alignment.bottomCenter,
+  colors: [
+    ArenaColors.background,
+    Color(0xFF332B26),
+    Color(0xFF3D1A17),
+  ],
+  stops: [0.0, 0.6, 1.0],
+);
