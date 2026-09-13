@@ -51,7 +51,7 @@
     "xpGrowthFactor": 1.3
   },
   "audio": {
-    "startingSfxVolume": 20,
+    "startingSfxVolume": 80,
     "startingMusicVolume": 5
   },
   "worldObjects": {
@@ -59,7 +59,7 @@
     "torchMinSpacingPx": 220,
     "vaseCount": 4,
     "vaseMinSpacingPx": 260,
-    "vaseGemsMin": 3,
-    "vaseGemsMax": 6
+    "vaseGemsMin": 4,
+    "vaseGemsMax": 7
   }
 }
