@@ -23,10 +23,19 @@ class GemComponent extends SpriteAnimationComponent
     required Vector2 startPosition,
     required this.rarity,
     required SpriteAnimation animation,
+    // DECISIONS D-006 — `VaseGemBurstComponent`'s own "fly out" moment:
+    // when set, this gem visibly travels from [launchFrom] to
+    // [startPosition] (its landing/float-bob point) over
+    // `kVaseGemLaunchDurationSec` instead of just appearing there already
+    // scattered. Every other spawn site (enemy drops, chests) leaves this
+    // null and gets the exact same instant-appear behavior as before.
+    Vector2? launchFrom,
   }) : _basePosition = startPosition.clone(),
+       _launchFrom = launchFrom?.clone(),
+       _launchElapsed = launchFrom != null ? 0 : null,
        super(
          animation: animation,
-         position: startPosition,
+         position: launchFrom ?? startPosition,
          size: Vector2.all(16 * kItemRenderScale),
          anchor: Anchor.center,
          priority: ArenaPriority.pickup,
@@ -36,9 +45,32 @@ class GemComponent extends SpriteAnimationComponent
   final Vector2 _basePosition;
   double _floatTime = 0;
 
+  /// Null for a normal (non-launched) gem. While non-null, [update] is
+  /// animating [position] from here to [_basePosition] instead of running
+  /// the usual float-bob/pickup check.
+  final Vector2? _launchFrom;
+
+  /// Seconds into the launch flight; becomes null the instant it lands
+  /// (`>= kVaseGemLaunchDurationSec`), permanently switching this gem over
+  /// to the normal float-bob/pickup behavior for the rest of its life.
+  double? _launchElapsed;
+
   @override
   void update(double dt) {
     super.update(dt);
+
+    if (_launchElapsed != null) {
+      _launchElapsed = _launchElapsed! + dt;
+      final t = (_launchElapsed! / kVaseGemLaunchDurationSec).clamp(0.0, 1.0);
+      final eased = 1 - (1 - t) * (1 - t); // ease-out -- fast start, soft landing
+      final from = _launchFrom!;
+      position.setValues(
+        from.x + (_basePosition.x - from.x) * eased,
+        from.y + (_basePosition.y - from.y) * eased,
+      );
+      if (t >= 1) _launchElapsed = null; // landed -- float-bob takes over next frame
+      return;
+    }
 
     _floatTime += dt;
     position.x = _basePosition.x;

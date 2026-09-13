@@ -40,6 +40,7 @@ import 'components/torch.dart';
 import 'components/torch_spawner.dart';
 import 'components/tracking_effect.dart';
 import 'components/vase.dart';
+import 'components/vase_gem_burst.dart';
 import 'components/vase_spawner.dart';
 import 'components/xp_bar.dart';
 import 'game_assets.dart';
@@ -1084,52 +1085,20 @@ class ArenaGame extends FlameGame {
   }
 
   /// Called by [VaseComponent] the instant the player walks into it
-  /// (DECISIONS D-002). Removes the vase and scatters a random
-  /// [GameConfig.vaseGemsMin]-[GameConfig.vaseGemsMax] burst of gems
-  /// alternating left/right of where it stood — "gems fly out of the vase
-  /// left and right," the developer's literal spec — rather than a fully
-  /// random scatter that could occasionally land every gem on one side.
+  /// (DECISIONS D-002, gem timing/no-VFX revised by D-006). Removes the
+  /// vase and hands off to a [VaseGemBurstComponent], which spawns a random
+  /// [GameConfig.vaseGemsMin]-[GameConfig.vaseGemsMax] gems one at a time
+  /// (not all at once) — "make the gems fly out of it more... like 1 by 1,"
+  /// the developer's literal spec.
   void breakVase(VaseComponent vase) {
     vases.remove(vase);
+    final position = vase.position.clone();
     vase.removeFromParent();
 
     final minGems = GameConfig.instance.vaseGemsMin;
     final maxGems = GameConfig.instance.vaseGemsMax;
     final gemCount = minGems + _random.nextInt(max(1, maxGems - minGems + 1));
-    for (var i = 0; i < gemCount; i++) {
-      final rarity = rollRarity(_random);
-      final side = i.isEven ? -1.0 : 1.0;
-      final offsetX = side *
-          (kVaseGemScatterMinPx +
-              _random.nextDouble() *
-                  (kVaseGemScatterMaxPx - kVaseGemScatterMinPx));
-      final offsetY = (_random.nextDouble() * 2 - 1) * kVaseGemScatterVerticalPx;
-      addToWorld(
-        GemComponent(
-          startPosition: vase.position + Vector2(offsetX, offsetY),
-          rarity: rarity,
-          animation: gameAssets.gemAnimations[rarity.index],
-        ),
-      );
-    }
-  }
-
-  /// The vase's "card chosen" burst (DECISIONS D-002) — see
-  /// `kCardChosenBurstCount`'s own doc comment (constants.dart) for why
-  /// this reuses [GameAssets.cardChosenBurstAnimation] rather than the
-  /// chest-reveal overlay's own Flutter-widget sparkle burst.
-  void spawnCardChosenBurst(Vector2 at) {
-    for (var i = 0; i < kCardChosenBurstCount; i++) {
-      final angle = _random.nextDouble() * 2 * pi;
-      final distance = kCardChosenBurstMinDistancePx +
-          _random.nextDouble() *
-              (kCardChosenBurstMaxDistancePx - kCardChosenBurstMinDistancePx);
-      spawnEffect(
-        gameAssets.cardChosenBurstAnimation,
-        at + Vector2(cos(angle), sin(angle)) * distance,
-        size: Vector2.all(kCardChosenBurstSparkleSizePx),
-      );
-    }
+    addToWorld(VaseGemBurstComponent(origin: position, gemCount: gemCount));
   }
 
   /// Called by [ChestComponent] once its opening sequence finishes

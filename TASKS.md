@@ -189,6 +189,47 @@ one at a time, same discipline as Phase 0.*
 least the Character Select/Upgrades description (DECISIONS D-003) — update
 it as part of the merge, not after.
 
+### Vase break + LevelUp animation polish (DECISIONS D-006)
+
+- [x] **1.19 Vase break VFX removed** — the sparkle burst
+      (`spawnCardChosenBurst`/`cardChosenBurstAnimation`/`kCardChosenBurst*`)
+      is deleted outright, not just uncalled. The card-chosen SFX still
+      plays.
+- [x] **1.20 Staggered gem fly-out** — `VaseGemBurstComponent` spawns one
+      gem every 0.5s (first immediate) instead of all at once; each gem
+      visibly flies from the vase's position to its landing spot
+      (`GemComponent.launchFrom`) over 0.35s. Scatter distance widened
+      (18-42px → 40-90px).
+- [x] **1.21 LevelUp entrance animation** — title shows immediately, the
+      3 choice cards slide in from off-screen left, staggered 150ms apart,
+      350ms each, starting 500ms after the title.
+- [x] **1.22 LevelUp selection animation** — tapping a card no longer
+      resolves instantly: the other 2 vanish immediately, the chosen one
+      pulses (a couple of flashes, not one glow) for 1 full second, and
+      only then does the actual upgrade grant + overlay close happen.
+
+- [x] **1.23 Vase burst faster + small explosion VFX (DECISIONS D-007)** —
+      gem interval 0.5s → 0.125s; a small explosion VFX (reusing the
+      Warden's own shockwave sheet, sized well down) plays at the break
+      point, SFX unchanged (only the existing card-chosen sound, no boom).
+- [x] **1.24 LevelUp title/button fixes (DECISIONS D-007)** — fixed a real
+      layout bug where the title visibly jumped when the card block first
+      appeared (cards/button are now always in the tree, animated via
+      opacity/position only, never conditionally added); "VIEW YOUR
+      UPGRADES" now only builds at all if the player has picked at least
+      one upgrade already, and slides in from the right only after every
+      card has finished its own entrance.
+
+- [ ] **1.25 On-device: vase break** — the faster staggered gem fly-out
+      and the new explosion VFX both read well at actual size/speed, and
+      the sound still matches (no accidental double-boom).
+- [ ] **1.26 On-device: LevelUp** — the title genuinely never moves once
+      the popup opens; "VIEW YOUR UPGRADES" is absent on a first-ever
+      level-up and slides in from the right afterward on a later one; the
+      flash pulse and 1-second close delay still feel right (none of this
+      has any test coverage — DECISIONS D-019/CLAUDE.md §4.11 — this is
+      first-look-ever on a real device).
+
 ---
 
 ## Backlog (do not start without asking first)

@@ -236,28 +236,34 @@ const double kTorchCollisionRadiusPx = 10;
 
 /// Gem vases (`scenes/gem-vase.png`, DECISIONS D-002) — native 16×16 cell,
 /// same render-scale family. [kVasePickupRadiusPx] is the touch radius that
-/// breaks it (subject to MAGNET like every other pickup radius). The 3
-/// scatter constants control where the burst of gems it drops lands —
-/// alternating left/right of the vase (not fully random) so even a small
-/// gem count visibly reads as "left AND right," the developer's literal
-/// spec, rather than occasionally clustering on one side by chance.
+/// breaks it (subject to MAGNET like every other pickup radius).
+///
+/// DECISIONS D-006/D-007 ("make gems launch at once almost 0.125 delay in
+/// between, the direction they go is good"): [VaseGemBurstComponent] spawns
+/// one gem every [kVaseGemBurstIntervalSec] instead of all of them at once,
+/// each launched from the vase's own position out to its landing spot over
+/// [kVaseGemLaunchDurationSec] (`GemComponent`'s own `launchFrom`). The
+/// scatter distances below were widened from their original (18-42px)
+/// values in D-006's first pass ("a generous amount of distance... not too
+/// far") — alternating left/right of the vase (not fully random) so even a
+/// small gem count visibly reads as "left AND right," the developer's
+/// original literal spec, rather than occasionally clustering on one side
+/// by chance.
+///
+/// [kVaseExplosionWidthPx] (D-007, "add an explosion vfx like the 4th
+/// character has... make the explosion not that big") reuses the same
+/// `explosionAnimation` sheet `WardenSlamAttack`'s own shockwave does
+/// (`vfx/vfx/effect_explosion2.png`), sized well below both that (arena-
+/// radius-scaled) and the Skirmisher's own `kSpiralExplosionWidthPx` (64) —
+/// deliberately small since a vase is a small object, not an AoE hit.
 const double kVaseRenderScale = 3;
 const double kVasePickupRadiusPx = 30;
-const double kVaseGemScatterMinPx = 18;
-const double kVaseGemScatterMaxPx = 42;
-const double kVaseGemScatterVerticalPx = 14;
-
-/// The vase's "card chosen" burst (DECISIONS D-002) — reuses the existing
-/// sparkle VFX language the chest-reveal's own card-chosen moment
-/// established (`ChestRevealOverlay`'s radial `Icons.auto_awesome` burst,
-/// D-072) as a Flame-side effect, since Flame owns the arena and can't run
-/// that overlay's Flutter widgets (CLAUDE.md §4.1) — several one-shot
-/// `sparkleAnimation` copies fired outward at random angles instead of one
-/// static flash.
-const int kCardChosenBurstCount = 8;
-const double kCardChosenBurstMinDistancePx = 16;
-const double kCardChosenBurstMaxDistancePx = 46;
-const double kCardChosenBurstSparkleSizePx = 20;
+const double kVaseGemScatterMinPx = 40;
+const double kVaseGemScatterMaxPx = 90;
+const double kVaseGemScatterVerticalPx = 24;
+const double kVaseGemBurstIntervalSec = 0.125;
+const double kVaseGemLaunchDurationSec = 0.35;
+const double kVaseExplosionWidthPx = 36;
 
 /// Flame component render order (CLAUDE.md §4.10) — layer via these
 /// constants, never a magic `priority:` int on a component.

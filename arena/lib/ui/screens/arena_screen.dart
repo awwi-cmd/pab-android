@@ -937,8 +937,114 @@ class _LevelUpOverlay extends StatefulWidget {
   State<_LevelUpOverlay> createState() => _LevelUpOverlayState();
 }
 
-class _LevelUpOverlayState extends State<_LevelUpOverlay> {
+class _LevelUpOverlayState extends State<_LevelUpOverlay>
+    with TickerProviderStateMixin {
   bool _showingUpgrades = false;
+
+  // DECISIONS D-006/D-007: "show the Level up.. text first, then 0.5
+  // second later, slide in each selection from the left one by one." The
+  // title/subtitle are never conditionally built (D-007 fix: they used to
+  // visibly jump when the card block's layout space appeared out of
+  // nowhere at the 0.5s mark) -- `_cardsVisible` only ever gates the
+  // *animation progress* the cards read (`_buildAnimatedCard`'s own
+  // `_cardsVisible ? ... : 0.0`), never whether they're in the tree at all,
+  // so the popup's total height (and the title's own position within it)
+  // is constant from the very first frame. `_slideController` drives every
+  // card's own staggered slide-in via one `Interval` per card index (same
+  // "one controller, per-item Interval stagger" shape `_ChestRevealOverlay`'s
+  // sparkle burst already established, `_CardLandSparkleSpec.delay`) rather
+  // than one AnimationController per card.
+  bool _cardsVisible = false;
+  Timer? _revealTimer;
+  late final AnimationController _slideController;
+
+  static const _titleToCardsDelay = Duration(milliseconds: 500);
+  static const _cardSlideDuration = Duration(milliseconds: 350);
+  static const _cardStagger = Duration(milliseconds: 150);
+  static const _cardSlideDistancePx = 500.0; // comfortably off-screen on any device width
+
+  /// DECISIONS D-007: "view your upgrades appear only if you have
+  /// upgrades... never in the reveal animation... make it appear from the
+  /// right, after the upgrades appeared already." True the instant this
+  /// popup mounts (never changes mid-popup -- the earliest a pick could
+  /// land is this same popup's own resolution, by which point [_chosenKind]
+  /// already hides the button anyway) -- deciding it once here, rather
+  /// than a live check in `build()`, is what keeps the button's own
+  /// reserved layout space stable for its whole slide-in the same way the
+  /// cards' does.
+  late final bool _hasUpgrades =
+      widget.game.upgrades.pickCounts.values.any((count) => count > 0);
+  bool _upgradesButtonVisible = false;
+  late final AnimationController _upgradesButtonController;
+  static const _upgradesButtonSlideDuration = Duration(milliseconds: 300);
+  static const _upgradesButtonSlideDistancePx = 400.0;
+
+  // "the selection the player chooses... flashes, then 1 second later the
+  // level up screen closes" -- the other 2 cards vanish the instant
+  // [_chosenKind] is set (just stop building them, DECISIONS-style "list
+  // filtered by state" rather than a fade), the chosen one pulses via
+  // `_flashController`, and [_closeTimer] is what actually calls
+  // `ArenaGame.resolveLevelUpChoice` (the real state mutation + the
+  // overlay's own removal) after the full delay -- tapping does not
+  // resolve the choice immediately anymore.
+  UpgradeKind? _chosenKind;
+  late final AnimationController _flashController;
+  Timer? _closeTimer;
+
+  static const _flashDuration = Duration(milliseconds: 550);
+  static const _closeDelay = Duration(seconds: 1);
+
+  @override
+  void initState() {
+    super.initState();
+    final cardCount = widget.game.currentLevelUpChoices.length;
+    _slideController = AnimationController(
+      vsync: this,
+      // Enough total span to fit every card's own stagger start plus its
+      // full slide duration -- e.g. 3 cards: last starts at 2*stagger,
+      // finishes `_cardSlideDuration` after that.
+      duration:
+          _cardStagger * (cardCount > 0 ? cardCount - 1 : 0) + _cardSlideDuration,
+    );
+    _flashController = AnimationController(vsync: this, duration: _flashDuration);
+    _upgradesButtonController = AnimationController(
+      vsync: this,
+      duration: _upgradesButtonSlideDuration,
+    );
+    _revealTimer = Timer(_titleToCardsDelay, () async {
+      if (!mounted) return;
+      setState(() => _cardsVisible = true);
+      await _slideController.forward(from: 0);
+      // DECISIONS D-007: the button's own entrance only ever starts once
+      // every card has finished sliding in -- chained off `forward()`'s own
+      // completion future rather than a second hand-timed `Timer`, so it
+      // can never drift out of sync with however long the cards actually
+      // took (e.g. if `currentLevelUpChoices` ever has fewer than 3 tiles).
+      if (!mounted || !_hasUpgrades) return;
+      setState(() => _upgradesButtonVisible = true);
+      _upgradesButtonController.forward(from: 0);
+    });
+  }
+
+  @override
+  void dispose() {
+    _revealTimer?.cancel();
+    _closeTimer?.cancel();
+    _slideController.dispose();
+    _flashController.dispose();
+    _upgradesButtonController.dispose();
+    super.dispose();
+  }
+
+  void _selectChoice(UpgradeKind kind) {
+    if (_chosenKind != null) return; // already resolving -- ignore a 2nd tap
+    setState(() => _chosenKind = kind);
+    _flashController.forward(from: 0);
+    _closeTimer = Timer(_closeDelay, () {
+      if (!mounted) return;
+      widget.game.resolveLevelUpChoice(kind); // real mutation + overlay close
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -955,6 +1061,7 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay> {
 
   Widget _buildChoices() {
     final game = widget.game;
+    final choices = game.currentLevelUpChoices;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -976,19 +1083,106 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay> {
           style: TextStyle(color: ArenaColors.textDim),
         ),
         const SizedBox(height: 20),
-        for (final kind in game.currentLevelUpChoices) ...[
-          _LevelUpCard(kind: kind, onTap: () => game.resolveLevelUpChoice(kind)),
+        // Always built (DECISIONS D-007) -- never conditionally added once
+        // the reveal timer fires, so the popup's total height (and the
+        // title's own position above it) never jumps; each card's own
+        // visibility is purely `_slideController`-driven inside
+        // `_buildAnimatedCard`.
+        for (var i = 0; i < choices.length; i++) ...[
+          _buildAnimatedCard(index: i, kind: choices[i]),
           const SizedBox(height: 12),
         ],
-        const SizedBox(height: 4),
-        TextButton(
-          onPressed: withTapSfx(() => setState(() => _showingUpgrades = true)),
-          child: const Text(
-            'VIEW YOUR UPGRADES',
-            style: TextStyle(color: ArenaColors.textDim),
-          ),
-        ),
+        // DECISIONS D-007: "appear only if you have upgrades... never in
+        // the reveal animation... appear from the right, after the
+        // upgrades appeared already" -- `_hasUpgrades` decided once at
+        // mount (see its own doc comment), so like the cards above this is
+        // always in the tree from frame one when it's going to show at
+        // all, just invisible/off-screen-right until
+        // `_upgradesButtonController` plays.
+        if (_hasUpgrades && _chosenKind == null) ...[
+          const SizedBox(height: 4),
+          _buildUpgradesButton(),
+        ],
       ],
+    );
+  }
+
+  Widget _buildUpgradesButton() {
+    return AnimatedBuilder(
+      animation: _upgradesButtonController,
+      builder: (context, child) {
+        final t = _upgradesButtonVisible
+            ? Curves.easeOut.transform(_upgradesButtonController.value)
+            : 0.0;
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset((1 - t) * _upgradesButtonSlideDistancePx, 0),
+            child: child,
+          ),
+        );
+      },
+      child: TextButton(
+        onPressed: withTapSfx(() => setState(() => _showingUpgrades = true)),
+        child: const Text(
+          'VIEW YOUR UPGRADES',
+          style: TextStyle(color: ArenaColors.textDim),
+        ),
+      ),
+    );
+  }
+
+  /// One card, wrapped in its own slide-in (staggered off `_slideController`
+  /// by [index]) and, once chosen, a flash pulse (`_flashController`) —
+  /// the other cards this same round just stop being built at all the
+  /// instant [_chosenKind] is set to something else (the "disappear
+  /// instant" half of the spec; no fade, no animation, they're just gone).
+  Widget _buildAnimatedCard({required int index, required UpgradeKind kind}) {
+    if (_chosenKind != null && kind != _chosenKind) {
+      return const SizedBox.shrink();
+    }
+    final totalMs = _slideController.duration!.inMilliseconds;
+    final startMs = index * _cardStagger.inMilliseconds;
+    final endMs = startMs + _cardSlideDuration.inMilliseconds;
+    final interval = Interval(
+      totalMs == 0 ? 0.0 : (startMs / totalMs).clamp(0.0, 1.0),
+      totalMs == 0 ? 1.0 : (endMs / totalMs).clamp(0.0, 1.0),
+      curve: Curves.easeOut,
+    );
+    return AnimatedBuilder(
+      animation: Listenable.merge([_slideController, _flashController]),
+      builder: (context, child) {
+        final slideT =
+            _cardsVisible ? interval.transform(_slideController.value) : 0.0;
+        Widget result = Opacity(
+          opacity: slideT,
+          child: Transform.translate(
+            offset: Offset((1 - slideT) * -_cardSlideDistancePx, 0),
+            child: child,
+          ),
+        );
+        if (_chosenKind == kind) {
+          // A couple of quick brightness pulses over `_flashController`'s
+          // own short run, not a decaying single fade -- reads as "flashes"
+          // (plural, the developer's own word) rather than one soft glow.
+          final pulse = sin(_flashController.value * pi * 4).abs();
+          result = Stack(
+            children: [
+              result,
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Opacity(
+                    opacity: pulse * 0.6,
+                    child: Container(color: ArenaColors.accent),
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+        return result;
+      },
+      child: _LevelUpCard(kind: kind, onTap: () => _selectChoice(kind)),
     );
   }
 
