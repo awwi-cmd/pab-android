@@ -177,7 +177,7 @@ PixelArenaBrawl/               <- repo root, open this in your editor
         ├── ui/
         │   ├── screens/
         │   │   ├── main_menu_screen.dart       // Stateful: auto-pushes TutorialScreen on a fresh save, splash_bg.png full-bleed background, circular "?" button, ACHIEVEMENTS button between START/SETTINGS
-        │   │   ├── achievements_screen.dart     // scrollable read-only list of kAchievements w/ progress bars, dimmed until claimed — no claim button, rewards auto-grant at round-end
+        │   │   ├── achievements_screen.dart     // scrollable list of kAchievements w/ progress bars; locked/pending/claimed 3-state per card, a CLAIM button on pending ones (rewards no longer auto-grant at round-end)
         │   │   ├── tutorial_screen.dart         // 3-slide first-boot tutorial, same carousel chrome as other multi-page screens, built from real game assets
         │   │   ├── settings_screen.dart         // currency debug always shown; god mode/grant-level-up/end-round only when opened from pause; Music/SFX Volume live-drive their controllers
         │   │   ├── credits_screen.dart

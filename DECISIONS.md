@@ -477,6 +477,82 @@ LevelUp overlay exists, so this is unverified until a real on-device pass.
 
 ---
 
+## D-008 — Claimable achievements + a main-menu pip; a real SHOP/CHARACTER UPGRADES overflow fix
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Developer: "1. Make achievements claimable, put them on
+pending and make user have to claim them by himself in the achievments
+menu. 2. Have a PIP on achievements button in main menu when anything is
+pending to claim. 3. Gave my game to a friend to play and most panels in
+the game in shop upgrades and character upgrades are BOTTOM OVERFLOWED BY
+12 14 (SHOP & UPGRADES) or 20 (STAT UPGRADES)."
+
+**Decision — claimable achievements:**
+- `MetaProgressionRepository.recordRoundEnd` no longer auto-claims/auto-
+  grants anything the instant a threshold is crossed (the original D-091
+  behavior) — it only updates the lifetime counters now. It still returns
+  a `List<Achievement>`, but the meaning changed: achievements that just
+  became eligible *this call* (met after this round's counters were
+  applied, unmet before them, still unclaimed) — computed by snapshotting
+  `buildStatValues` both before and after applying the round's deltas, so
+  calling it again next round doesn't keep re-reporting an
+  already-eligible-but-still-unclaimed achievement as "newly" anything.
+  Nothing in the app currently consumes this return value (the one call
+  site, `ArenaGame._persistRoundRewards`, always discarded it) — kept
+  correct anyway for a future toast/notification to use.
+- A new `MetaProgressionRepository.claimAchievement(id)` is the only way a
+  reward is actually granted now — re-validates eligibility itself against
+  a fresh `load()` (same "don't trust the caller's possibly-stale copy"
+  shape `addCoins` already documents), refuses an already-claimed id, an
+  id that isn't actually eligible yet, or an unknown id, and only then
+  adds to `claimedAchievementIds` and grants the coins/gems.
+- `AchievementsScreen`'s cards are 3-state now (was binary claimed/not):
+  locked (below threshold, unchanged dimmed look), **pending** (threshold
+  met, not claimed — reads like claimed visually, but with a CLAIM button
+  instead of the checkmark, wired to `claimAchievement` then a full
+  reload), claimed (unchanged checkmark look).
+- A new pure helper, `achievements.dart`'s `anyAchievementPending`, answers
+  "is there anything to claim" off plain `statValues`/`claimedIds` —
+  keeps this file's deliberate zero-import-of-`meta_progression.dart` rule
+  (see its own file-level doc comment) intact for the main menu's own
+  check.
+- `MainMenuScreen` loads a `MetaProgression` once at boot and again every
+  time it returns from START or ACHIEVEMENTS (a round might cross a new
+  threshold; claiming one clears its own pip) and shows a small solid red
+  `_PendingPip` dot on the ACHIEVEMENTS button (`Positioned`, only built
+  at all while something's pending) when `anyAchievementPending` is true.
+
+**Decision — the overflow bug:** `ShopScreen`'s `_ShopPage` and
+`CharacterUpgradesScreen`'s `_StatPage` both used to lay their rows out
+with `Expanded` — an equal, fixed share of the page's height per row,
+specifically so nothing would ever need to scroll (DECISIONS D-067/D-070,
+"must not allow scrolling"). A friend's real device proved that
+assumption wrong: a row's actual content plus its own padding doesn't
+reliably fit inside its forced-equal slot on every real screen height.
+Both pages are `SingleChildScrollView`s now — the same "can never overflow
+regardless of screen height" fix D-058's chest reveal already established
+for exactly this class of bug (a card/row whose real content might not
+fit a fixed box). Not a reversal of D-005 (Character Select stays a
+non-scrolling `Column` — that page's content was actually verified to fit
+once tightened; this is a different pair of screens whose content
+provably doesn't). Each row lost its `Expanded` wrapper and
+`mainAxisAlignment: spaceBetween` (no longer forced to fill an exact
+slot) in favor of `mainAxisSize: min` with small explicit gaps between
+its label/description/button — rows size to their own natural content,
+and the page only scrolls on a screen too
+short to show every row without it.
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass.
+`meta_progression_test.dart`'s `recordRoundEnd` group was rewritten for
+the new eligible-not-claimed semantics, plus a new `claimAchievement`
+group; `achievements_test.dart` gained an `anyAchievementPending` group.
+Not yet verified on-device: the claim flow's coins/gems actually land and
+the pip appears/clears at the right times; and — the actual point of this
+fix — that SHOP/CHARACTER UPGRADES genuinely no longer overflow on the
+reporting friend's device.
+
+---
+
 ## Open questions
 
 Carried forward from the pre-alpha archive — still genuinely open, not

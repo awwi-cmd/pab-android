@@ -199,10 +199,17 @@ class _WalletRow extends StatelessWidget {
   }
 }
 
-/// One page of 4 `_UpgradeRow`s, each getting an equal share of the page's
-/// height via `Expanded` — no scrolling, the whole page always fits
-/// whatever vertical space the carousel gives it (DECISIONS D-067,
-/// developer's explicit ask: "must not allow scrolling").
+/// One scrollable page of 4 `_UpgradeRow`s. Used to lay each row out with
+/// `Expanded` (an equal, fixed share of the page's height) so nothing would
+/// ever need to scroll (DECISIONS D-067, "must not allow scrolling") —
+/// DECISIONS D-008 found that broken on a real device ("STAT UPGRADES...
+/// BOTTOM OVERFLOWED BY 20 PIXELS"): a row's real content doesn't always
+/// fit inside its forced-equal `Expanded` slot on every real screen height,
+/// D-067's original assumption. `SingleChildScrollView` now (same fix
+/// `ShopScreen`'s own `_ShopPage` just got, and the same shape
+/// `_LevelUpOverlay`'s card list already established, DECISIONS D-058) —
+/// rows size to their own content, the page scrolls on the rare screen too
+/// short to show all 4 without it, rather than overflowing.
 class _StatPage extends StatelessWidget {
   const _StatPage({
     required this.stats,
@@ -218,22 +225,19 @@ class _StatPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
       child: Column(
         children: [
-          for (final stat in stats)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: _UpgradeRow(
-                  stat: stat,
-                  meta: meta,
-                  character: character,
-                  onBuy: () => onBuy(stat),
-                ),
-              ),
+          for (final stat in stats) ...[
+            _UpgradeRow(
+              stat: stat,
+              meta: meta,
+              character: character,
+              onBuy: () => onBuy(stat),
             ),
+            const SizedBox(height: 12),
+          ],
         ],
       ),
     );
@@ -267,14 +271,16 @@ class _UpgradeRow extends StatelessWidget {
         border: Border.all(color: ArenaColors.surfaceAlt),
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           StatBar(label: stat.label, value: level, max: kMetaMaxLevel),
+          const SizedBox(height: 4),
           Text(
             stat.description,
             style: const TextStyle(color: ArenaColors.textDim, fontSize: 12),
           ),
+          const SizedBox(height: 8),
           PixelButton(
             label: maxed ? 'MAXED' : 'BUY — $cost coins',
             enabled: !maxed && affordable,

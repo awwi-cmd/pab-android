@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../core/achievements.dart';
 import '../../core/constants.dart';
+import '../../core/meta_progression.dart';
 import '../../core/tutorial_state.dart';
 import '../widgets/pixel_button.dart';
 import '../widgets/tap_sfx.dart';
@@ -34,16 +36,43 @@ class MainMenuScreen extends StatefulWidget {
 }
 
 class _MainMenuScreenState extends State<MainMenuScreen> {
+  // DECISIONS D-008: "have a pip on achievements button... when anything is
+  // pending to claim." Reloaded every time we come back from ACHIEVEMENTS
+  // (claiming something there clears its pip) or START (a round just
+  // played may have crossed a new threshold) -- same "reload on return"
+  // pattern `CharacterSelectScreen` already uses for its own wallet.
+  bool _hasPendingAchievements = false;
+
   @override
   void initState() {
     super.initState();
     _maybeShowTutorial();
+    _loadPendingAchievements();
   }
 
   Future<void> _maybeShowTutorial() async {
     final hasSeenIntro = await TutorialState.hasSeenIntro();
     if (hasSeenIntro || !mounted) return;
     await Navigator.of(context).pushNamed(TutorialScreen.route);
+  }
+
+  Future<void> _loadPendingAchievements() async {
+    final meta = await MetaProgressionRepository().load();
+    if (!mounted) return;
+    final statValues = buildStatValues(
+      lifetimeKills: meta.lifetimeKills,
+      lifetimeBossKills: meta.lifetimeBossKills,
+      lifetimeGemsCollected: meta.lifetimeGemsCollected,
+      lifetimeCoinsEarned: meta.lifetimeCoinsEarned,
+      lifetimeChestsOpened: meta.lifetimeChestsOpened,
+      lifetimePotionsCollected: meta.lifetimePotionsCollected,
+      highestLevelReached: meta.highestLevelReached,
+      longestSurvivalTimeSec: meta.longestSurvivalTimeSec,
+    );
+    setState(() {
+      _hasPendingAchievements =
+          anyAchievementPending(statValues, meta.claimedAchievementIds);
+    });
   }
 
   @override
@@ -79,17 +108,41 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                   const Spacer(flex: 5),
                   PixelButton(
                     label: 'START',
-                    onPressed: () => Navigator.of(
-                      context,
-                    ).pushNamed(CharacterSelectScreen.route),
+                    onPressed: () async {
+                      await Navigator.of(
+                        context,
+                      ).pushNamed(CharacterSelectScreen.route);
+                      // A round just played may have crossed a new
+                      // achievement threshold (DECISIONS D-008).
+                      _loadPendingAchievements();
+                    },
                   ),
                   const SizedBox(height: 16),
                   // DECISIONS D-091: "in between start and settings."
-                  PixelButton(
-                    label: 'ACHIEVEMENTS',
-                    onPressed: () => Navigator.of(
-                      context,
-                    ).pushNamed(AchievementsScreen.route),
+                  // DECISIONS D-008: the pip badge -- only built at all
+                  // while something's actually pending, same "don't reserve
+                  // space for a badge that isn't there" shape the rest of
+                  // this project's optional-UI elements use.
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      PixelButton(
+                        label: 'ACHIEVEMENTS',
+                        onPressed: () async {
+                          await Navigator.of(
+                            context,
+                          ).pushNamed(AchievementsScreen.route);
+                          // Claiming something there clears its own pip.
+                          _loadPendingAchievements();
+                        },
+                      ),
+                      if (_hasPendingAchievements)
+                        const Positioned(
+                          top: -4,
+                          right: -4,
+                          child: _PendingPip(),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   PixelButton(
@@ -117,6 +170,29 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A small solid dot marking "something's waiting for you" (DECISIONS
+/// D-008) — the ACHIEVEMENTS button's own pending-claim indicator. Plain
+/// `danger` red (same "notice this" role that color already plays
+/// elsewhere, e.g. the debug DIE button) rather than a new color, no
+/// number/count — this is a "go look," not a badge that needs to convey
+/// how many.
+class _PendingPip extends StatelessWidget {
+  const _PendingPip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 14,
+      height: 14,
+      decoration: BoxDecoration(
+        color: ArenaColors.danger,
+        shape: BoxShape.circle,
+        border: Border.all(color: ArenaColors.background, width: 2),
       ),
     );
   }

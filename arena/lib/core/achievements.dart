@@ -88,6 +88,24 @@ bool isAchievementMet(
 ) =>
     statValueOf(achievement.stat, values) >= achievement.threshold;
 
+/// True if at least one achievement has met its threshold but isn't in
+/// [claimedIds] yet (DECISIONS D-008 — achievements are claimed by hand
+/// from the ACHIEVEMENTS screen now, not auto-granted at round-end) — the
+/// main menu's own "anything to claim?" check for its ACHIEVEMENTS button's
+/// pip badge. Same zero-`meta_progression.dart`-import shape as the rest of
+/// this file (see the file-level doc comment) — takes plain primitives, not
+/// a `MetaProgression`.
+bool anyAchievementPending(
+  Map<AchievementStat, num> statValues,
+  Set<String> claimedIds,
+) {
+  for (final achievement in kAchievements) {
+    if (claimedIds.contains(achievement.id)) continue;
+    if (isAchievementMet(achievement, statValues)) return true;
+  }
+  return false;
+}
+
 /// The 20 achievements (DECISIONS D-091, developer's ask verbatim: "Create
 /// a list of 20 achievements that give rewards to your wallet"). Tiered
 /// across every lifetime stat the round-end flow already has real numbers

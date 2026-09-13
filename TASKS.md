@@ -232,6 +232,41 @@ it as part of the merge, not after.
 
 ---
 
+## Phase 2 — Claimable achievements + a real overflow fix
+
+*Goal: achievements become a real claim flow instead of auto-granting, and
+fix a real bottom-overflow bug a friend hit on-device in SHOP/CHARACTER
+UPGRADES.*
+
+- [x] **2.1 Claimable achievements (DECISIONS D-008)** — round-end no
+      longer auto-grants a reward the instant a threshold is crossed;
+      `MetaProgressionRepository.claimAchievement` is the only way a
+      reward is actually granted now, and `AchievementsScreen`'s cards are
+      3-state (locked/pending/claimed), with a CLAIM button on pending
+      ones.
+- [x] **2.2 Main menu pip badge (DECISIONS D-008)** — the ACHIEVEMENTS
+      button shows a small red dot whenever anything is pending
+      (`anyAchievementPending`), reloaded after returning from START or
+      ACHIEVEMENTS.
+- [x] **2.3 SHOP/CHARACTER UPGRADES overflow fix (DECISIONS D-008)** — a
+      friend hit real "BOTTOM OVERFLOWED BY N PIXELS" errors in both
+      screens' item/stat rows (their `Expanded`-equal-share layout, D-067/
+      D-070's original "must not scroll" design, didn't actually fit on
+      their device). Both screens' pages are `SingleChildScrollView`s now,
+      same fix shape `_LevelUpOverlay`'s own card list already uses
+      (D-058) — rows size to their real content, the page scrolls only if
+      it has to.
+
+- [ ] **2.4 On-device: claim flow** — claiming a pending achievement
+      actually grants the coins/gems and flips the card to claimed; the
+      main menu pip appears/disappears at the right times.
+- [ ] **2.5 On-device: overflow fix** — SHOP and CHARACTER UPGRADES no
+      longer overflow on the reporting friend's device (or any short
+      screen), and don't feel awkward now that they *can* scroll (most
+      screens shouldn't need to, in practice).
+
+---
+
 ## Backlog (do not start without asking first)
 
 Kept here so ideas have somewhere to go that isn't the current sprint —

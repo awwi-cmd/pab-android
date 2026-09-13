@@ -321,14 +321,12 @@ void main() {
     );
 
     test(
-      'crossing an achievement threshold claims it and grants its reward, exactly once',
+      'crossing a threshold reports it as newly eligible but does NOT '
+      'auto-grant/auto-claim (DECISIONS D-008)',
       () async {
         SharedPreferences.setMockInitialValues({});
         final repo = MetaProgressionRepository();
-        final firstBlood = kAchievements.firstWhere(
-          (a) => a.id == 'first_blood',
-        );
-        final newlyUnlocked = await repo.recordRoundEnd(
+        final newlyEligible = await repo.recordRoundEnd(
           coins: 0,
           gems: 0,
           kills: 1, // crosses first_blood's threshold of 1
@@ -338,18 +336,16 @@ void main() {
           levelReached: 1,
           survivalTimeSec: 1,
         );
-        expect(newlyUnlocked.map((a) => a.id), contains('first_blood'));
+        expect(newlyEligible.map((a) => a.id), contains('first_blood'));
         final loaded = await repo.load();
-        expect(loaded.claimedAchievementIds, contains('first_blood'));
-        expect(
-          loaded.coins,
-          firstBlood.reward == AchievementReward.coins
-              ? firstBlood.rewardAmount
-              : 0,
-        );
+        // Not claimed, no reward granted -- the player has to claim it by
+        // hand (`claimAchievement`, its own test group below).
+        expect(loaded.claimedAchievementIds, isNot(contains('first_blood')));
+        expect(loaded.coins, 0);
 
         // A second round that still satisfies the same threshold must not
-        // grant the reward a second time.
+        // report it as "newly" eligible again -- it was already eligible
+        // going into this call.
         final secondCall = await repo.recordRoundEnd(
           coins: 0,
           gems: 0,
@@ -361,20 +357,13 @@ void main() {
           survivalTimeSec: 1,
         );
         expect(secondCall.map((a) => a.id), isNot(contains('first_blood')));
-        final reloaded = await repo.load();
-        expect(
-          reloaded.coins,
-          firstBlood.reward == AchievementReward.coins
-              ? firstBlood.rewardAmount // unchanged -- not doubled
-              : 0,
-        );
       },
     );
 
-    test('a zero-progress round claims nothing', () async {
+    test('a zero-progress round reports nothing newly eligible', () async {
       SharedPreferences.setMockInitialValues({});
       final repo = MetaProgressionRepository();
-      final newlyUnlocked = await repo.recordRoundEnd(
+      final newlyEligible = await repo.recordRoundEnd(
         coins: 0,
         gems: 0,
         kills: 0,
@@ -384,7 +373,79 @@ void main() {
         levelReached: 1,
         survivalTimeSec: 0,
       );
-      expect(newlyUnlocked, isEmpty);
+      expect(newlyEligible, isEmpty);
+    });
+  });
+
+  group('MetaProgressionRepository.claimAchievement (DECISIONS D-008)', () {
+    test('fails and grants nothing if the threshold isn\'t met yet', () async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = MetaProgressionRepository();
+      expect(await repo.claimAchievement('first_blood'), isFalse);
+      final loaded = await repo.load();
+      expect(loaded.claimedAchievementIds, isEmpty);
+      expect(loaded.coins, 0);
+    });
+
+    test('succeeds once the threshold is met, granting the real reward',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = MetaProgressionRepository();
+      final firstBlood = kAchievements.firstWhere(
+        (a) => a.id == 'first_blood',
+      );
+      await repo.recordRoundEnd(
+        coins: 0,
+        gems: 0,
+        kills: 1,
+        bossKills: 0,
+        chestsOpened: 0,
+        potionsCollected: 0,
+        levelReached: 1,
+        survivalTimeSec: 1,
+      );
+      expect(await repo.claimAchievement('first_blood'), isTrue);
+      final loaded = await repo.load();
+      expect(loaded.claimedAchievementIds, contains('first_blood'));
+      expect(
+        loaded.coins,
+        firstBlood.reward == AchievementReward.coins
+            ? firstBlood.rewardAmount
+            : 0,
+      );
+    });
+
+    test('refuses a second claim of an already-claimed achievement', () async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = MetaProgressionRepository();
+      await repo.recordRoundEnd(
+        coins: 0,
+        gems: 0,
+        kills: 1,
+        bossKills: 0,
+        chestsOpened: 0,
+        potionsCollected: 0,
+        levelReached: 1,
+        survivalTimeSec: 1,
+      );
+      expect(await repo.claimAchievement('first_blood'), isTrue);
+      expect(await repo.claimAchievement('first_blood'), isFalse);
+      final loaded = await repo.load();
+      final firstBlood = kAchievements.firstWhere(
+        (a) => a.id == 'first_blood',
+      );
+      expect(
+        loaded.coins,
+        firstBlood.reward == AchievementReward.coins
+            ? firstBlood.rewardAmount // unchanged -- not doubled
+            : 0,
+      );
+    });
+
+    test('an unknown achievement id fails harmlessly', () async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = MetaProgressionRepository();
+      expect(await repo.claimAchievement('does_not_exist'), isFalse);
     });
   });
 }
