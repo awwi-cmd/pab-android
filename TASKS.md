@@ -232,6 +232,181 @@ it as part of the merge, not after.
 
 ---
 
+## Phase 2 — Claimable achievements + a real overflow fix
+
+*Goal: achievements become a real claim flow instead of auto-granting, and
+fix a real bottom-overflow bug a friend hit on-device in SHOP/CHARACTER
+UPGRADES.*
+
+- [x] **2.1 Claimable achievements (DECISIONS D-008)** — round-end no
+      longer auto-grants a reward the instant a threshold is crossed;
+      `MetaProgressionRepository.claimAchievement` is the only way a
+      reward is actually granted now, and `AchievementsScreen`'s cards are
+      3-state (locked/pending/claimed), with a CLAIM button on pending
+      ones.
+- [x] **2.2 Main menu pip badge (DECISIONS D-008)** — the ACHIEVEMENTS
+      button shows a small red dot whenever anything is pending
+      (`anyAchievementPending`), reloaded after returning from START or
+      ACHIEVEMENTS.
+- [x] **2.3 SHOP/CHARACTER UPGRADES overflow fix (DECISIONS D-008)** — a
+      friend hit real "BOTTOM OVERFLOWED BY N PIXELS" errors in both
+      screens' item/stat rows (their `Expanded`-equal-share layout, D-067/
+      D-070's original "must not scroll" design, didn't actually fit on
+      their device). Both screens' pages are `SingleChildScrollView`s now,
+      same fix shape `_LevelUpOverlay`'s own card list already uses
+      (D-058) — rows size to their real content, the page scrolls only if
+      it has to.
+
+- [ ] **2.4 On-device: claim flow** — claiming a pending achievement
+      actually grants the coins/gems and flips the card to claimed; the
+      main menu pip appears/disappears at the right times.
+- [ ] **2.5 On-device: overflow fix** — SHOP and CHARACTER UPGRADES no
+      longer overflow on the reporting friend's device (or any short
+      screen), and don't feel awkward now that they *can* scroll (most
+      screens shouldn't need to, in practice).
+
+---
+
+## Phase 3 — New font, torch functionality, last-character memory, in-round level
+
+*Goal: swap the app font; make torches a real limited-use item instead of
+pure scenery; remember the last character played; show the player's level
+during a round.*
+
+- [x] **3.1 New font (DECISIONS D-009)** — `HomeVideo-Regular`/`-Bold`
+      replace `PixelFont`/`pixel.ttf` app-wide (`app.dart`'s
+      `ThemeData.fontFamily`); old font file deleted.
+- [x] **3.2 Torch heal + consume (DECISIONS D-009)** — `torchCount`
+      lowered 6 → 4; a torch now heals *only* the player (never enemies)
+      while they're within `torchHealRadiusPx`, and consumes itself (an
+      explosion VFX + SFX) once cumulative time-in-range hits
+      `torchConsumeDurationSec`. All 3 numbers are `GameConfig`-backed.
+- [x] **3.3 Last character remembered (DECISIONS D-009)** —
+      `LastCharacterState` persists the character id the instant ENTER
+      ARENA is pressed; Character Select jumps to it once, on open.
+- [x] **3.4 Level shown in-round (DECISIONS D-009)** — a new "Lv N" label
+      overlaid on the HP bar's own left edge.
+
+- [ ] **3.5 On-device: font** — `HomeVideo` actually renders everywhere
+      (menus, HUD, Flame overlays) and doesn't clip/overflow anywhere the
+      old font's metrics happened to fit better.
+- [ ] **3.6 On-device: torch** — the heal rate/radius and the 5-second
+      consume budget feel right, the explosion VFX+SFX read clearly, and
+      an enemy standing in the same radius is confirmed to get nothing.
+- [ ] **3.7 On-device: last character** — start a round as (say) the
+      Bruiser, return to Character Select, confirm it opens on the
+      Bruiser, not the Apprentice.
+- [ ] **3.8 On-device: level label** — "Lv N" is legible against the HP
+      bar underneath it at every level's digit count (1 vs. 20+).
+
+---
+
+## Phase 4 — Medieval palette, rounded buttons/panels, main menu gradient, projectile hit fix
+
+*Goal: real design feedback — buttons read too sharp, the palette doesn't
+feel medieval — plus a real gameplay VFX bug (a hit reads as vanishing
+short of the enemy).*
+
+- [x] **4.1 Medieval palette (DECISIONS D-010)** — `ArenaColors` values
+      replaced app-wide (gold accent, oxblood danger, copper warning,
+      parchment text, warm near-black neutrals); every field kept its
+      name/role, so nothing outside `constants.dart` changed.
+- [x] **4.2 Rounded buttons + panels (DECISIONS D-010)** — `PixelButton`
+      redesigned (rounded corners, soft shadow, subtle gradient fill);
+      every other bordered card/badge app-wide (Shop/Character Upgrades
+      rows, Character Select's summary panels, Achievements cards,
+      SkillIcon, tutorial concept icons, the LevelUp card + its flash +
+      its tag) picked up the same shared corner radius.
+- [x] **4.3 Main menu gradient (DECISIONS D-010)** — `splash_bg.png`
+      removed from the main menu itself (stays as the native launch
+      screen, untouched); a black/gray/muted-red gradient background,
+      plus a restored text title now that the photo isn't there to carry
+      it.
+- [x] **4.4 Projectile hit VFX fix (DECISIONS D-010)** — the main
+      straight-line bolt's hit spark now spawns at the target's own
+      position, not the bolt's — matching every other attack in the
+      project, which already did this. Fixes "disappears at bounding
+      box" without touching collision timing.
+
+- [ ] **4.5 On-device: palette** — the new colors actually read as
+      medieval (not just "different"), and every screen still has enough
+      contrast (gold-on-dark, parchment text) to stay readable.
+- [ ] **4.6 On-device: buttons/panels** — rounded corners don't clip text
+      or icons anywhere at real device text scale; the LevelUp card's
+      rounded corners + its flash pulse still look right together.
+- [ ] **4.7 On-device: main menu** — the gradient + restored title read
+      as an intentional design, not a placeholder; the native launch
+      screen (the photo) still shows correctly on a cold start.
+- [ ] **4.8 On-device: projectile hits** — a hit now visibly lands on the
+      enemy's body instead of the bolt seeming to vanish just short of it.
+
+### Real medieval UI kit art (DECISIONS D-011)
+
+- [x] **4.9 Real art for buttons/arrows/help** — `UI_medieval.png` (an
+      untracked, previously-unused asset) sliced into 3 sprites: a
+      glyph-free wood-plank swatch now backs `PixelButton` (nine-patch
+      `centerSlice` stretch, not a plain squash), a real "play" button
+      icon replaces `CarouselArrow`'s plain circle (flipped for "prev"),
+      and a real "?" button icon replaces the main menu help button's
+      custom-drawn circle+text.
+- [ ] **4.10 On-device: real art** — the stretched button texture doesn't
+      warp at real button widths; the flipped carousel arrow reads as
+      "prev," not upside-down/wrong; the help button's tap target still
+      feels right as a plain image.
+
+**Not done, explicitly out of scope this pass (see DECISIONS D-011):**
+the sheet's flat glyph set (gear/speaker/home — a real candidate for
+Settings' own icons later), the hanging scroll/sign panel (a strong fit
+for framing the main menu title, needs on-device centerSlice tuning),
+`HpBarComponent`'s Flame-canvas bar (a different kind of reskin than
+anything else here), and a handful of ambiguous unlabeled sprite
+fragments on the sheet.
+
+---
+
+## Phase 5 — Font reverted, text scale bumped
+
+*Goal: undo D-009's custom font outright ("horrendeous"), bump the
+overall text scale back up.*
+
+- [x] **5.1 Font reverted (DECISIONS D-012)** — no custom `fontFamily` at
+      all now; every `Text` falls back to the platform default.
+      `HomeVideo-Regular.ttf`/`HomeVideo-Bold.ttf` deleted, `pubspec.yaml`
+      entry commented out.
+- [x] **5.2 Text scale bumped (DECISIONS D-012)** — the global
+      `MediaQuery` text scaler `0.75` → `1.0` (D-080's shrink was tuned
+      specifically for the now-gone `PixelFont`/`HomeVideo`, no longer
+      applicable).
+- [x] **5.3 Character Select scroll fallback (DECISIONS D-012)** — the
+      bumped text size broke D-005's tight non-scrolling fit outright
+      (a real 78px overflow, caught by `flutter test`); wrapped in a
+      `SingleChildScrollView`, same fix D-008 already used for
+      SHOP/CHARACTER UPGRADES hitting the identical problem.
+
+- [ ] **5.4 On-device: font + size** — the platform default font actually
+      reads better than `HomeVideo`; the bumped size doesn't crowd any
+      screen; Character Select's now-scrollable page doesn't feel like a
+      regression on a screen tall enough to never need it.
+
+## Phase 6 — Button/arrow hitbox fixes
+
+*Goal: hitbox exactly matches visible button asset; arrow art fixed to
+its hitbox.*
+
+- [x] **6.1 PixelButton hitbox fix (DECISIONS D-013)** — `InkWell` now
+      wraps the full image+label `Stack`, not just the label; label
+      `Center`-ed in a full-width `SizedBox` that sizes the whole thing,
+      so image/label/hitbox can't drift apart.
+- [x] **6.2 CarouselArrow art/hitbox unified (DECISIONS D-013)** — image
+      wrapped in `SizedBox.expand` instead of its own width/height, so
+      it's forced to fill the same tight `_size` box the hitbox uses.
+- [ ] **6.3 On-device: button/arrow taps** — tap a `PixelButton` off to
+      its edges (not just dead-center on the label) and confirm it still
+      registers; confirm labels read as centered; confirm carousel
+      arrows still look/feel right.
+
+---
+
 ## Backlog (do not start without asking first)
 
 Kept here so ideas have somewhere to go that isn't the current sprint —

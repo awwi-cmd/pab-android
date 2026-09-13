@@ -237,6 +237,7 @@ class _ConceptIcon extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: ArenaColors.surface,
+        borderRadius: BorderRadius.circular(kPanelCornerRadiusPx), // D-010
         border: Border.all(color: ArenaColors.accent),
       ),
       child: Icon(icon, color: ArenaColors.textPrimary, size: 32),

@@ -101,10 +101,14 @@ class _ArenaAppState extends State<ArenaApp> with WidgetsBindingObserver {
       // not a text-heavy app, so a user's system font-scaling setting
       // stacking on top would just as easily break those layouts the
       // other way.
+      // DECISIONS D-012: was `0.75` (D-080, tuned specifically for the old
+      // PixelFont's own oversized metrics) -- back to `1.0` now that the
+      // font itself is gone, plus the developer's own separate "bump the
+      // size" ask on top of just reverting the shrink.
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(
           context,
-        ).copyWith(textScaler: const TextScaler.linear(0.75)),
+        ).copyWith(textScaler: const TextScaler.linear(1.0)),
         child: child!,
       ),
     );
@@ -115,12 +119,13 @@ final ThemeData _theme = ThemeData(
   useMaterial3: true,
   brightness: Brightness.dark,
   scaffoldBackgroundColor: ArenaColors.background,
-  // DECISIONS D-077: the game's main font, applied here rather than on
-  // each individual `TextStyle` -- every `Text` in the app inherits it for
-  // free (none of the existing `TextStyle`s set their own `fontFamily` or
-  // `inherit: false`, so `Text`'s own merge-with-ambient-default logic
-  // picks this up everywhere, menus and Flame overlays alike).
-  fontFamily: 'PixelFont',
+  // DECISIONS D-077/D-009/D-012: no custom `fontFamily` at all now --
+  // D-009's `HomeVideo` swap-in was reverted outright ("the font is
+  // horrendous... change it back to a normal one"), back to Flutter's own
+  // platform default (Roboto on Android) rather than a 3rd custom font.
+  // `FontWeight.bold` (used throughout, e.g. every `PixelButton` label)
+  // still resolves correctly -- the default font has its own bold face,
+  // nothing else needed to change.
   colorScheme: ColorScheme.fromSeed(
     seedColor: ArenaColors.accent,
     brightness: Brightness.dark,

@@ -5,35 +5,49 @@ import 'package:flutter/material.dart';
 const double kDesignWidth = 360;
 const double kDesignHeight = 800;
 
-/// App palette. Dark, pixel-friendly. Referenced everywhere so a look change
-/// is an edit here, not a hunt through the widget tree.
+/// App palette (DECISIONS D-010 — replaced a cool mint/navy palette that
+/// read as sleek sci-fi, out of place for a medieval game; "iron and gold
+/// by torchlight" now: warm near-black/charcoal neutrals, an antique-gold
+/// accent instead of mint, oxblood instead of pink-red, parchment-cream
+/// text instead of cool white). Referenced everywhere so a look change is
+/// an edit here, not a hunt through the widget tree — every name/role kept
+/// identical to the palette this replaced, so nothing else needed to
+/// change to pick this up.
 class ArenaColors {
   ArenaColors._();
 
-  static const background = Color(0xFF10121A);
-  static const surface = Color(0xFF1B1E2B);
-  static const surfaceAlt = Color(0xFF262B3D);
-  static const accent = Color(0xFF6CE0B8);
-  static const accentDim = Color(0xFF3E8C6E);
-  static const danger = Color(0xFFE0526C);
+  static const background = Color(0xFF14100D);
+  static const surface = Color(0xFF221C17);
+  static const surfaceAlt = Color(0xFF352C23);
+  static const accent = Color(0xFFC9A448);
+  static const accentDim = Color(0xFF8A6F32);
+  static const danger = Color(0xFF9C2F2A);
 
-  /// A warm amber, not `danger`'s bright red-pink (DECISIONS D-083,
-  /// developer's call: "get rid of that bright red for exclusives... a
-  /// little bit more warm, but still pricking players' attention") — the
-  /// LevelUp screen's EXCLUSIVE badge/stripe/warning (`arena_screen.dart`)
-  /// is the one user of this; `danger` itself is untouched everywhere else
-  /// it's used (God Mode's switch, the debug DIE button, ROUND OVER) —
-  /// those are genuinely "danger," exclusivity is more "notice this."
-  static const warning = Color(0xFFE0964B);
-  static const textPrimary = Color(0xFFEDEFF7);
-  static const textDim = Color(0xFF8B90A6);
-  static const locked = Color(0xFF3A3E4E);
+  /// A warm copper, not `danger`'s oxblood (DECISIONS D-083, developer's
+  /// call: "get rid of that bright red for exclusives... a little bit more
+  /// warm, but still pricking players' attention") — the LevelUp screen's
+  /// EXCLUSIVE badge/stripe/warning (`arena_screen.dart`) is the one user
+  /// of this; `danger` itself is untouched everywhere else it's used (God
+  /// Mode's switch, the debug DIE button, ROUND OVER) — those are
+  /// genuinely "danger," exclusivity is more "notice this."
+  static const warning = Color(0xFFB9722E);
+  static const textPrimary = Color(0xFFEBE0CC);
+  static const textDim = Color(0xFFA69884);
+  static const locked = Color(0xFF463B31);
 
   /// The XP bar's fill (DECISIONS D-091, "make xp bar yellow") — HP reuses
   /// [danger] (already read as "red" everywhere else it's used) rather than
-  /// a second near-duplicate color.
-  static const xp = Color(0xFFF2C94C);
+  /// a second near-duplicate color. Warmed toward gold alongside the rest
+  /// of the palette (D-010), not the old palette's cooler lemon-yellow.
+  static const xp = Color(0xFFD4AF3D);
 }
+
+/// Shared corner radius for every bordered panel/card app-wide (DECISIONS
+/// D-010, "the buttons are very sharp compared to the text" — the flat,
+/// zero-radius look was app-wide, not just `PixelButton`) — one number so
+/// every card/badge/button reads as the same design language instead of
+/// each screen picking its own rounding.
+const double kPanelCornerRadiusPx = 8;
 
 /// HUD bar layout (DECISIONS D-091) — HP and XP now both sit at the top of
 /// the screen, stacked, spanning its full width (was: a small fixed-size HP

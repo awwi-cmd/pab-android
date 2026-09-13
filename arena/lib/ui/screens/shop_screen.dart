@@ -15,12 +15,22 @@ import '../widgets/screen_scaffold.dart';
 /// forever after, distinct from the leveled coin dials on the UPGRADES
 /// screen.
 ///
-/// Paged like `CharacterUpgradesScreen` (DECISIONS D-070, "no scrolling, add 2 more
-/// pages of items") — a fixed, non-scrolling `PageView` over `kShopPages`,
-/// same `CarouselArrowRow`/`PageDots` carousel chrome, each page laying its
-/// rows out with `Expanded` rather than a scroll view so it can't overflow
-/// regardless of screen height. Same "load/save its own `MetaProgression`
-/// copy" pattern as `CharacterUpgradesScreen`.
+/// Paged like `CharacterUpgradesScreen` (DECISIONS D-070, "no scrolling, add
+/// 2 more pages of items") — a fixed `PageView` over `kShopPages`, same
+/// `CarouselArrowRow`/`PageDots` carousel chrome. Each page's own rows used
+/// to be laid out with `Expanded` (an equal, fixed share of the page's
+/// height each) specifically so nothing would ever need to scroll — DECISIONS
+/// D-008 found that broken on a real device ("most panels... BOTTOM
+/// OVERFLOWED BY 12/14 PIXELS"): a short row's content plus its own padding
+/// doesn't always fit inside its forced-equal `Expanded` slot on every real
+/// screen height, D-070's original assumption. Each page is a
+/// `SingleChildScrollView` now (same "can never overflow regardless of
+/// screen height" fix `_LevelUpOverlay`'s own card list already uses,
+/// DECISIONS D-058) — rows size to their own natural content instead of
+/// being forced to fill a fixed slot, and the page scrolls on the rare
+/// screen too short to show all 5 without it, rather than clipping/
+/// overflowing. Same "load/save its own `MetaProgression` copy" pattern as
+/// `CharacterUpgradesScreen`.
 class ShopScreen extends StatefulWidget {
   const ShopScreen({super.key});
 
@@ -151,9 +161,8 @@ class _WalletRow extends StatelessWidget {
   }
 }
 
-/// One page of `_ShopItemRow`s, each getting an equal share of the page's
-/// height via `Expanded` — same "no scroll view anywhere" shape as
-/// `CharacterUpgradesScreen`'s `_StatPage` (DECISIONS D-070).
+/// One scrollable page of `_ShopItemRow`s (DECISIONS D-008 — see this
+/// file's own class doc for why `Expanded` rows were replaced with this).
 class _ShopPage extends StatelessWidget {
   const _ShopPage({required this.items, required this.meta, required this.onBuy});
 
@@ -163,21 +172,14 @@ class _ShopPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
       child: Column(
         children: [
-          for (final item in items)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: _ShopItemRow(
-                  item: item,
-                  meta: meta,
-                  onBuy: () => onBuy(item),
-                ),
-              ),
-            ),
+          for (final item in items) ...[
+            _ShopItemRow(item: item, meta: meta, onBuy: () => onBuy(item)),
+            const SizedBox(height: 8),
+          ],
         ],
       ),
     );
@@ -204,10 +206,11 @@ class _ShopItemRow extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: ArenaColors.surface,
+        borderRadius: BorderRadius.circular(kPanelCornerRadiusPx), // D-010
         border: Border.all(color: ArenaColors.surfaceAlt),
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
@@ -220,12 +223,14 @@ class _ShopItemRow extends StatelessWidget {
               fontSize: 15,
             ),
           ),
+          const SizedBox(height: 4),
           Text(
             item.description,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: ArenaColors.textDim, fontSize: 11),
           ),
+          const SizedBox(height: 8),
           PixelButton(
             label: owned ? 'OWNED' : 'BUY — ${item.costGems} gems',
             enabled: !owned && affordable,

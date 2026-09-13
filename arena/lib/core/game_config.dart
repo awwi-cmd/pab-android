@@ -160,13 +160,38 @@ class GameConfig {
 
   // ---- worldObjects (game/components/torch_spawner.dart, vase_spawner.dart) ----
 
-  /// Max standing torches live at once (`TorchSpawner`).
-  int get torchCount => _i('worldObjects', 'torchCount', 6);
+  /// Max standing torches live at once (`TorchSpawner`). Lowered from 6 to
+  /// 4 (DECISIONS D-009, "spawn less torches") now that a torch is a real
+  /// limited-use heal, not just scenery — fewer make each one feel like a
+  /// find, not clutter.
+  int get torchCount => _i('worldObjects', 'torchCount', 4);
 
   /// Minimum distance between two torches — a candidate spawn point closer
   /// than this to an already-live torch is rejected and retried
   /// (`TorchSpawner`).
   double get torchMinSpacingPx => _d('worldObjects', 'torchMinSpacingPx', 220);
+
+  /// A torch heals the player (only the player — DECISIONS D-009, "give
+  /// them functionality so that standing in an area near them gives ONLY
+  /// the player... hp regen") while they're within this radius of it —
+  /// deliberately wider than `kTorchCollisionRadiusPx` (the solid-obstacle
+  /// push-out radius), so it's already in range the instant the player
+  /// walks up and rests against it, not a separate closer approach
+  /// (`TorchComponent`).
+  double get torchHealRadiusPx => _d('worldObjects', 'torchHealRadiusPx', 50);
+
+  /// Flat HP/sec while the player is in range — same additive-heal shape
+  /// `PlayerComponent.heal` already uses for potions, just continuous
+  /// instead of a one-shot.
+  double get torchHealPerSec => _d('worldObjects', 'torchHealPerSec', 8);
+
+  /// Total cumulative seconds the player can spend in range before the
+  /// torch is used up (`TorchComponent`, "player stays near, consumes and
+  /// then torch disappears") — counts time in range, not HP actually
+  /// healed, so it still runs out even if the player's already at full HP
+  /// and camps next to it.
+  double get torchConsumeDurationSec =>
+      _d('worldObjects', 'torchConsumeDurationSec', 5);
 
   /// Max gem vases live at once (`VaseSpawner`).
   int get vaseCount => _i('worldObjects', 'vaseCount', 4);

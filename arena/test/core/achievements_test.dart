@@ -68,4 +68,55 @@ void main() {
       expect(statValueOf(AchievementStat.lifetimeKills, const {}), 0);
     });
   });
+
+  group('anyAchievementPending (DECISIONS D-008)', () {
+    final zeroValues = buildStatValues(
+      lifetimeKills: 0,
+      lifetimeBossKills: 0,
+      lifetimeGemsCollected: 0,
+      lifetimeCoinsEarned: 0,
+      lifetimeChestsOpened: 0,
+      lifetimePotionsCollected: 0,
+      highestLevelReached: 1,
+      longestSurvivalTimeSec: 0,
+    );
+
+    test('false when nothing has met its threshold yet', () {
+      expect(anyAchievementPending(zeroValues, const {}), isFalse);
+    });
+
+    test('true once a threshold is met and not yet claimed', () {
+      final firstBlood = kAchievements.firstWhere(
+        (a) => a.id == 'first_blood',
+      );
+      final values = buildStatValues(
+        lifetimeKills: firstBlood.threshold.toInt(),
+        lifetimeBossKills: 0,
+        lifetimeGemsCollected: 0,
+        lifetimeCoinsEarned: 0,
+        lifetimeChestsOpened: 0,
+        lifetimePotionsCollected: 0,
+        highestLevelReached: 1,
+        longestSurvivalTimeSec: 0,
+      );
+      expect(anyAchievementPending(values, const {}), isTrue);
+    });
+
+    test('false again once every met achievement is already claimed', () {
+      final firstBlood = kAchievements.firstWhere(
+        (a) => a.id == 'first_blood',
+      );
+      final values = buildStatValues(
+        lifetimeKills: firstBlood.threshold.toInt(),
+        lifetimeBossKills: 0,
+        lifetimeGemsCollected: 0,
+        lifetimeCoinsEarned: 0,
+        lifetimeChestsOpened: 0,
+        lifetimePotionsCollected: 0,
+        highestLevelReached: 1,
+        longestSurvivalTimeSec: 0,
+      );
+      expect(anyAchievementPending(values, {'first_blood'}), isFalse);
+    });
+  });
 }

@@ -573,14 +573,22 @@ class MetaProgressionRepository {
   /// The single round-over write (DECISIONS D-091) — supersedes calling
   /// [addCoins]/[addGems]/[addLifetimeKills] separately for this call site
   /// (they stay available for any other future single-field bump): one
-  /// load, every lifetime counter updated in memory, achievements evaluated
-  /// and claimed against the *updated* totals (so a round that both earns
-  /// its 500th lifetime coin and its 10,000th claims both in the same
-  /// write), one save. Sequential in-memory updates, not concurrent
-  /// separate load-modify-saves — DECISIONS D-089 found that shape racing
-  /// itself and silently dropping updates; this method's whole point is to
-  /// not repeat that mistake for the new counters. Returns the achievements
-  /// newly claimed by this call, if a future UI wants to celebrate them.
+  /// load, every lifetime counter updated in memory, one save. Sequential
+  /// in-memory updates, not concurrent separate load-modify-saves —
+  /// DECISIONS D-089 found that shape racing itself and silently dropping
+  /// updates; this method's whole point is to not repeat that mistake for
+  /// the new counters.
+  ///
+  /// DECISIONS D-008: no longer auto-claims/auto-grants anything —
+  /// achievements are claimed by hand from the ACHIEVEMENTS screen
+  /// ([claimAchievement]) now, not the instant a threshold is crossed.
+  /// Still returns the achievements that just became eligible *this call*
+  /// (met before the round, unmet the round before it, still unclaimed) —
+  /// compares stat values from before this round's counters were applied
+  /// against after, not just "currently met," so calling this again next
+  /// round doesn't keep re-reporting the same still-unclaimed achievement
+  /// as "newly" anything. A future UI (a toast, the main menu's pip badge)
+  /// can use this to know something just became claimable.
   Future<List<Achievement>> recordRoundEnd({
     required int coins,
     required int gems,
@@ -592,6 +600,17 @@ class MetaProgressionRepository {
     required double survivalTimeSec,
   }) async {
     final current = await load();
+    final beforeValues = buildStatValues(
+      lifetimeKills: current.lifetimeKills,
+      lifetimeBossKills: current.lifetimeBossKills,
+      lifetimeGemsCollected: current.lifetimeGemsCollected,
+      lifetimeCoinsEarned: current.lifetimeCoinsEarned,
+      lifetimeChestsOpened: current.lifetimeChestsOpened,
+      lifetimePotionsCollected: current.lifetimePotionsCollected,
+      highestLevelReached: current.highestLevelReached,
+      longestSurvivalTimeSec: current.longestSurvivalTimeSec,
+    );
+
     if (coins > 0) {
       current.coins += coins;
       current.lifetimeCoinsEarned += coins;
@@ -613,7 +632,7 @@ class MetaProgressionRepository {
       current.longestSurvivalTimeSec = survivalTimeSec;
     }
 
-    final statValues = buildStatValues(
+    final afterValues = buildStatValues(
       lifetimeKills: current.lifetimeKills,
       lifetimeBossKills: current.lifetimeBossKills,
       lifetimeGemsCollected: current.lifetimeGemsCollected,
@@ -624,22 +643,61 @@ class MetaProgressionRepository {
       longestSurvivalTimeSec: current.longestSurvivalTimeSec,
     );
 
-    final newlyUnlocked = <Achievement>[];
-    for (final achievement in kAchievements) {
-      if (current.claimedAchievementIds.contains(achievement.id)) continue;
-      if (!isAchievementMet(achievement, statValues)) continue;
-      current.claimedAchievementIds.add(achievement.id);
-      switch (achievement.reward) {
-        case AchievementReward.coins:
-          current.coins += achievement.rewardAmount;
-        case AchievementReward.gems:
-          current.gems += achievement.rewardAmount;
-      }
-      newlyUnlocked.add(achievement);
-    }
+    final newlyEligible = <Achievement>[
+      for (final achievement in kAchievements)
+        if (!current.claimedAchievementIds.contains(achievement.id) &&
+            !isAchievementMet(achievement, beforeValues) &&
+            isAchievementMet(achievement, afterValues))
+          achievement,
+    ];
 
     await save(current);
-    return newlyUnlocked;
+    return newlyEligible;
+  }
+
+  /// Claims [achievementId]'s reward if it's currently eligible (its stat
+  /// threshold met) and not already claimed (DECISIONS D-008 — the player
+  /// claims each achievement by hand from the ACHIEVEMENTS screen now, this
+  /// is its only entry point). Returns whether the claim actually went
+  /// through, same "caller decides whether to bother re-rendering/reloading"
+  /// shape [buy]/[buyFor]/[buyItem] already use. Re-checks eligibility
+  /// itself against a fresh `load()` rather than trusting the caller's own
+  /// copy — same "read-modify-write against whatever's currently saved"
+  /// reasoning [addCoins] already documents.
+  Future<bool> claimAchievement(String achievementId) async {
+    final current = await load();
+    if (current.claimedAchievementIds.contains(achievementId)) return false;
+
+    Achievement? achievement;
+    for (final candidate in kAchievements) {
+      if (candidate.id == achievementId) {
+        achievement = candidate;
+        break;
+      }
+    }
+    if (achievement == null) return false;
+
+    final statValues = buildStatValues(
+      lifetimeKills: current.lifetimeKills,
+      lifetimeBossKills: current.lifetimeBossKills,
+      lifetimeGemsCollected: current.lifetimeGemsCollected,
+      lifetimeCoinsEarned: current.lifetimeCoinsEarned,
+      lifetimeChestsOpened: current.lifetimeChestsOpened,
+      lifetimePotionsCollected: current.lifetimePotionsCollected,
+      highestLevelReached: current.highestLevelReached,
+      longestSurvivalTimeSec: current.longestSurvivalTimeSec,
+    );
+    if (!isAchievementMet(achievement, statValues)) return false;
+
+    current.claimedAchievementIds.add(achievementId);
+    switch (achievement.reward) {
+      case AchievementReward.coins:
+        current.coins += achievement.rewardAmount;
+      case AchievementReward.gems:
+        current.gems += achievement.rewardAmount;
+    }
+    await save(current);
+    return true;
   }
 
   /// Debug-only direct wallet edits (Settings' DEBUG section, DECISIONS

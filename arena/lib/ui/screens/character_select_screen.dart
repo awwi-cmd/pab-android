@@ -3,6 +3,7 @@ import 'package:flame/widgets.dart' show SpriteAnimationWidget;
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
+import '../../core/last_character.dart';
 import '../../core/meta_progression.dart';
 import '../../core/shop.dart';
 import '../../core/stats.dart';
@@ -52,6 +53,7 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
   void initState() {
     super.initState();
     _loadMeta();
+    _jumpToLastCharacter();
   }
 
   @override
@@ -64,6 +66,23 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
     final meta = await MetaProgressionRepository().load();
     if (!mounted) return;
     setState(() => _meta = meta);
+  }
+
+  /// DECISIONS D-009 ("save last character played for next round") — a
+  /// one-time jump on the very first frame this screen exists, not part of
+  /// [_loadMeta] (which also re-runs every time we come back from SHOP/
+  /// CHARACTER UPGRADES/the arena — re-jumping on every one of those would
+  /// yank the player back to their last-*played* character even while
+  /// they're mid-swipe looking at a different one).
+  Future<void> _jumpToLastCharacter() async {
+    final lastId = await LastCharacterState.load();
+    if (!mounted || lastId == null) return;
+    final index = kCharacters.indexWhere((c) => c.id == lastId);
+    if (index < 0) return; // an unknown/removed id -- fall back to slot 0
+    setState(() => _pageIndex = index);
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(index);
+    }
   }
 
   static const _pageAnimDuration = Duration(milliseconds: 250);
@@ -159,8 +178,14 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
               itemBuilder: (context, i) => _CharacterPage(
                 character: kCharacters[i],
                 meta: meta ?? MetaProgression(),
-                onEnterArena: () => Navigator.of(context)
-                    .pushNamed(ArenaScreen.route, arguments: kCharacters[i]),
+                onEnterArena: () {
+                  // Fire-and-forget, same "nothing on screen is waiting on
+                  // this write landing" reasoning ArenaGame's own round-end
+                  // persistence already uses (DECISIONS D-009).
+                  LastCharacterState.save(kCharacters[i].id);
+                  Navigator.of(context)
+                      .pushNamed(ArenaScreen.route, arguments: kCharacters[i]);
+                },
                 onViewShopBonuses: _openBonusesShop,
               ),
             ),
@@ -271,18 +296,18 @@ class _CharacterPage extends StatelessWidget {
       intellect: stats.intellect + levels.intellect,
     );
     // DECISIONS D-005 ("make sure there is no scrolling in character
-    // select"): a plain, non-scrolling `Column` — every gap/size below was
-    // tightened from the original scrolling layout's numbers specifically
-    // so the whole page (portrait, name/descriptor, 4 bars, the HP/DMG
-    // line, ENTER ARENA/locked panel, and both summary panels) fits inside
-    // the fixed height `PageView` actually gives this page without ever
-    // needing `SingleChildScrollView`. First-guess sizes, like everything
-    // else in this project — needs an on-device check on a real small
-    // screen, not just the 800x600 test harness.
-    return Padding(
+    // select") tried a plain non-scrolling `Column` sized to fit the
+    // then-current text scale exactly. DECISIONS D-012 ("bump the [text]
+    // size") broke that fit outright -- text ~33% bigger doesn't fit the
+    // same tight slot no matter how the spacing is tuned. Same fix D-008
+    // already reached for when SHOP/CHARACTER UPGRADES hit this identical
+    // problem: a `SingleChildScrollView` safety net. Most screens still
+    // won't need to actually scroll; the ones that do, now can, instead of
+    // overflowing.
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
             height: 84,
@@ -295,6 +320,7 @@ class _CharacterPage extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 8),
           Text(
             character.name,
             style: const TextStyle(
@@ -303,6 +329,7 @@ class _CharacterPage extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
+          const SizedBox(height: 4),
           Text(
             character.descriptor,
             textAlign: TextAlign.center,
@@ -310,6 +337,7 @@ class _CharacterPage extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: ArenaColors.textDim, fontSize: 12),
           ),
+          const SizedBox(height: 12),
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -349,6 +377,7 @@ class _CharacterPage extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 10),
           Text(
             'HP ${effectiveStats.maxHp.round()} · '
             'DMG ${effectiveStats.damagePerHit.round()} · '
@@ -361,16 +390,19 @@ class _CharacterPage extends StatelessWidget {
               fontSize: 12,
             ),
           ),
+          const SizedBox(height: 16),
           if (unlocked)
             PixelButton(label: 'ENTER ARENA', onPressed: onEnterArena)
           else
             _LockedPanel(character: character, lifetimeKills: lifetimeKills),
+          const SizedBox(height: 12),
           // DECISIONS D-003 ("below the ARENA, add a panel for Stat
           // Upgrades: and one for Shop Bonuses:") -- Stat Upgrades is this
           // character's own (every dial is per-character now); Shop
           // Bonuses is global -- same purchases regardless of which
           // character's page this is.
           _StatUpgradesPanel(character: character, meta: meta),
+          const SizedBox(height: 8),
           _ShopBonusesPanel(meta: meta, onViewAll: onViewShopBonuses),
         ],
       ),
@@ -427,6 +459,7 @@ class _SummaryPanel extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: ArenaColors.surface,
+        borderRadius: BorderRadius.circular(kPanelCornerRadiusPx), // D-010
         border: Border.all(color: ArenaColors.surfaceAlt),
       ),
       child: Column(

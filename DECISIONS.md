@@ -477,6 +477,414 @@ LevelUp overlay exists, so this is unverified until a real on-device pass.
 
 ---
 
+## D-008 — Claimable achievements + a main-menu pip; a real SHOP/CHARACTER UPGRADES overflow fix
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Developer: "1. Make achievements claimable, put them on
+pending and make user have to claim them by himself in the achievments
+menu. 2. Have a PIP on achievements button in main menu when anything is
+pending to claim. 3. Gave my game to a friend to play and most panels in
+the game in shop upgrades and character upgrades are BOTTOM OVERFLOWED BY
+12 14 (SHOP & UPGRADES) or 20 (STAT UPGRADES)."
+
+**Decision — claimable achievements:**
+- `MetaProgressionRepository.recordRoundEnd` no longer auto-claims/auto-
+  grants anything the instant a threshold is crossed (the original D-091
+  behavior) — it only updates the lifetime counters now. It still returns
+  a `List<Achievement>`, but the meaning changed: achievements that just
+  became eligible *this call* (met after this round's counters were
+  applied, unmet before them, still unclaimed) — computed by snapshotting
+  `buildStatValues` both before and after applying the round's deltas, so
+  calling it again next round doesn't keep re-reporting an
+  already-eligible-but-still-unclaimed achievement as "newly" anything.
+  Nothing in the app currently consumes this return value (the one call
+  site, `ArenaGame._persistRoundRewards`, always discarded it) — kept
+  correct anyway for a future toast/notification to use.
+- A new `MetaProgressionRepository.claimAchievement(id)` is the only way a
+  reward is actually granted now — re-validates eligibility itself against
+  a fresh `load()` (same "don't trust the caller's possibly-stale copy"
+  shape `addCoins` already documents), refuses an already-claimed id, an
+  id that isn't actually eligible yet, or an unknown id, and only then
+  adds to `claimedAchievementIds` and grants the coins/gems.
+- `AchievementsScreen`'s cards are 3-state now (was binary claimed/not):
+  locked (below threshold, unchanged dimmed look), **pending** (threshold
+  met, not claimed — reads like claimed visually, but with a CLAIM button
+  instead of the checkmark, wired to `claimAchievement` then a full
+  reload), claimed (unchanged checkmark look).
+- A new pure helper, `achievements.dart`'s `anyAchievementPending`, answers
+  "is there anything to claim" off plain `statValues`/`claimedIds` —
+  keeps this file's deliberate zero-import-of-`meta_progression.dart` rule
+  (see its own file-level doc comment) intact for the main menu's own
+  check.
+- `MainMenuScreen` loads a `MetaProgression` once at boot and again every
+  time it returns from START or ACHIEVEMENTS (a round might cross a new
+  threshold; claiming one clears its own pip) and shows a small solid red
+  `_PendingPip` dot on the ACHIEVEMENTS button (`Positioned`, only built
+  at all while something's pending) when `anyAchievementPending` is true.
+
+**Decision — the overflow bug:** `ShopScreen`'s `_ShopPage` and
+`CharacterUpgradesScreen`'s `_StatPage` both used to lay their rows out
+with `Expanded` — an equal, fixed share of the page's height per row,
+specifically so nothing would ever need to scroll (DECISIONS D-067/D-070,
+"must not allow scrolling"). A friend's real device proved that
+assumption wrong: a row's actual content plus its own padding doesn't
+reliably fit inside its forced-equal slot on every real screen height.
+Both pages are `SingleChildScrollView`s now — the same "can never overflow
+regardless of screen height" fix D-058's chest reveal already established
+for exactly this class of bug (a card/row whose real content might not
+fit a fixed box). Not a reversal of D-005 (Character Select stays a
+non-scrolling `Column` — that page's content was actually verified to fit
+once tightened; this is a different pair of screens whose content
+provably doesn't). Each row lost its `Expanded` wrapper and
+`mainAxisAlignment: spaceBetween` (no longer forced to fill an exact
+slot) in favor of `mainAxisSize: min` with small explicit gaps between
+its label/description/button — rows size to their own natural content,
+and the page only scrolls on a screen too
+short to show every row without it.
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass.
+`meta_progression_test.dart`'s `recordRoundEnd` group was rewritten for
+the new eligible-not-claimed semantics, plus a new `claimAchievement`
+group; `achievements_test.dart` gained an `anyAchievementPending` group.
+Not yet verified on-device: the claim flow's coins/gems actually land and
+the pip appears/clears at the right times; and — the actual point of this
+fix — that SHOP/CHARACTER UPGRADES genuinely no longer overflow on the
+reporting friend's device.
+
+---
+
+## D-009 — New app font; torches actually do something; last character remembered; level shown in-round
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Developer added `HomeVideo-Regular`/`HomeVideo-Bold` (otf +
+ttf) and asked: "replace it for the main one in the game." Plus: "Spawn
+less torches, give them functionality so that standing in an area near
+them gives ONLY the player (not enemies) hp regen. Player stays near,
+consumes and then torch disappears with an explosion vfx & sounds." Plus:
+"save last character played for next round." Plus: "level is not shown on
+screen at all during round."
+
+**Decision — font:** `pubspec.yaml`'s font family swapped from
+`PixelFont`/`pixel.ttf` (D-077) to `HomeVideo`, registering both weights
+(`HomeVideo-Regular.ttf` default, `HomeVideo-Bold.ttf` at `weight: 700` so
+every existing `FontWeight.bold` in the app — every `PixelButton` label
+included — picks it up automatically, no per-`TextStyle` changes needed).
+`app.dart`'s `ThemeData.fontFamily` is the one line that actually changed;
+same "applied once, every `Text` inherits it" shape D-077 already
+established. `pixel.ttf` deleted outright (a real replace, not an unused
+leftover) — the `.otf` copies of the new font the developer also dropped
+in `assets/fonts/` are unused (only the `.ttf`s are registered, same
+format `pixel.ttf` used) but left alone since nothing asked for them to be
+removed.
+
+**Decision — torches now do something:** `GameConfig.torchCount`'s
+default lowered 6 → 4 ("spawn less torches") — now that a torch is a real
+limited-use item, not just scenery, fewer make each one feel like a find.
+`TorchComponent` gained real per-frame logic (it had none before — purely
+decorative): while the player (checked via `player.isAlive`, and *only*
+the player — enemies never call any of this) is within a new
+`GameConfig.torchHealRadiusPx` (50, deliberately wider than
+`kTorchCollisionRadiusPx`'s solid-obstacle push-out radius, so healing is
+already active the instant the player rests against it, not a separate
+closer approach), it heals `GameConfig.torchHealPerSec` (8) every second
+via the same `PlayerComponent.heal` potions already use. A torch is
+consumed once cumulative *time in range* (not HP actually healed — it
+still runs out at full HP) reaches `GameConfig.torchConsumeDurationSec`
+(5) — `ArenaGame.consumeTorch` removes it and calls
+`spawnExplosionEffect`, which bundles both the VFX *and* the SFX in one
+call ("an explosion vfx & sounds," plural — unlike the vase's own
+explosion VFX, D-007, which deliberately used the bare `spawnEffect` to
+skip the sound; here both were asked for, so the full helper is the right
+one). All 3 new numbers are `GameConfig`-backed, same `worldObjects`
+section as the rest of the torch/vase tuning knobs.
+
+**Decision — last character remembered:** a new `LastCharacterState`
+(`core/last_character.dart`), same "one persisted value, one key" shape
+`TutorialState` already established for its own single flag — no reason
+for a heavier repository class for one string. `CharacterSelectScreen`
+saves the tapped character's id the instant ENTER ARENA is pressed
+(fire-and-forget, same reasoning `ArenaGame`'s own round-end persistence
+already documents), and reads it back exactly once, in `initState`
+(`_jumpToLastCharacter`, deliberately *not* folded into `_loadMeta` —
+that method re-runs every time the screen regains focus from SHOP/
+CHARACTER UPGRADES/the arena, and re-jumping the carousel on every one of
+those would yank the player back to their last-*played* character even
+while they're mid-swipe looking at a different one).
+
+**Decision — level shown in-round:** a new `LevelTextComponent`
+(`game/components/level_text.dart`) — a bare Flame `TextComponent`
+showing `Lv ${game.level}`, re-set every `update()` (cheap: one short
+string, not a hot per-entity loop, so no need to diff against the last
+value first). Overlaid on the HP bar's own left edge rather than carving
+out a new HUD row — added to the HUD right after `HpBarComponent` in
+`resetRound`, so same-priority (`ArenaPriority.hud`) draw order puts it on
+top of the bar's fill, not underneath it.
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass.
+None of the 4 changes here have any test coverage of their own (the font
+swap is a pure asset/theme change with nothing to unit-test; torch/level
+HUD are Flame-world visuals, CLAUDE.md §4.11; last-character is a tiny
+SharedPreferences wrapper exercised the same way `TutorialState` already
+is — by hand, not a dedicated test file) — all 4 need an on-device pass:
+the new font actually renders everywhere, a torch's heal/consume timing
+and its explosion feel right, Character Select opens on the last
+character played after a round, and "Lv N" reads clearly against the HP
+bar underneath it.
+
+---
+
+## D-010 — Medieval palette + rounded buttons/panels; main menu gradient; a real projectile-hit VFX fix
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Developer feedback: "the buttons are very sharp compared to
+the text. And the color palette of the game seems out of place with this
+medieval type game. Let's re-think design wise all the buttons and color
+palettes in the game. Remove the main menu background and add a black
+and gray red gradient. Keep the photo we have as a loading screen for
+when we first launch the game." Plus: "main projectiles dissappears at
+bounding box -- either hitmarker on enemy to show hit, or make projectile
+travel to enemy center."
+
+**Decision — palette:** `ArenaColors` replaced wholesale — every field
+kept its exact name/role (so nothing outside `constants.dart` needed to
+change), only the hex values moved from a cool mint/navy/pink palette to
+a warm "iron and gold by torchlight" one: `background`/`surface`/
+`surfaceAlt` are near-black warm charcoals (was cool blue-black);
+`accent` is an antique gold (was mint-teal — the single biggest tonal
+shift, since `accent` borders/highlights nearly every screen in the app);
+`danger` is a deeper oxblood (was a bright pink-red); `warning` is a
+warm copper (was a cooler amber); `textPrimary`/`textDim` are parchment-
+cream/warm-gray (was cool white/blue-gray). `xp` warmed slightly toward
+gold alongside the rest, same reasoning.
+
+**Decision — buttons + panels:** `PixelButton` redesigned — rounded
+corners (`kPanelCornerRadiusPx`, a new shared constant, 8px), a soft drop
+shadow, and a subtle top-to-bottom gradient fill (via a nested `Ink`
+under `Material`, whose own `shape`/`color` stay transparent so the
+gradient — not a flat color — reads as the bevel) instead of the old flat
+zero-radius rectangle. Every other bordered card/badge app-wide picked up
+the same `kPanelCornerRadiusPx` too (`ShopScreen`'s item rows,
+`CharacterUpgradesScreen`'s stat rows, Character Select's summary panels,
+`AchievementsScreen`'s cards, `SkillIcon`'s badge, the tutorial's concept
+icons, the LevelUp card's nested double-border + its flash-pulse overlay
++ its `_Tag` badge) — "re-think... all the buttons and color palettes"
+read as the whole app's flat-rectangle language, not just the one
+button widget. The LevelUp card specifically needed `Clip.antiAlias` in
+two places (the outer `Material`, the inner bordered `Container` around
+the left accent stripe) since rounding a card that has a full-height
+solid color strip glued to its edge would otherwise let that strip poke
+out past the new rounded corner.
+
+**Decision — main menu:** `splash_bg.png`'s two jobs split apart — the
+native Android launch screen (a separate resource, untouched) still shows
+the real photo instantly on cold start ("keep the photo... as a loading
+screen"), but `MainMenuScreen`'s own Flutter background is a plain dark
+gradient now (`_backgroundGradient`: near-black → warm gray → a muted,
+*desaturated* dark red — deliberately not `ArenaColors.danger` at full
+saturation, which would read as a bold red block rather than "black and
+gray" with just a red undertone). Since the photo used to bake in the
+game's entire title lockup (D-084 removed the old plain `Text` title for
+exactly that reason) and is now gone from this screen entirely, a text
+title ("PIXEL ARENA BRAWL," accent gold) is back — otherwise the menu
+would show no name anywhere, a real gap the literal ask didn't mention
+but the photo's removal made unavoidable.
+
+**Decision — projectile hit VFX:** picked the developer's first offered
+option ("hitmarker on enemy to show hit") over the second ("make
+projectile travel to enemy center") — lower risk, and it turned out to
+already be this project's own established convention everywhere *except*
+the one component the bug report was about. `ProjectileComponent`
+(`projectile.dart`, the Apprentice/Warden/boss/mirror's shared straight-
+line bolt) was the only attack in the whole project still passing its
+*own* position to `ArenaGame.onProjectileHit`'s spark VFX at the moment
+of a hit — every other attack (Knife, Spiral Fire, Aura, Warden Slam) was
+already passing the *target's* position. Since a hit is detected the
+instant the two bounding circles first touch (the target's hitbox edge,
+not its visible center), the bolt's own position at that instant reads as
+"vanished in open air" just short of the enemy — moving the spark to
+`target.position`/`player.position` (the 2 call sites in `projectile.dart`)
+fixes exactly that, with no change to collision timing, hit detection, or
+any other gameplay math. Rejected the "travel to center" alternative as
+needlessly invasive: it would mean restructuring every projectile variant
+from "detect hit → resolve → remove, all in one frame" into a two-phase
+state machine (hit detected, keep animating toward the target for N more
+frames, *then* remove), touching `ProjectileComponent`, `KnifeComponent`,
+`SpiralFireProjectile`, and the boss/mirror bolts that reuse
+`ProjectileComponent` — for a problem the simpler, already-proven-in-this-
+codebase fix fully addresses.
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass.
+None of this has dedicated test coverage (pure visual/theme changes, plus
+one Flame-world VFX position tweak — CLAUDE.md §4.11) — needs a real
+on-device pass: the new palette actually reads as "medieval" rather than
+just "different," the rounded buttons/panels don't clip any text at
+small sizes, the main menu gradient + restored title look intentional
+(not like a placeholder), and a hit now visibly lands on the enemy's body
+instead of appearing to stop short of it.
+
+---
+
+## D-011 — Real medieval UI kit art for buttons/carousel arrows/help button
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Mid-D-010, discovered `arena/assets/images/ui/UI_medieval.png`
+sitting untracked and unused (added in an earlier session, never
+mentioned in any request) — a real 256×128, 16×16-cell medieval UI sprite
+kit: wood/stone icon buttons (play/pause/plus/check/x/minus/question/
+dollar, each in ~4 warm color variants), candles, daggers/swords, a
+glyph-free wood-plank swatch, a hanging wood scroll/sign panel, an HP-
+bar-styled frame, and a set of flat orange glyphs (gear, speaker on/off,
+home, etc.). Asked directly whether to use it instead of D-010's
+code-only redesign — "yes, slice and use the real sprite sheet."
+
+**Decision — what got used, and why not more:** the sheet is an
+*icon*-button kit (square, one glyph baked into each cell) — no blank
+button texture exists for a wide text-label button like `PixelButton`
+*except* the wood-plank swatch (cols14-15/rows2-3, 32×32, the one
+glyph-free cell in the whole sheet). Scope kept to 3 sliced sprites and 3
+call sites, not a full app-wide icon audit:
+- `wood_panel_tile.png` (the glyph-free swatch) → `PixelButton`'s
+  background, via `Image.asset`'s `centerSlice` (Flutter's built-in
+  nine-patch support) rather than a plain `BoxFit.fill` stretch —
+  `centerSlice` keeps the swatch's own corner rivets a fixed size while
+  only the middle band stretches, so a wide button doesn't visibly warp
+  them into ellipses the way a uniform stretch would. Disabled state
+  reuses the same texture (`BlendMode.saturation` blended against grey —
+  the standard "desaturate an image" trick — plus a flat opacity dim),
+  not a second asset.
+- `button_play.png` (a right-pointing triangle already drawn as its own
+  wood button) → `CarouselArrow`'s "next"; "prev" is the same asset
+  horizontally flipped (`Transform.flip`), not a second mirrored sprite.
+  Replaces a plain semi-transparent circle + Material `Icon` — that
+  widget's own doc comment used to say "no dedicated pixel-art asset for
+  this exists yet"; now one does.
+- `button_question.png` → the main menu's "?" button, replacing a
+  custom-drawn circle + `Text('?')`.
+- **Not used**: the flat glyph set (gear/speaker/home/etc. — a real
+  future win for Settings' own icons, but a separate, larger pass, not
+  bundled into this one), the hanging scroll/sign panel (a strong fit for
+  framing the main menu title, but centerSlice-stretching a multi-element
+  bordered panel convincingly needs real on-device tuning this session
+  can't do), the HP-bar frame (`HpBarComponent` is a Flame canvas-drawn
+  bar, not a Flutter widget — reskinning it is a different kind of change
+  than anything else in this decision), the candles/daggers (no current
+  UI slot calls for them), and the ambiguous curled hand/claw-shaped
+  fragment cells (purpose genuinely unclear from the sheet alone — safer
+  to leave unused than guess).
+- The 3 sprites were sliced once via a local Python/PIL script (not a
+  runtime crop-from-sheet widget like `SpriteCellIcon`/`_SpriteCell`
+  elsewhere in this project use) into their own small PNG files under the
+  already-pubspec-declared `assets/images/ui/` folder — chosen
+  specifically so `centerSlice` could be used at all (it's a property of
+  `Image`/`DecorationImage` operating on the file it's given directly; it
+  can't apply through this project's usual OverflowBox-crop-a-sheet
+  trick, which hands `Image.asset` the *whole* sheet stretched, not the
+  cropped piece alone).
+
+**Test fix:** `test/widget_test.dart`'s "The '?' button reopens the
+tutorial manually" used `find.text('?')` — broken outright once that
+became an `Image`, not a `Text`. Fixed with a stable `Key('helpButton')`
+on `_HelpButton` instead (needed its own `package:flutter/widgets.dart`
+import in the test file, which had never needed a direct Flutter import
+before this).
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass.
+No test coverage for how any of the 3 sprites actually *look* rendered
+(pure visual, CLAUDE.md §4.11) — needs a real on-device pass: the
+stretched button texture doesn't warp oddly at the actual button widths
+in this app, the flipped carousel arrow reads correctly as "prev," and
+the help button's hit target still feels right now that it's a plain
+image rather than a bordered circle.
+
+---
+
+## D-012 — Reverted the custom font outright; text scale bumped back up
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Developer, on-device with D-009's `HomeVideo` font: "The
+font is horrendeous, lets change it back to a normal one, and bump to
+size."
+
+**Decision:** `app.dart`'s `ThemeData.fontFamily` is gone outright — no
+custom family at all now, so every `Text` falls back to Flutter's own
+platform default (Roboto on Android, the only platform this project
+ships to, CLAUDE.md §2). Not a 3rd custom font swapped in; "a normal one"
+read as "the normal one," i.e. no custom font. `HomeVideo-Regular.ttf`/
+`HomeVideo-Bold.ttf` deleted, and its `pubspec.yaml` `fonts:` entry
+commented out rather than removed outright (same "leave a breadcrumb"
+treatment D-009 gave the old `PixelFont` entry's replacement) — matches
+D-009's own precedent of a full delete-not-just-stop-using for a
+genuinely rejected font.
+The global `MediaQuery` text scaler (`app.dart`'s `builder`) moved
+`0.75` → `1.0` — that `0.75` was D-080's own fix for `PixelFont`'s
+specific oversized metrics, which no longer applies now that font is
+gone; "bump to size" on top of just reverting the shrink landed on
+undoing it outright (back to platform-native scale) rather than picking
+a new arbitrary multiplier above `1.0` with nothing to anchor it to.
+
+**Consequence found immediately, fixed in the same pass:** bumping the
+scale ~33% broke `CharacterSelectScreen`'s D-005 "no scrolling, ever"
+layout — text that size no longer fits the tight non-scrolling `Column`
+D-005 tuned specifically for the old `0.75` scale, no matter how the
+spacing is adjusted (`flutter test` caught a real 78px `RenderFlex`
+overflow immediately, not a guess). Same fix D-008 already used for the
+identical problem on SHOP/CHARACTER UPGRADES: wrapped in a
+`SingleChildScrollView` instead of fighting for an exact fit that a
+future font-size change could just break again. D-005's own "never
+scroll" promise doesn't survive user-requested type-scale changes intact
+— a safety-net scroll is the more honest fix than re-tuning magic numbers
+every time text size changes.
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass.
+Needs an on-device pass: the platform default font actually reads
+better than `HomeVideo` did (should be uncontroversial — it's what every
+other Android app already uses), the bumped text size doesn't crowd any
+screen this session didn't touch, and Character Select's now-scrollable
+page doesn't feel like a regression on a screen tall enough that it
+never actually needs to scroll.
+
+---
+
+## D-013 — Button hitboxes matched to their asset; arrow art fixed to fill its own hitbox
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Developer: "Center the text on the buttons and make the
+hitbox of the buttons the exact same size of the button asset. Make the
+arrow key asset as big as the hitbox."
+
+**Decision:** `PixelButton` had a real bug from D-011's rewrite:
+`Material`/`InkWell` wrapped only the label `Padding`/`Text`, and a
+`Material`/`InkWell` with no explicit size shrink-wraps to its child's
+own intrinsic size — for a centered label that's just the tight bounds
+of the letters, not the full wood-panel width the background image
+(`Positioned.fill`, sized by the `Stack`'s *other*, non-`Positioned`
+child) actually rendered at. So the tap target was a small box hugging
+the text in the middle of a much bigger visible button. Fix: `InkWell`
+now wraps the whole `Stack` (image + label), and the label is
+`Center`-ed inside a full-width `SizedBox` — that `SizedBox` is what
+sizes the `Stack` (still the sole non-`Positioned` child), so the
+background image, the label's centering, and the `InkWell`'s hitbox all
+key off the exact same box now, structurally, not by coincidence.
+
+`CarouselArrow` didn't have the same bug — its outer `SizedBox` sets
+*both* width and height (`_size`), which are tight constraints Flutter's
+box protocol forces down through `Opacity`/`Material`/`InkWell`
+regardless of any child's own intrinsic size, so its hitbox was already
+pinned to `_size`. Still reworked it to the same "one source of truth"
+shape as `PixelButton` for consistency and to remove the last bit of
+independent sizing: the `Image` no longer declares its own
+width/height, it's wrapped in `SizedBox.expand` so it's forced to fill
+whatever box the tight outer `SizedBox` hands it — the art can't drift
+out of sync with the tappable area even if `_size` changes later.
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass
+(146 tests). Needs an on-device pass: tapping a `PixelButton` anywhere
+across its full width/height should register (not just dead-center on
+the label), and the label should read as visually centered rather than
+padding-positioned.
+
+---
+
 ## Open questions
 
 Carried forward from the pre-alpha archive — still genuinely open, not

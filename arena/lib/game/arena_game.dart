@@ -30,6 +30,7 @@ import 'components/defence_crystal.dart';
 import 'components/enemy.dart';
 import 'components/gem.dart';
 import 'components/hp_bar.dart';
+import 'components/level_text.dart';
 import 'components/mirror.dart';
 import 'components/player.dart';
 import 'components/potion.dart';
@@ -364,6 +365,9 @@ class ArenaGame extends FlameGame {
     // ArenaGame).
     character.attackBehavior.onEquipped(this);
     addToHud(HpBarComponent());
+    // DECISIONS D-009: added after the HP bar so it draws on top of the
+    // bar's own fill (same-priority components render in add order).
+    addToHud(LevelTextComponent());
     // DECISIONS D-091: stacked directly under the HP bar now, both full
     // width at the top -- was its own bottom-of-screen box (D-076).
     addToHud(XpBarComponent());
@@ -1072,6 +1076,20 @@ class ArenaGame extends FlameGame {
   void cullTorch(TorchComponent torch) {
     torches.remove(torch);
     torch.removeFromParent();
+  }
+
+  /// Called by [TorchComponent] itself once the player has spent
+  /// `GameConfig.torchConsumeDurationSec` total in its heal radius
+  /// (DECISIONS D-009, "player stays near, consumes and then torch
+  /// disappears with an explosion vfx & sounds") — unlike [cullTorch], this
+  /// is a real gameplay event, not silent cleanup, so it plays the same
+  /// explosion effect (VFX *and* SFX, `spawnExplosionEffect` bundles both)
+  /// every other "something used up/destroyed" moment in this project uses
+  /// (chest opening, a Skirmisher kill, a boss death).
+  void consumeTorch(TorchComponent torch) {
+    torches.remove(torch);
+    torch.removeFromParent();
+    spawnExplosionEffect(torch.position.clone());
   }
 
   /// Called by [VaseSpawner] on its own timer.

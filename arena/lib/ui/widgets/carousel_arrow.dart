@@ -11,9 +11,17 @@ enum ArrowDirection { left, right }
 /// exact same control, not two near-identical copies. A fixed row under the
 /// page content (below whatever the page's own "primary action" is), not
 /// floating over it — sits in the same thumb-reach band as the arena's own
-/// HUD controls. A small semi-transparent circle rather than a square
-/// panel, so it still reads as an overlay-style control. No dedicated
-/// pixel-art asset for this exists yet.
+/// HUD controls.
+///
+/// DECISIONS D-011: the real medieval UI kit's own "play" button
+/// (`assets/images/ui/button_play.png`, cropped from `UI_medieval.png`) —
+/// a right-pointing triangle already drawn as its own wood button, so
+/// "next" uses it as-is and "prev" just flips it horizontally
+/// (`Transform.flip`) rather than needing a second mirrored asset. Was a
+/// plain semi-transparent circle + Material `Icon` before this (no
+/// dedicated pixel-art asset existed yet); disabled state is a plain
+/// opacity dim, same language `_RewardBadge`/`_LockedPanel` etc. already
+/// use elsewhere for "greyed out until available."
 class CarouselArrow extends StatelessWidget {
   const CarouselArrow({
     super.key,
@@ -26,27 +34,39 @@ class CarouselArrow extends StatelessWidget {
   final bool enabled;
   final VoidCallback onPressed;
 
+  // +15% over the original 44/28 floating-button sizing (developer ask,
+  // still honored — the wood button art fills the same footprint).
+  static const _size = 51.0;
+
   @override
   Widget build(BuildContext context) {
-    final fg = enabled ? ArenaColors.textPrimary : ArenaColors.textDim;
-    // +15% over the original 44/28 floating-button sizing (developer ask).
+    // DECISIONS D-013 ("make the arrow asset as big as the hitbox"): the
+    // image no longer declares its own width/height -- `SizedBox.expand`
+    // forces it to fill whatever box the tight `_size` `SizedBox` below
+    // hands it, so the art and the tappable area are structurally the
+    // same size (one number, `_size`, instead of two call sites that
+    // merely happened to agree).
+    final icon = SizedBox.expand(
+      child: Image.asset(
+        'assets/images/ui/button_play.png',
+        fit: BoxFit.fill,
+        filterQuality: FilterQuality.none,
+      ),
+    );
     return SizedBox(
-      width: 51,
-      height: 51,
-      child: Material(
-        color: ArenaColors.surfaceAlt.withValues(alpha: enabled ? 0.55 : 0.3),
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: enabled ? withTapSfx(onPressed) : null,
-          child: Center(
-            child: Icon(
-              direction == ArrowDirection.left
-                  ? Icons.chevron_left
-                  : Icons.chevron_right,
-              color: fg,
-              size: 32,
-            ),
+      width: _size,
+      height: _size,
+      child: Opacity(
+        opacity: enabled ? 1.0 : 0.4,
+        child: Material(
+          type: MaterialType.transparency,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: enabled ? withTapSfx(onPressed) : null,
+            child: direction == ArrowDirection.left
+                ? Transform.flip(flipX: true, child: icon)
+                : icon,
           ),
         ),
       ),

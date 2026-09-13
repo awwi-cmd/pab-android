@@ -136,7 +136,10 @@ class ProjectileComponent extends SpriteAnimationComponent
         (size.x / 2 + player.size.x / 2);
     if (touching) {
       player.takeDamage(damage);
-      game.onProjectileHit(position.clone(), damage);
+      // DECISIONS D-010: the hit spark at the *player's* own center, not
+      // this bolt's current position (see `_checkDamageableHit`'s matching
+      // fix and its own doc comment for why).
+      game.onProjectileHit(player.position.clone(), damage);
       removeFromParent();
     }
   }
@@ -161,7 +164,17 @@ class ProjectileComponent extends SpriteAnimationComponent
       // remove `hit` from game.enemies, which must not happen mid-iteration.
       hit.applyKnockback(_direction, knockback);
       hit.takeDamage(damage);
-      game.onProjectileHit(position.clone(), damage);
+      // DECISIONS D-010 ("main projectiles disappears at bounding box...
+      // make it read as a real hit"): the spark VFX used to spawn at this
+      // bolt's own position -- the moment their bounding circles first
+      // touch, which is the *edge* of the target's hitbox, well short of
+      // its visible center, so the bolt looked like it vanished in open
+      // air just before reaching the enemy. Every other attack in this
+      // project (Knife, Spiral Fire, Aura, Warden Slam) already spawns
+      // this same spark at `target.position` — this was the one straggler
+      // still passing its own position. No collision/timing change, only
+      // where the existing hit-feedback VFX renders.
+      game.onProjectileHit(hit.position.clone(), damage);
       removeFromParent();
     }
   }

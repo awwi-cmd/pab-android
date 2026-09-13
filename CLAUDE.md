@@ -147,8 +147,8 @@ PixelArenaBrawl/               <- repo root, open this in your editor
     │   │   ├── vfx/vfx/                // shield/blood/fire/pixel-fire/sparkle/impact/explosion/
     │   │   │                            //   anima — 9x7 grid PNGs
     │   │   ├── consumables/            // gems/money/potions.png (5 rarity cols x N anim rows); coin-icon.png (15-frame single row)
-    │   │   ├── ui/                     // star-empty/star-full.png (kill counter), old currency-counter.png placeholder
-    │   │   ├── bg/                     // splash_bg.png — native launch screen + main menu background
+    │   │   ├── ui/                     // star-empty/star-full.png (kill counter), old currency-counter.png placeholder; UI_medieval.png (real medieval UI kit, D-011) + 3 sprites sliced from it (wood_panel_tile.png, button_play.png, button_question.png)
+    │   │   ├── bg/                     // splash_bg.png — native launch screen only now (D-010 removed it from the main menu itself, a gradient there instead)
     │   │   ├── cards/                  // real 52-card deck + 2 Jokers + backs, chest reveal draw
     │   │   └── scenes/                 // floor tile variants + border tile; torch-standing.png (8-frame flicker), gem-vase.png (16-frame shimmer)
     │   ├── audio/
@@ -157,9 +157,9 @@ PixelArenaBrawl/               <- repo root, open this in your editor
     │       └── game_config.json        // developer-editable build-time tuning knobs — economy/enemy-AI/character/progression/starting-audio
     └── lib/
         ├── main.dart               // awaits GameConfig.instance.load() before runApp
-        ├── app.dart                // MaterialApp, routes, theme; starts BgmController + SfxPlayer once; ThemeData.fontFamily = PixelFont, MediaQuery textScaler 0.75; WidgetsBindingObserver pauses/resumes BGM on app background/foreground
+        ├── app.dart                // MaterialApp, routes, theme; starts BgmController + SfxPlayer once; no custom fontFamily (D-012, reverted D-009's HomeVideo -- platform default now), MediaQuery textScaler 1.0 (D-012, was 0.75); WidgetsBindingObserver pauses/resumes BGM on app background/foreground
         ├── core/
-        │   ├── constants.dart      // design size, ArenaColors (incl. xp yellow, warning amber, danger red), layer priorities, render scales, kHudBar* shared HP/XP bar layout consts
+        │   ├── constants.dart      // design size, ArenaColors (D-010 medieval palette: gold accent, oxblood danger, copper warning, parchment text), kPanelCornerRadiusPx, layer priorities, render scales, kHudBar* shared HP/XP bar layout consts
         │   ├── game_config.dart    // GameConfig singleton — parses assets/config/game_config.json once at boot, typed getters with hardcoded fallbacks
         │   ├── stats.dart          // StatBlock + ALL derived-stat formulas, EnemyStats/BossStats (several fields GameConfig-backed)
         │   ├── settings.dart       // Settings model + SharedPreferences I/O (Settings.defaults.sfxVolume/musicVolume GameConfig-backed)
@@ -171,13 +171,14 @@ PixelArenaBrawl/               <- repo root, open this in your editor
         │   ├── sfx_player.dart     // app-wide singleton: every one-shot SFX (footsteps, damage, tap, projectile-shoot, level-up, chest-card select/chosen, explosion, death, pickup), pooled via AudioPool, PlayerMode.lowLatency
         │   ├── meta_progression.dart // MetaStat dials (STR/VIT/DEX/INT/CORRUPTION/HASTE/FORTUNE/RESOLVE/MAGNET/LUCK/REGEN/CRIT), the persistent coins+gems+lifetimeKills+ownedItemIds wallet, 6 more lifetime achievement counters, recordRoundEnd (one atomic round-over write incl. achievement grants)
         │   ├── achievements.dart   // Achievement/kAchievements (20 entries)/buildStatValues/isAchievementMet — zero imports of meta_progression.dart on purpose, avoids a 2-file cycle
+        │   ├── last_character.dart // one persisted string (CharacterDef.id) -- Character Select jumps to it on open (D-009)
         │   └── tutorial_state.dart // one persisted bool (hasSeenIntro) gating the first-boot tutorial
         ├── data/
         │   └── characters.dart     // CharacterDef list (kCharacters, a getter); unlockKillThreshold gates slots 2-4; base STR/VIT/DEX/INT GameConfig-backed
         ├── ui/
         │   ├── screens/
-        │   │   ├── main_menu_screen.dart       // Stateful: auto-pushes TutorialScreen on a fresh save, splash_bg.png full-bleed background, circular "?" button, ACHIEVEMENTS button between START/SETTINGS
-        │   │   ├── achievements_screen.dart     // scrollable read-only list of kAchievements w/ progress bars, dimmed until claimed — no claim button, rewards auto-grant at round-end
+        │   │   ├── main_menu_screen.dart       // Stateful: auto-pushes TutorialScreen on a fresh save, a black/gray/red gradient background (D-010, was splash_bg.png), a text title (restored since the photo's gone), circular "?" button, ACHIEVEMENTS button (pip badge, D-008) between START/SETTINGS
+        │   │   ├── achievements_screen.dart     // scrollable list of kAchievements w/ progress bars; locked/pending/claimed 3-state per card, a CLAIM button on pending ones (rewards no longer auto-grant at round-end)
         │   │   ├── tutorial_screen.dart         // 3-slide first-boot tutorial, same carousel chrome as other multi-page screens, built from real game assets
         │   │   ├── settings_screen.dart         // currency debug always shown; god mode/grant-level-up/end-round only when opened from pause; Music/SFX Volume live-drive their controllers
         │   │   ├── credits_screen.dart
@@ -185,7 +186,7 @@ PixelArenaBrawl/               <- repo root, open this in your editor
         │   │   ├── shop_screen.dart             // 3-page non-scrolling carousel, 15 buyable kShopItems, gem-priced
         │   │   ├── character_upgrades_screen.dart // (was upgrades_screen.dart) 3-page non-scrolling carousel, all 3 pages scoped to the CharacterDef passed as this route's arguments -- every dial is per-character
         │   │   └── arena_screen.dart            // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu/ChestReveal); Round Over's coin/gem/kill counters share one visual language; LevelUp's cards show exclusive-skill pairing; ChestReveal is a real card-deck spin+reveal
-        │   └── widgets/                         // buttons, stat bars, shared chrome; coin_icon.dart/gem_icon.dart crop real sprites; tap_sfx.dart's withTapSfx wraps any button's onPressed with the shared tap SFX; skill_icon.dart shared between LevelUp and the tutorial
+        │   └── widgets/                         // buttons, stat bars, shared chrome; coin_icon.dart/gem_icon.dart crop real sprites; tap_sfx.dart's withTapSfx wraps any button's onPressed with the shared tap SFX; skill_icon.dart shared between LevelUp and the tutorial; pixel_button.dart/carousel_arrow.dart use the real medieval UI kit (D-011: wood_panel_tile.png nine-patch background, button_play.png/button_question.png icons -- sliced from assets/images/ui/UI_medieval.png)
         └── game/
             ├── arena_game.dart          // FlameGame subclass, ALL round state incl. leveling/achievements-feeding counters; addToWorld/addToHud split
             ├── game_assets.dart         // GameAssets — every SpriteAnimation/Sprite, loaded once, held by ArenaGame
@@ -206,7 +207,8 @@ PixelArenaBrawl/               <- repo root, open this in your editor
             │   ├── potion_spawner.dart      // periodic random-area drop
             │   ├── chest.dart               // world chest: anima+explosion then a real opening sequence; pickup SFX on touch
             │   ├── chest_spawner.dart       // periodic random-area drop, same shape as potion_spawner.dart
-            │   ├── torch.dart               // solid world obstacle, looping flicker; player/enemy collision resolved in their own update()
+            │   ├── torch.dart               // solid world obstacle (player/enemy collision resolved in their own update()); real functionality (D-009) -- heals only the player within a radius, consumes itself with an explosion vfx+sfx after a total time-in-range budget
+            │   ├── level_text.dart          // "Lv N" HUD label overlaid on the HP bar's own left edge (D-009)
             │   ├── torch_spawner.dart       // random placement + min-spacing rejection + straggler cull, GameConfig-backed
             │   ├── vase.dart                // breakable world pickup: card-chosen SFX + sparkle burst + left/right gem scatter on touch
             │   ├── vase_spawner.dart        // random placement + min-spacing rejection, GameConfig-backed
