@@ -208,12 +208,26 @@ it as part of the merge, not after.
       pulses (a couple of flashes, not one glow) for 1 full second, and
       only then does the actual upgrade grant + overlay close happen.
 
-- [ ] **1.23 On-device: vase break** — the staggered 1-by-1 gem fly-out
-      timing/distance actually reads well, and nothing looks like it's
-      missing a "break" now that the sparkle VFX is gone.
-- [ ] **1.24 On-device: LevelUp** — the slide-in stagger, the flash
-      pulse, and the 1-second close delay all feel right (none of this has
-      any test coverage — DECISIONS D-019/CLAUDE.md §4.11 — this is
+- [x] **1.23 Vase burst faster + small explosion VFX (DECISIONS D-007)** —
+      gem interval 0.5s → 0.125s; a small explosion VFX (reusing the
+      Warden's own shockwave sheet, sized well down) plays at the break
+      point, SFX unchanged (only the existing card-chosen sound, no boom).
+- [x] **1.24 LevelUp title/button fixes (DECISIONS D-007)** — fixed a real
+      layout bug where the title visibly jumped when the card block first
+      appeared (cards/button are now always in the tree, animated via
+      opacity/position only, never conditionally added); "VIEW YOUR
+      UPGRADES" now only builds at all if the player has picked at least
+      one upgrade already, and slides in from the right only after every
+      card has finished its own entrance.
+
+- [ ] **1.25 On-device: vase break** — the faster staggered gem fly-out
+      and the new explosion VFX both read well at actual size/speed, and
+      the sound still matches (no accidental double-boom).
+- [ ] **1.26 On-device: LevelUp** — the title genuinely never moves once
+      the popup opens; "VIEW YOUR UPGRADES" is absent on a first-ever
+      level-up and slides in from the right afterward on a later one; the
+      flash pulse and 1-second close delay still feel right (none of this
+      has any test coverage — DECISIONS D-019/CLAUDE.md §4.11 — this is
       first-look-ever on a real device).
 
 ---

@@ -238,24 +238,32 @@ const double kTorchCollisionRadiusPx = 10;
 /// same render-scale family. [kVasePickupRadiusPx] is the touch radius that
 /// breaks it (subject to MAGNET like every other pickup radius).
 ///
-/// DECISIONS D-006 (this session, "remove the vfx... make the gems fly out
-/// of it more... like 1 by 1, 0.5 sec delay, fly a generous amount of
-/// distance... not too far"): [VaseGemBurstComponent] spawns one gem every
-/// [kVaseGemBurstIntervalSec] instead of all of them at once, each launched
-/// from the vase's own position out to its landing spot over
+/// DECISIONS D-006/D-007 ("make gems launch at once almost 0.125 delay in
+/// between, the direction they go is good"): [VaseGemBurstComponent] spawns
+/// one gem every [kVaseGemBurstIntervalSec] instead of all of them at once,
+/// each launched from the vase's own position out to its landing spot over
 /// [kVaseGemLaunchDurationSec] (`GemComponent`'s own `launchFrom`). The
 /// scatter distances below were widened from their original (18-42px)
-/// values for the same ask — alternating left/right of the vase (not fully
-/// random) so even a small gem count visibly reads as "left AND right,"
-/// the developer's original literal spec, rather than occasionally
-/// clustering on one side by chance.
+/// values in D-006's first pass ("a generous amount of distance... not too
+/// far") — alternating left/right of the vase (not fully random) so even a
+/// small gem count visibly reads as "left AND right," the developer's
+/// original literal spec, rather than occasionally clustering on one side
+/// by chance.
+///
+/// [kVaseExplosionWidthPx] (D-007, "add an explosion vfx like the 4th
+/// character has... make the explosion not that big") reuses the same
+/// `explosionAnimation` sheet `WardenSlamAttack`'s own shockwave does
+/// (`vfx/vfx/effect_explosion2.png`), sized well below both that (arena-
+/// radius-scaled) and the Skirmisher's own `kSpiralExplosionWidthPx` (64) —
+/// deliberately small since a vase is a small object, not an AoE hit.
 const double kVaseRenderScale = 3;
 const double kVasePickupRadiusPx = 30;
 const double kVaseGemScatterMinPx = 40;
 const double kVaseGemScatterMaxPx = 90;
 const double kVaseGemScatterVerticalPx = 24;
-const double kVaseGemBurstIntervalSec = 0.5;
+const double kVaseGemBurstIntervalSec = 0.125;
 const double kVaseGemLaunchDurationSec = 0.35;
+const double kVaseExplosionWidthPx = 36;
 
 /// Flame component render order (CLAUDE.md §4.10) — layer via these
 /// constants, never a magic `priority:` int on a component.

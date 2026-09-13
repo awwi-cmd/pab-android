@@ -426,6 +426,57 @@ to confirm the timings/motion actually read the way they're written here.
 
 ---
 
+## D-007 — Vase burst faster + a small explosion VFX; LevelUp title/upgrades-button fixes
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Developer, after seeing D-006 on-device: "make gems launch at
+once almost 0.125 delay in between, the direction they go is good. Add a
+explostion vfx like the 4th character has when we open the vase, the
+sound can remain the current but make the explosion not that big." And:
+"[LevelUp] Looks good, but the Level up text + view your upgrades appear
+in the middle then move when the upgrades are coming. Let's make the
+level up static, view your upgrades appear only if you have upgrades (and
+never in the reveal animation of the level up, make it appear from the
+right of the screen, after the upgrades appeared already)."
+
+**Decision — vase:**
+- `kVaseGemBurstIntervalSec` 0.5 → 0.125 (scatter direction/distance left
+  as D-006 shipped them — "the direction they go is good").
+- A small explosion VFX added at the break point — the exact same
+  `explosionAnimation` sheet `WardenSlamAttack`'s own shockwave uses ("the
+  4th character," the Warden), sized to `kVaseExplosionWidthPx` (36, well
+  under the Skirmisher's `kSpiralExplosionWidthPx` of 64 and nowhere near
+  the Warden's own arena-radius-scaled size — "not that big"). Called via
+  the bare `ArenaGame.spawnEffect`, not `spawnExplosionEffect` — that
+  helper also plays the explosion boom SFX, which isn't wanted here ("the
+  sound can remain the current," i.e. only the existing card-chosen SFX).
+
+**Decision — LevelUp:** the D-006 entrance animation had a real bug: the
+card block was conditionally *absent from the tree* until the 0.5s reveal
+timer fired, so the popup's total height (and the centered title's own
+screen position) jumped the instant that block appeared, even though each
+card's own opacity/translate was already correctly at 0 — the bug was the
+tree membership, not the animation math. Fixed by always building the
+card block (and, new this pass, the "VIEW YOUR UPGRADES" button) from
+frame one, letting `AnimationController` values (which start at 0 and
+only advance once `.forward()` is called) do 100% of the hiding — the
+same fix shape for both: reserve the layout space immediately, animate
+only opacity/position. "VIEW YOUR UPGRADES" also gained its own rules: a
+`_hasUpgrades` check (`PlayerUpgrades.pickCounts` has any nonzero entry)
+decided once at mount — a fresh character's very first level-up has
+nothing to view yet, so the button isn't built at all that time, not
+just hidden; and when it does exist, its own slide-in (from the right,
+mirroring the cards' from-the-left) only starts once `_slideController`'s
+own `.forward()` future completes — chained off that future directly
+rather than a second hand-timed `Timer` that could drift from however
+long the cards' stagger actually took.
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass.
+Same caveat as D-006: no test coverage for either the vase break or the
+LevelUp overlay exists, so this is unverified until a real on-device pass.
+
+---
+
 ## Open questions
 
 Carried forward from the pre-alpha archive — still genuinely open, not

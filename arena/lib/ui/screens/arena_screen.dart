@@ -941,14 +941,19 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay>
     with TickerProviderStateMixin {
   bool _showingUpgrades = false;
 
-  // DECISIONS D-006 (this session): "show the Level up.. text first, then
-  // 0.5 second later, slide in each selection from the left one by one."
-  // `_cardsVisible` gates the whole card block behind that initial delay;
-  // `_slideController` then drives every card's own staggered slide-in via
-  // one `Interval` per card index (same "one controller, per-item Interval
-  // stagger" shape `_ChestRevealOverlay`'s sparkle burst already
-  // established, `_CardLandSparkleSpec.delay`) rather than one
-  // AnimationController per card.
+  // DECISIONS D-006/D-007: "show the Level up.. text first, then 0.5
+  // second later, slide in each selection from the left one by one." The
+  // title/subtitle are never conditionally built (D-007 fix: they used to
+  // visibly jump when the card block's layout space appeared out of
+  // nowhere at the 0.5s mark) -- `_cardsVisible` only ever gates the
+  // *animation progress* the cards read (`_buildAnimatedCard`'s own
+  // `_cardsVisible ? ... : 0.0`), never whether they're in the tree at all,
+  // so the popup's total height (and the title's own position within it)
+  // is constant from the very first frame. `_slideController` drives every
+  // card's own staggered slide-in via one `Interval` per card index (same
+  // "one controller, per-item Interval stagger" shape `_ChestRevealOverlay`'s
+  // sparkle burst already established, `_CardLandSparkleSpec.delay`) rather
+  // than one AnimationController per card.
   bool _cardsVisible = false;
   Timer? _revealTimer;
   late final AnimationController _slideController;
@@ -957,6 +962,22 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay>
   static const _cardSlideDuration = Duration(milliseconds: 350);
   static const _cardStagger = Duration(milliseconds: 150);
   static const _cardSlideDistancePx = 500.0; // comfortably off-screen on any device width
+
+  /// DECISIONS D-007: "view your upgrades appear only if you have
+  /// upgrades... never in the reveal animation... make it appear from the
+  /// right, after the upgrades appeared already." True the instant this
+  /// popup mounts (never changes mid-popup -- the earliest a pick could
+  /// land is this same popup's own resolution, by which point [_chosenKind]
+  /// already hides the button anyway) -- deciding it once here, rather
+  /// than a live check in `build()`, is what keeps the button's own
+  /// reserved layout space stable for its whole slide-in the same way the
+  /// cards' does.
+  late final bool _hasUpgrades =
+      widget.game.upgrades.pickCounts.values.any((count) => count > 0);
+  bool _upgradesButtonVisible = false;
+  late final AnimationController _upgradesButtonController;
+  static const _upgradesButtonSlideDuration = Duration(milliseconds: 300);
+  static const _upgradesButtonSlideDistancePx = 400.0;
 
   // "the selection the player chooses... flashes, then 1 second later the
   // level up screen closes" -- the other 2 cards vanish the instant
@@ -986,10 +1007,22 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay>
           _cardStagger * (cardCount > 0 ? cardCount - 1 : 0) + _cardSlideDuration,
     );
     _flashController = AnimationController(vsync: this, duration: _flashDuration);
-    _revealTimer = Timer(_titleToCardsDelay, () {
+    _upgradesButtonController = AnimationController(
+      vsync: this,
+      duration: _upgradesButtonSlideDuration,
+    );
+    _revealTimer = Timer(_titleToCardsDelay, () async {
       if (!mounted) return;
       setState(() => _cardsVisible = true);
-      _slideController.forward(from: 0);
+      await _slideController.forward(from: 0);
+      // DECISIONS D-007: the button's own entrance only ever starts once
+      // every card has finished sliding in -- chained off `forward()`'s own
+      // completion future rather than a second hand-timed `Timer`, so it
+      // can never drift out of sync with however long the cards actually
+      // took (e.g. if `currentLevelUpChoices` ever has fewer than 3 tiles).
+      if (!mounted || !_hasUpgrades) return;
+      setState(() => _upgradesButtonVisible = true);
+      _upgradesButtonController.forward(from: 0);
     });
   }
 
@@ -999,6 +1032,7 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay>
     _closeTimer?.cancel();
     _slideController.dispose();
     _flashController.dispose();
+    _upgradesButtonController.dispose();
     super.dispose();
   }
 
@@ -1049,22 +1083,52 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay>
           style: TextStyle(color: ArenaColors.textDim),
         ),
         const SizedBox(height: 20),
-        if (_cardsVisible)
-          for (var i = 0; i < choices.length; i++) ...[
-            _buildAnimatedCard(index: i, kind: choices[i]),
-            const SizedBox(height: 12),
-          ],
-        if (_chosenKind == null) ...[
+        // Always built (DECISIONS D-007) -- never conditionally added once
+        // the reveal timer fires, so the popup's total height (and the
+        // title's own position above it) never jumps; each card's own
+        // visibility is purely `_slideController`-driven inside
+        // `_buildAnimatedCard`.
+        for (var i = 0; i < choices.length; i++) ...[
+          _buildAnimatedCard(index: i, kind: choices[i]),
+          const SizedBox(height: 12),
+        ],
+        // DECISIONS D-007: "appear only if you have upgrades... never in
+        // the reveal animation... appear from the right, after the
+        // upgrades appeared already" -- `_hasUpgrades` decided once at
+        // mount (see its own doc comment), so like the cards above this is
+        // always in the tree from frame one when it's going to show at
+        // all, just invisible/off-screen-right until
+        // `_upgradesButtonController` plays.
+        if (_hasUpgrades && _chosenKind == null) ...[
           const SizedBox(height: 4),
-          TextButton(
-            onPressed: withTapSfx(() => setState(() => _showingUpgrades = true)),
-            child: const Text(
-              'VIEW YOUR UPGRADES',
-              style: TextStyle(color: ArenaColors.textDim),
-            ),
-          ),
+          _buildUpgradesButton(),
         ],
       ],
+    );
+  }
+
+  Widget _buildUpgradesButton() {
+    return AnimatedBuilder(
+      animation: _upgradesButtonController,
+      builder: (context, child) {
+        final t = _upgradesButtonVisible
+            ? Curves.easeOut.transform(_upgradesButtonController.value)
+            : 0.0;
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset((1 - t) * _upgradesButtonSlideDistancePx, 0),
+            child: child,
+          ),
+        );
+      },
+      child: TextButton(
+        onPressed: withTapSfx(() => setState(() => _showingUpgrades = true)),
+        child: const Text(
+          'VIEW YOUR UPGRADES',
+          style: TextStyle(color: ArenaColors.textDim),
+        ),
+      ),
     );
   }
 
@@ -1088,7 +1152,8 @@ class _LevelUpOverlayState extends State<_LevelUpOverlay>
     return AnimatedBuilder(
       animation: Listenable.merge([_slideController, _flashController]),
       builder: (context, child) {
-        final slideT = interval.transform(_slideController.value);
+        final slideT =
+            _cardsVisible ? interval.transform(_slideController.value) : 0.0;
         Widget result = Opacity(
           opacity: slideT,
           child: Transform.translate(
