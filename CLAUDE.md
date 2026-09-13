@@ -157,7 +157,7 @@ PixelArenaBrawl/               <- repo root, open this in your editor
     │       └── game_config.json        // developer-editable build-time tuning knobs — economy/enemy-AI/character/progression/starting-audio
     └── lib/
         ├── main.dart               // awaits GameConfig.instance.load() before runApp
-        ├── app.dart                // MaterialApp, routes, theme; starts BgmController + SfxPlayer once; ThemeData.fontFamily = HomeVideo (D-009, was PixelFont), MediaQuery textScaler 0.75; WidgetsBindingObserver pauses/resumes BGM on app background/foreground
+        ├── app.dart                // MaterialApp, routes, theme; starts BgmController + SfxPlayer once; no custom fontFamily (D-012, reverted D-009's HomeVideo -- platform default now), MediaQuery textScaler 1.0 (D-012, was 0.75); WidgetsBindingObserver pauses/resumes BGM on app background/foreground
         ├── core/
         │   ├── constants.dart      // design size, ArenaColors (D-010 medieval palette: gold accent, oxblood danger, copper warning, parchment text), kPanelCornerRadiusPx, layer priorities, render scales, kHudBar* shared HP/XP bar layout consts
         │   ├── game_config.dart    // GameConfig singleton — parses assets/config/game_config.json once at boot, typed getters with hardcoded fallbacks

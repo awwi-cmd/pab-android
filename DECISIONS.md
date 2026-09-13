@@ -798,6 +798,53 @@ image rather than a bordered circle.
 
 ---
 
+## D-012 — Reverted the custom font outright; text scale bumped back up
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Developer, on-device with D-009's `HomeVideo` font: "The
+font is horrendeous, lets change it back to a normal one, and bump to
+size."
+
+**Decision:** `app.dart`'s `ThemeData.fontFamily` is gone outright — no
+custom family at all now, so every `Text` falls back to Flutter's own
+platform default (Roboto on Android, the only platform this project
+ships to, CLAUDE.md §2). Not a 3rd custom font swapped in; "a normal one"
+read as "the normal one," i.e. no custom font. `HomeVideo-Regular.ttf`/
+`HomeVideo-Bold.ttf` deleted, and its `pubspec.yaml` `fonts:` entry
+commented out rather than removed outright (same "leave a breadcrumb"
+treatment D-009 gave the old `PixelFont` entry's replacement) — matches
+D-009's own precedent of a full delete-not-just-stop-using for a
+genuinely rejected font.
+The global `MediaQuery` text scaler (`app.dart`'s `builder`) moved
+`0.75` → `1.0` — that `0.75` was D-080's own fix for `PixelFont`'s
+specific oversized metrics, which no longer applies now that font is
+gone; "bump to size" on top of just reverting the shrink landed on
+undoing it outright (back to platform-native scale) rather than picking
+a new arbitrary multiplier above `1.0` with nothing to anchor it to.
+
+**Consequence found immediately, fixed in the same pass:** bumping the
+scale ~33% broke `CharacterSelectScreen`'s D-005 "no scrolling, ever"
+layout — text that size no longer fits the tight non-scrolling `Column`
+D-005 tuned specifically for the old `0.75` scale, no matter how the
+spacing is adjusted (`flutter test` caught a real 78px `RenderFlex`
+overflow immediately, not a guess). Same fix D-008 already used for the
+identical problem on SHOP/CHARACTER UPGRADES: wrapped in a
+`SingleChildScrollView` instead of fighting for an exact fit that a
+future font-size change could just break again. D-005's own "never
+scroll" promise doesn't survive user-requested type-scale changes intact
+— a safety-net scroll is the more honest fix than re-tuning magic numbers
+every time text size changes.
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass.
+Needs an on-device pass: the platform default font actually reads
+better than `HomeVideo` did (should be uncontroversial — it's what every
+other Android app already uses), the bumped text size doesn't crowd any
+screen this session didn't touch, and Character Select's now-scrollable
+page doesn't feel like a regression on a screen tall enough that it
+never actually needs to scroll.
+
+---
+
 ## Open questions
 
 Carried forward from the pre-alpha archive — still genuinely open, not

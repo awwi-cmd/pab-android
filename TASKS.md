@@ -364,6 +364,32 @@ fragments on the sheet.
 
 ---
 
+## Phase 5 — Font reverted, text scale bumped
+
+*Goal: undo D-009's custom font outright ("horrendeous"), bump the
+overall text scale back up.*
+
+- [x] **5.1 Font reverted (DECISIONS D-012)** — no custom `fontFamily` at
+      all now; every `Text` falls back to the platform default.
+      `HomeVideo-Regular.ttf`/`HomeVideo-Bold.ttf` deleted, `pubspec.yaml`
+      entry commented out.
+- [x] **5.2 Text scale bumped (DECISIONS D-012)** — the global
+      `MediaQuery` text scaler `0.75` → `1.0` (D-080's shrink was tuned
+      specifically for the now-gone `PixelFont`/`HomeVideo`, no longer
+      applicable).
+- [x] **5.3 Character Select scroll fallback (DECISIONS D-012)** — the
+      bumped text size broke D-005's tight non-scrolling fit outright
+      (a real 78px overflow, caught by `flutter test`); wrapped in a
+      `SingleChildScrollView`, same fix D-008 already used for
+      SHOP/CHARACTER UPGRADES hitting the identical problem.
+
+- [ ] **5.4 On-device: font + size** — the platform default font actually
+      reads better than `HomeVideo`; the bumped size doesn't crowd any
+      screen; Character Select's now-scrollable page doesn't feel like a
+      regression on a screen tall enough to never need it.
+
+---
+
 ## Backlog (do not start without asking first)
 
 Kept here so ideas have somewhere to go that isn't the current sprint —

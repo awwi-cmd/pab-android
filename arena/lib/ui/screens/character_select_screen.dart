@@ -296,18 +296,18 @@ class _CharacterPage extends StatelessWidget {
       intellect: stats.intellect + levels.intellect,
     );
     // DECISIONS D-005 ("make sure there is no scrolling in character
-    // select"): a plain, non-scrolling `Column` — every gap/size below was
-    // tightened from the original scrolling layout's numbers specifically
-    // so the whole page (portrait, name/descriptor, 4 bars, the HP/DMG
-    // line, ENTER ARENA/locked panel, and both summary panels) fits inside
-    // the fixed height `PageView` actually gives this page without ever
-    // needing `SingleChildScrollView`. First-guess sizes, like everything
-    // else in this project — needs an on-device check on a real small
-    // screen, not just the 800x600 test harness.
-    return Padding(
+    // select") tried a plain non-scrolling `Column` sized to fit the
+    // then-current text scale exactly. DECISIONS D-012 ("bump the [text]
+    // size") broke that fit outright -- text ~33% bigger doesn't fit the
+    // same tight slot no matter how the spacing is tuned. Same fix D-008
+    // already reached for when SHOP/CHARACTER UPGRADES hit this identical
+    // problem: a `SingleChildScrollView` safety net. Most screens still
+    // won't need to actually scroll; the ones that do, now can, instead of
+    // overflowing.
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
             height: 84,
@@ -320,6 +320,7 @@ class _CharacterPage extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 8),
           Text(
             character.name,
             style: const TextStyle(
@@ -328,6 +329,7 @@ class _CharacterPage extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
+          const SizedBox(height: 4),
           Text(
             character.descriptor,
             textAlign: TextAlign.center,
@@ -335,6 +337,7 @@ class _CharacterPage extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: ArenaColors.textDim, fontSize: 12),
           ),
+          const SizedBox(height: 12),
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -374,6 +377,7 @@ class _CharacterPage extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 10),
           Text(
             'HP ${effectiveStats.maxHp.round()} · '
             'DMG ${effectiveStats.damagePerHit.round()} · '
@@ -386,16 +390,19 @@ class _CharacterPage extends StatelessWidget {
               fontSize: 12,
             ),
           ),
+          const SizedBox(height: 16),
           if (unlocked)
             PixelButton(label: 'ENTER ARENA', onPressed: onEnterArena)
           else
             _LockedPanel(character: character, lifetimeKills: lifetimeKills),
+          const SizedBox(height: 12),
           // DECISIONS D-003 ("below the ARENA, add a panel for Stat
           // Upgrades: and one for Shop Bonuses:") -- Stat Upgrades is this
           // character's own (every dial is per-character now); Shop
           // Bonuses is global -- same purchases regardless of which
           // character's page this is.
           _StatUpgradesPanel(character: character, meta: meta),
+          const SizedBox(height: 8),
           _ShopBonusesPanel(meta: meta, onViewAll: onViewShopBonuses),
         ],
       ),

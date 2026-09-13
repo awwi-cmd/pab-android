@@ -87,12 +87,14 @@ flutter:
   # DECISIONS D-077 -- the game's main font, used app-wide via app.dart's
   # ThemeData (every Text widget inherits it unless it sets its own
   # fontFamily, and none currently do).
-  fonts:
-    - family: HomeVideo
-      fonts:
-        - asset: assets/fonts/HomeVideo-Regular.ttf
-        - asset: assets/fonts/HomeVideo-Bold.ttf
-          weight: 700
+  # DECISIONS D-012: no custom font registered at all now -- D-009's
+  # HomeVideo swap-in was reverted outright ("the font is horrendous").
+  # fonts:
+  #   - family: HomeVideo
+  #     fonts:
+  #       - asset: assets/fonts/HomeVideo-Regular.ttf
+  #       - asset: assets/fonts/HomeVideo-Bold.ttf
+  #         weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:
