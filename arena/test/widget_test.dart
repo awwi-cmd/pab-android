@@ -1,3 +1,5 @@
+import 'dart:ui' show Size;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -29,16 +31,34 @@ void main() {
   // which never resolves under flutter_test's fake-async pump() -- not an
   // app bug, a harness limitation. The arena flow (including combat, now
   // that Phase 4 wires it up) is verified on-device via rebuildinstall.bat.
+  //
+  // `pumpAndSettle()`, not `pump()`, here: Character Select's wallet row
+  // (`CoinIcon`, DECISIONS D-002 follow-up "coin-icon.png is not
+  // animating") now spins on a perpetually-repeating `AnimationController`,
+  // which never stops scheduling frames -- `pumpAndSettle` would wait for
+  // that forever ("pumpAndSettle timed out"), so a couple of bounded
+  // `pump()`s stand in for it instead, same fix this project already
+  // reaches for anywhere a real animation never settles.
   testWidgets('Menu -> Character Select is navigable', (tester) async {
+    // DECISIONS D-005 ("make sure there is no scrolling in character
+    // select"): the test harness's default surface (800x600 logical) is
+    // shorter than any real phone in portrait and shorter than this
+    // now-non-scrolling page's content actually needs -- was previously
+    // masked by `ensureVisible` scrolling the real page down to reach
+    // ENTER ARENA, which no longer applies now that the page doesn't
+    // scroll at all. A realistic tall-phone surface (this app's own
+    // kDesignWidth, scaled up) is what the page is actually designed
+    // against, not the test runner's default arbitrary window.
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
     await tester.pumpWidget(const ArenaApp());
 
     await tester.tap(find.text('START'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('ENTER ARENA'), findsOneWidget);
-
-    // Character Select scrolls on a short viewport (test harness is 800x600).
-    await tester.ensureVisible(find.text('ENTER ARENA'));
-    await tester.pumpAndSettle();
     expect(find.textContaining('The Apprentice'), findsOneWidget);
   });
 

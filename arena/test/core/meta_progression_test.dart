@@ -16,50 +16,61 @@ void main() {
     });
   });
 
-  group('MetaProgression.buy', () {
+  group('MetaProgression.buyFor / levelOfFor (every dial is per-character, DECISIONS D-003)', () {
+    test('a character with no purchases yet reads every stat as 0', () {
+      final meta = MetaProgression();
+      expect(meta.levelOfFor('apprentice', MetaStat.str), 0);
+      expect(meta.levelOfFor('apprentice', MetaStat.haste), 0);
+      expect(meta.levelsFor('apprentice').str, 0);
+    });
+
+    test('buying for one character never touches another', () {
+      final meta = MetaProgression(coins: 1000000);
+      expect(meta.buyFor('apprentice', MetaStat.str), isTrue);
+      expect(meta.buyFor('apprentice', MetaStat.str), isTrue);
+      expect(meta.levelOfFor('apprentice', MetaStat.str), 2);
+      expect(meta.levelOfFor('bruiser', MetaStat.str), 0); // untouched
+    });
+
+    test(
+      'CHAOS/HASTE/FORTUNE/RESOLVE/MAGNET/LUCK/REGEN/CRIT are per-character too',
+      () {
+        final meta = MetaProgression(coins: 1000000);
+        expect(meta.buyFor('apprentice', MetaStat.haste), isTrue);
+        expect(meta.buyFor('apprentice', MetaStat.corruption), isTrue);
+        expect(meta.levelOfFor('apprentice', MetaStat.haste), 1);
+        expect(meta.levelOfFor('apprentice', MetaStat.corruption), 1);
+        // Not accidentally shared with another character.
+        expect(meta.levelOfFor('bruiser', MetaStat.haste), 0);
+        expect(meta.levelOfFor('bruiser', MetaStat.corruption), 0);
+      },
+    );
+
     test('fails and spends nothing without enough coins', () {
       final meta = MetaProgression(coins: 0);
-      expect(meta.buy(MetaStat.str), isFalse);
-      expect(meta.strLevel, 0);
+      expect(meta.buyFor('apprentice', MetaStat.dex), isFalse);
+      expect(meta.levelOfFor('apprentice', MetaStat.dex), 0);
       expect(meta.coins, 0);
     });
 
     test('succeeds and deducts the exact cost with enough coins', () {
       final cost = metaUpgradeCost(0);
       final meta = MetaProgression(coins: cost);
-      expect(meta.buy(MetaStat.vit), isTrue);
-      expect(meta.vitLevel, 1);
+      expect(meta.buyFor('apprentice', MetaStat.fortune), isTrue);
+      expect(meta.levelOfFor('apprentice', MetaStat.fortune), 1);
       expect(meta.coins, 0);
     });
 
     test('refuses past the max level even with unlimited coins', () {
-      final meta = MetaProgression(coins: 1000000, dexLevel: kMetaMaxLevel);
-      expect(meta.buy(MetaStat.dex), isFalse);
-      expect(meta.dexLevel, kMetaMaxLevel);
+      final meta = MetaProgression(
+        coins: 1000000,
+        characterUpgradeLevels: {
+          'apprentice': CharacterUpgradeLevels(resolve: kMetaMaxLevel),
+        },
+      );
+      expect(meta.buyFor('apprentice', MetaStat.resolve), isFalse);
+      expect(meta.levelOfFor('apprentice', MetaStat.resolve), kMetaMaxLevel);
     });
-
-    test('bonus getters mirror the level 1:1', () {
-      final meta = MetaProgression(coins: 1000000);
-      meta.buy(MetaStat.str);
-      meta.buy(MetaStat.str);
-      expect(meta.bonusStr, 2);
-      expect(meta.bonusVit, 0);
-    });
-
-    test(
-      'haste/fortune/resolve (DECISIONS D-067) buy and level up independently',
-      () {
-        final meta = MetaProgression(coins: 1000000);
-        expect(meta.buy(MetaStat.haste), isTrue);
-        expect(meta.buy(MetaStat.fortune), isTrue);
-        expect(meta.buy(MetaStat.resolve), isTrue);
-        expect(meta.levelOf(MetaStat.haste), 1);
-        expect(meta.levelOf(MetaStat.fortune), 1);
-        expect(meta.levelOf(MetaStat.resolve), 1);
-        // Not accidentally aliased to Corruption or each other.
-        expect(meta.corruptionLevel, 0);
-      },
-    );
   });
 
   group('MetaProgression.buyItem (SHOP, DECISIONS D-069)', () {
@@ -147,32 +158,48 @@ void main() {
           coins: 42,
           gems: 7,
           lifetimeKills: 99,
-          strLevel: 1,
-          vitLevel: 2,
-          dexLevel: 3,
-          intLevel: 4,
-          corruptionLevel: 5,
-          hasteLevel: 6,
-          fortuneLevel: 7,
-          resolveLevel: 8,
-          magnetLevel: 9,
-          luckLevel: 10,
-          regenLevel: 1,
-          critLevel: 2,
+          characterUpgradeLevels: {
+            'apprentice': CharacterUpgradeLevels(
+              str: 1,
+              vit: 2,
+              dex: 3,
+              intellect: 4,
+              corruption: 5,
+              haste: 6,
+              fortune: 7,
+              resolve: 8,
+              magnet: 9,
+              luck: 10,
+              regen: 1,
+              crit: 2,
+            ),
+            'bruiser': CharacterUpgradeLevels(str: 5, haste: 3),
+          },
           ownedItemIds: {ShopItemId.secondWind.name},
         );
         await repo.save(meta);
         final loaded = await repo.load();
-        expect(loaded.hasteLevel, 6);
-        expect(loaded.fortuneLevel, 7);
-        expect(loaded.resolveLevel, 8);
-        expect(loaded.corruptionLevel, 5);
-        expect(loaded.magnetLevel, 9);
-        expect(loaded.luckLevel, 10);
-        expect(loaded.regenLevel, 1);
-        expect(loaded.critLevel, 2);
         expect(loaded.ownsSecondWind, isTrue);
         expect(loaded.ownsItem(ShopItemId.vitalityCharm), isFalse);
+        // DECISIONS D-003 -- every dial round-trips per-character, and
+        // stays separated by character id.
+        expect(loaded.levelOfFor('apprentice', MetaStat.str), 1);
+        expect(loaded.levelOfFor('apprentice', MetaStat.vit), 2);
+        expect(loaded.levelOfFor('apprentice', MetaStat.dex), 3);
+        expect(loaded.levelOfFor('apprentice', MetaStat.intellect), 4);
+        expect(loaded.levelOfFor('apprentice', MetaStat.corruption), 5);
+        expect(loaded.levelOfFor('apprentice', MetaStat.haste), 6);
+        expect(loaded.levelOfFor('apprentice', MetaStat.fortune), 7);
+        expect(loaded.levelOfFor('apprentice', MetaStat.resolve), 8);
+        expect(loaded.levelOfFor('apprentice', MetaStat.magnet), 9);
+        expect(loaded.levelOfFor('apprentice', MetaStat.luck), 10);
+        expect(loaded.levelOfFor('apprentice', MetaStat.regen), 1);
+        expect(loaded.levelOfFor('apprentice', MetaStat.crit), 2);
+        expect(loaded.levelOfFor('bruiser', MetaStat.str), 5);
+        expect(loaded.levelOfFor('bruiser', MetaStat.haste), 3);
+        expect(loaded.levelOfFor('bruiser', MetaStat.vit), 0);
+        expect(loaded.levelOfFor('bruiser', MetaStat.corruption), 0);
+        expect(loaded.levelOfFor('skirmisher', MetaStat.str), 0); // never bought
       },
     );
 

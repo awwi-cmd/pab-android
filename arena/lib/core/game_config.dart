@@ -157,4 +157,26 @@ class GameConfig {
   /// Music Volume (0-100) a fresh install starts at — same caveat as
   /// [startingSfxVolume].
   int get startingMusicVolume => _i('audio', 'startingMusicVolume', 50);
+
+  // ---- worldObjects (game/components/torch_spawner.dart, vase_spawner.dart) ----
+
+  /// Max standing torches live at once (`TorchSpawner`).
+  int get torchCount => _i('worldObjects', 'torchCount', 6);
+
+  /// Minimum distance between two torches — a candidate spawn point closer
+  /// than this to an already-live torch is rejected and retried
+  /// (`TorchSpawner`).
+  double get torchMinSpacingPx => _d('worldObjects', 'torchMinSpacingPx', 220);
+
+  /// Max gem vases live at once (`VaseSpawner`).
+  int get vaseCount => _i('worldObjects', 'vaseCount', 4);
+
+  /// Minimum distance between two vases, same rejection shape as
+  /// [torchMinSpacingPx] (`VaseSpawner`).
+  double get vaseMinSpacingPx => _d('worldObjects', 'vaseMinSpacingPx', 260);
+
+  /// A broken vase drops a random gem count in `[vaseGemsMin, vaseGemsMax]`
+  /// (`ArenaGame.breakVase`).
+  int get vaseGemsMin => _i('worldObjects', 'vaseGemsMin', 3);
+  int get vaseGemsMax => _i('worldObjects', 'vaseGemsMax', 6);
 }

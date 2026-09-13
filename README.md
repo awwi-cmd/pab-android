@@ -42,14 +42,18 @@ to still need an on-device pass.
     rivalries (pick one, its paired rival is off the table for the rest of
     the round) — real build identity instead of collecting everything. All
     of it resets when the round ends.
-  - *Persistent, across every round:* coins buy permanent STR/VIT/DEX/INT/
-    CORRUPTION/HASTE/FORTUNE/RESOLVE/MAGNET/LUCK/REGEN/CRIT levels (12
-    dials across 3 pages) from the character-select screen's UPGRADES tab;
-    gems buy 15 one-time permanent items (extra max HP, a once-per-round
-    revive, better loot odds, and more) from the SHOP tab. Lifetime kills
-    separately gate which of the four characters are unlocked. Corruption
-    is the odd one out among the dials — it's a difficulty/reward knob, not
-    a stat: tougher, faster enemies in exchange for bigger drops.
+  - *Persistent, across every round:* coins buy STR/VIT/DEX/INT/CORRUPTION/
+    HASTE/FORTUNE/RESOLVE/MAGNET/LUCK/REGEN/CRIT levels (12 dials across 3
+    pages) from the character-select screen's CHARACTER UPGRADES tab — and
+    every one of those 12 belongs to *one character*; swap to a different
+    character and its own dials start back at zero. Gems buy 15 one-time
+    permanent items (extra max HP, a once-per-round revive, better loot
+    odds, and more) from BONUSES SHOP — unlike Character Upgrades, SHOP
+    purchases are shared: one buy applies to every character. Lifetime
+    kills separately gate which of the four characters are unlocked.
+    Corruption is the odd one out among the 12 dials — it's a
+    difficulty/reward knob, not a stat: tougher, faster enemies in
+    exchange for bigger drops.
 - **20 achievements** track lifetime stats — kills, boss kills, gems/coins/
   potions/chests, best level reached, longest survival — and pay coin or
   gem rewards straight into the persistent wallet the instant a threshold
@@ -78,11 +82,19 @@ The Bruiser, Skirmisher, and Warden unlock as lifetime kill totals climb
 - **A loot economy** — enemies, potions, and chests drop with their own
   pickup sound cue; chests play out a real card-draw reveal (a full
   52-card + jokers deck) before paying out, with its own landing sparkle
-  burst.
-- **A shop and an upgrades screen**, reachable from character select — 15
-  real gem-priced permanent items in SHOP, 12 coin-priced leveled dials
-  across 3 pages in UPGRADES, both spending the same persistent wallet the
-  HUD shows.
+  burst. Standing torches and breakable gem vases are scattered around the
+  world too — torches are solid (block both the player and enemies),
+  vases play the same card-draw sparkle burst and scatter a handful of
+  gems left and right when you walk into one.
+- **BONUSES SHOP and CHARACTER UPGRADES**, reachable from character
+  select — 15 real gem-priced permanent items in BONUSES SHOP (shared
+  across every character), 12 coin-priced leveled dials across 3 pages in
+  CHARACTER UPGRADES (each character's own — nothing carries over when
+  you switch). Character select itself shows each character's own
+  STR/VIT/DEX/INT as bars (base stat plus whatever's been bought, with a
+  gold fill once a stat's fully upgraded), plus two summary panels below
+  ENTER ARENA: this character's other dial levels, and how many of the 15
+  BONUSES SHOP items are owned overall.
 - **A real sound layer** — footsteps, hits, level-ups, shots, pickups, and
   a tap on every button, plus background music that pauses when the app
   is backgrounded and resumes where it left off — all pooled and
@@ -112,7 +124,7 @@ checklist tracks what's built but not yet confirmed on a real device.
 ## Tech stack
 
 - **Flutter** for every menu, screen, and route (main menu, settings,
-  character select, shop/upgrades, achievements).
+  character select, BONUSES SHOP/CHARACTER UPGRADES, achievements).
 - **[Flame](https://flame-engine.org/)** for the arena itself — a single
   `GameWidget` hosting all gameplay (camera, world, entities, combat).
   Round-over/level-up/pause/chest-reveal are Flame overlays, not routes, so

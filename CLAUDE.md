@@ -150,7 +150,7 @@ PixelArenaBrawl/               <- repo root, open this in your editor
     │   │   ├── ui/                     // star-empty/star-full.png (kill counter), old currency-counter.png placeholder
     │   │   ├── bg/                     // splash_bg.png — native launch screen + main menu background
     │   │   ├── cards/                  // real 52-card deck + 2 Jokers + backs, chest reveal draw
-    │   │   └── scenes/                 // floor tile variants + border tile
+    │   │   └── scenes/                 // floor tile variants + border tile; torch-standing.png (8-frame flicker), gem-vase.png (16-frame shimmer)
     │   ├── audio/
     │   │   └── core/                   // every SFX/BGM file actually wired — see sfx_player.dart/bgm_controller.dart below
     │   └── config/
@@ -181,9 +181,9 @@ PixelArenaBrawl/               <- repo root, open this in your editor
         │   │   ├── tutorial_screen.dart         // 3-slide first-boot tutorial, same carousel chrome as other multi-page screens, built from real game assets
         │   │   ├── settings_screen.dart         // currency debug always shown; god mode/grant-level-up/end-round only when opened from pause; Music/SFX Volume live-drive their controllers
         │   │   ├── credits_screen.dart
-        │   │   ├── character_select_screen.dart // swipe carousel, one character at a time; locked slots show a bar-fill unlock panel; wallet row aligns gems above SHOP, coins above UPGRADES
+        │   │   ├── character_select_screen.dart // swipe carousel, one character at a time; locked slots show a bar-fill unlock panel; wallet row aligns gems above BONUSES SHOP, coins above CHARACTER UPGRADES; per-character STR/VIT/DEX/INT bars + "Stat Upgrades:"/"Shop Bonuses:" panels below ENTER ARENA
         │   │   ├── shop_screen.dart             // 3-page non-scrolling carousel, 15 buyable kShopItems, gem-priced
-        │   │   ├── upgrades_screen.dart         // 3-page non-scrolling carousel, 12 MetaStat rows total
+        │   │   ├── character_upgrades_screen.dart // (was upgrades_screen.dart) 3-page non-scrolling carousel, all 3 pages scoped to the CharacterDef passed as this route's arguments -- every dial is per-character
         │   │   └── arena_screen.dart            // hosts GameWidget + overlays (RoundOver/LevelUp/PauseMenu/ChestReveal); Round Over's coin/gem/kill counters share one visual language; LevelUp's cards show exclusive-skill pairing; ChestReveal is a real card-deck spin+reveal
         │   └── widgets/                         // buttons, stat bars, shared chrome; coin_icon.dart/gem_icon.dart crop real sprites; tap_sfx.dart's withTapSfx wraps any button's onPressed with the shared tap SFX; skill_icon.dart shared between LevelUp and the tutorial
         └── game/
@@ -206,6 +206,10 @@ PixelArenaBrawl/               <- repo root, open this in your editor
             │   ├── potion_spawner.dart      // periodic random-area drop
             │   ├── chest.dart               // world chest: anima+explosion then a real opening sequence; pickup SFX on touch
             │   ├── chest_spawner.dart       // periodic random-area drop, same shape as potion_spawner.dart
+            │   ├── torch.dart               // solid world obstacle, looping flicker; player/enemy collision resolved in their own update()
+            │   ├── torch_spawner.dart       // random placement + min-spacing rejection + straggler cull, GameConfig-backed
+            │   ├── vase.dart                // breakable world pickup: card-chosen SFX + sparkle burst + left/right gem scatter on touch
+            │   ├── vase_spawner.dart        // random placement + min-spacing rejection, GameConfig-backed
             │   ├── hp_bar.dart              // HUD (camera.viewport), top of screen, full width, red fill
             │   ├── xp_bar.dart              // stacked directly under the HP bar, full width, yellow fill
             │   ├── damage_text.dart

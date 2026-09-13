@@ -4,6 +4,7 @@ import 'package:flame/components.dart';
 
 import '../../core/game_config.dart';
 import '../../core/game_rules.dart';
+import '../../core/meta_progression.dart';
 import '../arena_game.dart';
 import 'enemy.dart';
 
@@ -78,7 +79,10 @@ class Spawner extends Component with HasGameReference<ArenaGame> {
       // decaying `_interval` itself, so it stacks with the normal ramp
       // instead of racing it.
       _timeUntilNextSpawn =
-          _interval * corruptionSpawnIntervalMultiplier(game.meta.corruptionLevel);
+          _interval *
+              corruptionSpawnIntervalMultiplier(
+                game.metaLevel(MetaStat.corruption),
+              );
       if (game.enemies.length < _maxLiveEnemies) {
         game.spawnEnemy(
           randomPerimeterPoint(

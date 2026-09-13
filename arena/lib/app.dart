@@ -11,8 +11,8 @@ import 'ui/screens/credits_screen.dart';
 import 'ui/screens/main_menu_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'ui/screens/shop_screen.dart';
+import 'ui/screens/character_upgrades_screen.dart';
 import 'ui/screens/tutorial_screen.dart';
-import 'ui/screens/upgrades_screen.dart';
 
 class ArenaApp extends StatefulWidget {
   const ArenaApp({super.key});
@@ -89,7 +89,7 @@ class _ArenaAppState extends State<ArenaApp> with WidgetsBindingObserver {
         CreditsScreen.route: (_) => const CreditsScreen(),
         CharacterSelectScreen.route: (_) => const CharacterSelectScreen(),
         ShopScreen.route: (_) => const ShopScreen(),
-        UpgradesScreen.route: (_) => const UpgradesScreen(),
+        CharacterUpgradesScreen.route: (_) => const CharacterUpgradesScreen(),
         TutorialScreen.route: (_) => const TutorialScreen(),
         ArenaScreen.route: (_) => const ArenaScreen(),
       },

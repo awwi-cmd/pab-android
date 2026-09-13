@@ -95,6 +95,102 @@ discipline as always.
 
 ---
 
+## Phase 1 — Animation polish & world objects
+
+*Goal: small visual/gameplay additions on top of the Alpha 1.0.0 baseline,
+one at a time, same discipline as Phase 0.*
+
+- [x] **1.1 Coin icon animation** — `CoinIcon` (`ui/widgets/coin_icon.dart`)
+      now spins through all 15 frames of `coin-icon.png` on a loop instead
+      of showing a static frame 0, everywhere it's used (Character Select,
+      Upgrades, Achievements, Round Over, tutorial).
+- [x] **1.2 Standing torches** — `TorchComponent`/`TorchSpawner`
+      (DECISIONS D-002): scattered randomly around the roaming world,
+      minimum-spaced from each other, solid to both the player and
+      enemies. Config: `worldObjects.torchCount`/`torchMinSpacingPx`.
+- [x] **1.3 Gem vases** — `VaseComponent`/`VaseSpawner` (DECISIONS D-002):
+      scattered randomly, minimum-spaced from each other; breaks on player
+      touch with the chest's own "card chosen" SFX, a new sparkle burst
+      VFX, and a left/right gem scatter. Config:
+      `worldObjects.vaseCount`/`vaseMinSpacingPx`/`vaseGemsMin`/
+      `vaseGemsMax`.
+
+### On-device verification (not yet checked)
+
+- [ ] **1.4 Torch collision feel** — walking into a torch actually blocks
+      movement (player and enemy both), doesn't jitter/stick, and the
+      default spacing (`torchMinSpacingPx`) reads as "spread out," not
+      clustered.
+- [ ] **1.5 Vase break** — walking into a vase plays the card-chosen SFX,
+      the sparkle burst reads clearly, gems visibly scatter left/right and
+      are collectible, and the default live count/spacing feels right
+      scattered across the map.
+- [ ] **1.6 Coin spin** — the coin icon's spin is legible at every size it's
+      shown at (28/32/40px) and doesn't look janky next to the gem icon's
+      static frame beside it.
+
+### Per-character Character Upgrades (DECISIONS D-003, revised)
+
+- [x] **1.7 Rename + fully per-character split** — "UPGRADES" is now
+      "CHARACTER UPGRADES" everywhere (button, screen title, route); **all
+      12** dials (STR/VIT/DEX/INT plus CHAOS/HASTE/FORTUNE/RESOLVE/MAGNET/
+      LUCK/REGEN/CRIT) are scoped to whichever character launched the
+      screen (`MetaProgression.characterUpgradeLevels`) — no global
+      Character Upgrades dial is left. BONUSES SHOP (renamed from SHOP)
+      untouched in substance — still permanent, still for every character.
+- [x] **1.8 Character Select stat bars** — each of the 4 STR/VIT/DEX/INT
+      bars shows a red "+N" delta (this character's own bonus), fills
+      toward base+10 (the purchasable ceiling), and turns gold once that
+      bonus is fully bought; the HP/DMG/shots-per-sec/speed line below
+      reflects the same boosted total.
+- [x] **1.9 Two summary panels below ENTER ARENA** — "Stat Upgrades:"
+      (this character's own CHAOS/HASTE/FORTUNE/RESOLVE/MAGNET/LUCK/REGEN/
+      CRIT levels) and "Shop Bonuses:" (owned BONUSES SHOP items, global,
+      new — Character Select never showed these before).
+- [x] **1.10 Button width** — SHOP/CHARACTER UPGRADES row given its own
+      16px side margin (was the ambient 24px), reading visibly wider.
+- [x] **1.11 FTUE rewrite (x2)** — the "LOOT, SHOP & UPGRADES" slide
+      explains BONUSES-SHOP-vs-CHARACTER-UPGRADES (permanent-for-everyone
+      vs. fully per-character); separately, every slide's body is now
+      several short paragraphs (not one dense block) with inline
+      **bold**/_italic_ emphasis, more space between paragraphs and
+      before the bottom of the slide.
+
+- [ ] **1.12 On-device: per-character isolation** — buy a level of *any*
+      dial (not just STR/VIT/DEX/INT — try CHAOS/HASTE too) on one
+      character, swipe to another, confirm its own values still read 0.
+- [ ] **1.13 On-device: legibility** — the red "+N" chip, the gold
+      maxed-out fill color, the widened button row, and both new summary
+      panels all read clearly at actual on-screen size/text-scale.
+- [ ] **1.14 On-device: FTUE** — the 3 slides' paragraph spacing/bold/
+      italic actually reads better than the old dense block, and nothing
+      overflows on a real device screen.
+- [x] **1.15 "Shop Bonuses:" overflow fix (DECISIONS D-004)** — replaced
+      the full item-label list with a fixed-height "N / 15 owned" count +
+      "VIEW ALL" link to BONUSES SHOP, so the panel's height stops growing
+      as more items get bought (was pushing the whole page into needing a
+      scroll).
+- [ ] **1.16 On-device: Shop Bonuses panel** — "VIEW ALL" opens BONUSES
+      SHOP and the count updates correctly after buying something there;
+      Character Select's page no longer needs scrolling regardless of how
+      many of the 15 items are owned.
+- [x] **1.17 No scrolling on Character Select (DECISIONS D-005)** —
+      `_CharacterPage` is a plain non-scrolling `Column` now
+      (`SingleChildScrollView` removed); several sizes tightened (portrait
+      art, name/descriptor, HP/DMG line) so the content actually fits.
+- [ ] **1.18 On-device: no-scroll fits for real** — the real, biggest risk
+      this branch is shipping unverified: confirm the page genuinely
+      doesn't overflow on the smallest real screen available, for every
+      character (locked-panel characters included) — the test suite only
+      proves it fits a simulated 360x780 logical surface, not every real
+      device.
+
+**Before merging this branch to `main`:** `README.md` is now stale in at
+least the Character Select/Upgrades description (DECISIONS D-003) — update
+it as part of the merge, not after.
+
+---
+
 ## Backlog (do not start without asking first)
 
 Kept here so ideas have somewhere to go that isn't the current sprint —

@@ -6,6 +6,7 @@ import 'package:flame/components.dart';
 import '../../core/constants.dart';
 import '../../core/economy.dart';
 import '../../core/game_rules.dart';
+import '../../core/meta_progression.dart';
 import '../../core/sfx_player.dart';
 import '../arena_game.dart';
 
@@ -50,7 +51,7 @@ class ChestComponent extends SpriteAnimationComponent
       final player = game.player;
       // MAGNET (DECISIONS D-069) widens every pickup's own collect radius.
       final radius = kChestPickupRadiusPx *
-          magnetPickupRadiusMultiplier(game.meta.magnetLevel);
+          magnetPickupRadiusMultiplier(game.metaLevel(MetaStat.magnet));
       if (player.isAlive && position.distanceTo(player.position) < radius) {
         _startOpening();
       }

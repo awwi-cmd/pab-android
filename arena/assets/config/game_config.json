@@ -53,5 +53,13 @@
   "audio": {
     "startingSfxVolume": 20,
     "startingMusicVolume": 5
+  },
+  "worldObjects": {
+    "torchCount": 6,
+    "torchMinSpacingPx": 220,
+    "vaseCount": 4,
+    "vaseMinSpacingPx": 260,
+    "vaseGemsMin": 3,
+    "vaseGemsMax": 6
   }
 }

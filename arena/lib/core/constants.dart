@@ -225,6 +225,40 @@ const double kDefenceCrystalAspect = 1;
 const double kItemFloatAmplitudePx = 6;
 const double kItemFloatPeriodSec = 1.6;
 
+/// Standing torches (`scenes/torch-standing.png`, DECISIONS D-002) — a
+/// solid world obstacle, native 16×16 cell, same render-scale family as
+/// gems/potions/vases. Collision radius is deliberately smaller than half
+/// the rendered sprite (the flame/base padding around the actual pole
+/// shouldn't block movement) — first-guess placeholder like every other
+/// collision/VFX size in this project.
+const double kTorchRenderScale = 3;
+const double kTorchCollisionRadiusPx = 10;
+
+/// Gem vases (`scenes/gem-vase.png`, DECISIONS D-002) — native 16×16 cell,
+/// same render-scale family. [kVasePickupRadiusPx] is the touch radius that
+/// breaks it (subject to MAGNET like every other pickup radius). The 3
+/// scatter constants control where the burst of gems it drops lands —
+/// alternating left/right of the vase (not fully random) so even a small
+/// gem count visibly reads as "left AND right," the developer's literal
+/// spec, rather than occasionally clustering on one side by chance.
+const double kVaseRenderScale = 3;
+const double kVasePickupRadiusPx = 30;
+const double kVaseGemScatterMinPx = 18;
+const double kVaseGemScatterMaxPx = 42;
+const double kVaseGemScatterVerticalPx = 14;
+
+/// The vase's "card chosen" burst (DECISIONS D-002) — reuses the existing
+/// sparkle VFX language the chest-reveal's own card-chosen moment
+/// established (`ChestRevealOverlay`'s radial `Icons.auto_awesome` burst,
+/// D-072) as a Flame-side effect, since Flame owns the arena and can't run
+/// that overlay's Flutter widgets (CLAUDE.md §4.1) — several one-shot
+/// `sparkleAnimation` copies fired outward at random angles instead of one
+/// static flash.
+const int kCardChosenBurstCount = 8;
+const double kCardChosenBurstMinDistancePx = 16;
+const double kCardChosenBurstMaxDistancePx = 46;
+const double kCardChosenBurstSparkleSizePx = 20;
+
 /// Flame component render order (CLAUDE.md §4.10) — layer via these
 /// constants, never a magic `priority:` int on a component.
 class ArenaPriority {
@@ -235,6 +269,9 @@ class ArenaPriority {
   // Gems/potions (D-043) sit on the ground, above the floor/ground effects
   // but below anything that walks.
   static const pickup = 7;
+  // Standing torches (D-002) — solid obstacles, same layer band as pickups
+  // but drawn just above them.
+  static const obstacle = 8;
   static const enemy = 10;
   // Above `enemy` so an elite's fire glow (D-035/D-036) reads on top of the
   // enemy sprite instead of peeking out from behind it.

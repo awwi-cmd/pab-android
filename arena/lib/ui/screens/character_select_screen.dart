@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
 import '../../core/meta_progression.dart';
+import '../../core/shop.dart';
+import '../../core/stats.dart';
 import '../../data/characters.dart';
 import '../widgets/carousel_arrow.dart';
 import '../widgets/coin_icon.dart';
@@ -11,9 +13,10 @@ import '../widgets/gem_icon.dart';
 import '../widgets/pixel_button.dart';
 import '../widgets/screen_scaffold.dart';
 import '../widgets/stat_bar.dart';
+import '../widgets/tap_sfx.dart';
 import 'arena_screen.dart';
+import 'character_upgrades_screen.dart';
 import 'shop_screen.dart';
-import 'upgrades_screen.dart';
 
 /// A one-character-at-a-time swipe carousel (DECISIONS D-055) — replaces
 /// the old 2x2 grid, which had all 4 characters idle-animating at once
@@ -37,11 +40,13 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
   int _pageIndex = 0;
 
   // Wallet/progress display only (DECISIONS D-047/D-055) -- reloaded every
-  // time we come back from SHOP/UPGRADES or the arena itself (a round just
-  // played may have moved the lifetime-kills needle past a threshold).
-  int _coins = 0;
-  int _gems = 0;
-  int _lifetimeKills = 0;
+  // time we come back from SHOP/CHARACTER UPGRADES or the arena itself (a
+  // round just played may have moved the lifetime-kills needle past a
+  // threshold, or spent coins on a stat). Held as the whole `MetaProgression`
+  // (not just a few flat ints) since DECISIONS D-003's per-character stat
+  // bars and the global-dial summary both need more of it than the old
+  // 3-int shape did.
+  MetaProgression? _meta;
 
   @override
   void initState() {
@@ -58,11 +63,7 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
   Future<void> _loadMeta() async {
     final meta = await MetaProgressionRepository().load();
     if (!mounted) return;
-    setState(() {
-      _coins = meta.coins;
-      _gems = meta.gems;
-      _lifetimeKills = meta.lifetimeKills;
-    });
+    setState(() => _meta = meta);
   }
 
   static const _pageAnimDuration = Duration(milliseconds: 250);
@@ -83,47 +84,72 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
     );
   }
 
+  /// Shared by the BONUSES SHOP button and the "Shop Bonuses:" panel's own
+  /// "VIEW ALL" link (DECISIONS D-003 follow-up) — both open the exact same
+  /// screen and need the exact same reload-on-return, so there's only one
+  /// place that logic can drift.
+  Future<void> _openBonusesShop() async {
+    await Navigator.of(context).pushNamed(ShopScreen.route);
+    _loadMeta();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final meta = _meta;
     return ScreenScaffold(
       title: 'CHARACTER SELECT',
       child: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-            child: Column(
+            child: _WalletRow(coins: meta?.coins ?? 0, gems: meta?.gems ?? 0),
+          ),
+          const SizedBox(height: 12),
+          // Developer's ask: "a little bit more wide to the left and
+          // right" -- its own smaller 16px side margin, not the 24px every
+          // other row above/below uses, so these two buttons alone read
+          // wider without touching any other row's margin or the 12px gap
+          // between them. (A negative `Padding` outset past the ambient
+          // 24px would be the more surgical way to widen just this row,
+          // but `RenderPadding` asserts `padding.isNonNegative` -- this
+          // needs its own smaller-but-still-non-negative margin instead.)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
               children: [
-                _WalletRow(coins: _coins, gems: _gems),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: PixelButton(
-                        label: 'SHOP',
-                        onPressed: () async {
-                          await Navigator.of(context)
-                              .pushNamed(ShopScreen.route);
-                          _loadMeta();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: PixelButton(
-                        label: 'UPGRADES',
-                        onPressed: () async {
-                          await Navigator.of(context)
-                              .pushNamed(UpgradesScreen.route);
-                          _loadMeta();
-                        },
-                      ),
-                    ),
-                  ],
+                Expanded(
+                  child: PixelButton(
+                    // DECISIONS D-003: renamed from bare "SHOP" -- see
+                    // ShopScreen's own title for why.
+                    label: 'BONUSES SHOP',
+                    onPressed: _openBonusesShop,
+                  ),
                 ),
-                const SizedBox(height: 12),
-                PageDots(count: kCharacters.length, index: _pageIndex),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: PixelButton(
+                    // DECISIONS D-003: renamed from "UPGRADES" -- makes the
+                    // per-character scope visible in the label itself, not
+                    // just in the screen it opens.
+                    label: 'CHARACTER UPGRADES',
+                    onPressed: () async {
+                      await Navigator.of(context).pushNamed(
+                        CharacterUpgradesScreen.route,
+                        // Which character's own wallet to open (DECISIONS
+                        // D-003) -- same route-argument pattern
+                        // `ArenaScreen` already uses.
+                        arguments: kCharacters[_pageIndex],
+                      );
+                      _loadMeta();
+                    },
+                  ),
+                ),
               ],
             ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 24, right: 24, top: 12),
+            child: PageDots(count: kCharacters.length, index: _pageIndex),
           ),
           Expanded(
             child: PageView.builder(
@@ -132,9 +158,10 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
               onPageChanged: (i) => setState(() => _pageIndex = i),
               itemBuilder: (context, i) => _CharacterPage(
                 character: kCharacters[i],
-                lifetimeKills: _lifetimeKills,
+                meta: meta ?? MetaProgression(),
                 onEnterArena: () => Navigator.of(context)
                     .pushNamed(ArenaScreen.route, arguments: kCharacters[i]),
+                onViewShopBonuses: _openBonusesShop,
               ),
             ),
           ),
@@ -217,24 +244,48 @@ class _WalletRow extends StatelessWidget {
 class _CharacterPage extends StatelessWidget {
   const _CharacterPage({
     required this.character,
-    required this.lifetimeKills,
+    required this.meta,
     required this.onEnterArena,
+    required this.onViewShopBonuses,
   });
 
   final CharacterDef character;
-  final int lifetimeKills;
+  final MetaProgression meta;
   final VoidCallback onEnterArena;
+  final VoidCallback onViewShopBonuses;
 
   @override
   Widget build(BuildContext context) {
     final stats = character.stats;
+    final lifetimeKills = meta.lifetimeKills;
     final unlocked = character.isUnlockedFor(lifetimeKills);
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+    // DECISIONS D-003: this character's own Character Upgrades purchases
+    // (never another character's) layered onto its base stats -- the exact
+    // same combination `ArenaGame.effectiveStats` does at arena entry, so
+    // what's shown here is what the round actually starts with.
+    final levels = meta.levelsFor(character.id);
+    final effectiveStats = StatBlock(
+      str: stats.str + levels.str,
+      vit: stats.vit + levels.vit,
+      dex: stats.dex + levels.dex,
+      intellect: stats.intellect + levels.intellect,
+    );
+    // DECISIONS D-005 ("make sure there is no scrolling in character
+    // select"): a plain, non-scrolling `Column` — every gap/size below was
+    // tightened from the original scrolling layout's numbers specifically
+    // so the whole page (portrait, name/descriptor, 4 bars, the HP/DMG
+    // line, ENTER ARENA/locked panel, and both summary panels) fits inside
+    // the fixed height `PageView` actually gives this page without ever
+    // needing `SingleChildScrollView`. First-guess sizes, like everything
+    // else in this project — needs an on-device check on a real small
+    // screen, not just the 800x600 test harness.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           SizedBox(
-            height: 120,
+            height: 84,
             child: Center(
               child: Opacity(
                 // Dimmed, not hidden -- still shows what you're working
@@ -244,42 +295,83 @@ class _CharacterPage extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 16),
           Text(
             character.name,
             style: const TextStyle(
               color: ArenaColors.textPrimary,
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 4),
           Text(
             character.descriptor,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: ArenaColors.textDim),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: ArenaColors.textDim, fontSize: 12),
           ),
-          const SizedBox(height: 16),
-          StatBar(label: 'STR', value: stats.str, max: 10),
-          StatBar(label: 'VIT', value: stats.vit, max: 10),
-          StatBar(label: 'DEX', value: stats.dex, max: 10),
-          StatBar(label: 'INT', value: stats.intellect, max: 10),
-          const SizedBox(height: 12),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // DECISIONS D-003: each bar's own red "+N" chip is this
+              // character's Character Upgrades bonus, the bar fills toward
+              // base+kMetaMaxLevel (the purchasable ceiling) and turns gold
+              // once that bonus is fully bought, and the number at the end
+              // is the total (base+bonus) -- not the raw purchase level the
+              // Character Upgrades screen's own bars show.
+              StatBar(
+                label: 'STR',
+                value: effectiveStats.str,
+                max: stats.str + kMetaMaxLevel,
+                bonus: levels.str,
+                bonusMax: kMetaMaxLevel,
+              ),
+              StatBar(
+                label: 'VIT',
+                value: effectiveStats.vit,
+                max: stats.vit + kMetaMaxLevel,
+                bonus: levels.vit,
+                bonusMax: kMetaMaxLevel,
+              ),
+              StatBar(
+                label: 'DEX',
+                value: effectiveStats.dex,
+                max: stats.dex + kMetaMaxLevel,
+                bonus: levels.dex,
+                bonusMax: kMetaMaxLevel,
+              ),
+              StatBar(
+                label: 'INT',
+                value: effectiveStats.intellect,
+                max: stats.intellect + kMetaMaxLevel,
+                bonus: levels.intellect,
+                bonusMax: kMetaMaxLevel,
+              ),
+            ],
+          ),
           Text(
-            'HP ${stats.maxHp.round()} · '
-            'DMG ${stats.damagePerHit.round()} · '
-            '${stats.attacksPerSec.toStringAsFixed(1)} shots/s · '
-            '${stats.moveSpeedPxPerS.round()} speed',
+            'HP ${effectiveStats.maxHp.round()} · '
+            'DMG ${effectiveStats.damagePerHit.round()} · '
+            '${effectiveStats.attacksPerSec.toStringAsFixed(1)} shots/s · '
+            '${effectiveStats.moveSpeedPxPerS.round()}spd',
+            textAlign: TextAlign.center,
             style: const TextStyle(
               color: ArenaColors.accent,
               fontWeight: FontWeight.bold,
+              fontSize: 12,
             ),
           ),
-          const SizedBox(height: 24),
           if (unlocked)
             PixelButton(label: 'ENTER ARENA', onPressed: onEnterArena)
           else
             _LockedPanel(character: character, lifetimeKills: lifetimeKills),
+          // DECISIONS D-003 ("below the ARENA, add a panel for Stat
+          // Upgrades: and one for Shop Bonuses:") -- Stat Upgrades is this
+          // character's own (every dial is per-character now); Shop
+          // Bonuses is global -- same purchases regardless of which
+          // character's page this is.
+          _StatUpgradesPanel(character: character, meta: meta),
+          _ShopBonusesPanel(meta: meta, onViewAll: onViewShopBonuses),
         ],
       ),
     );
@@ -314,6 +406,142 @@ class _LockedPanel extends StatelessWidget {
           style: const TextStyle(color: ArenaColors.textDim, fontSize: 12),
         ),
       ],
+    );
+  }
+}
+
+/// Shared look for both panels below (DECISIONS D-003) — a titled bordered
+/// box, same "surface + surfaceAlt border" language `_UpgradeRow`
+/// (`character_upgrades_screen.dart`) already uses for one purchasable
+/// stat, just holding a read-only summary instead of a buy button.
+class _SummaryPanel extends StatelessWidget {
+  const _SummaryPanel({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: ArenaColors.surface,
+        border: Border.all(color: ArenaColors.surfaceAlt),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: ArenaColors.textPrimary,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 8),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+/// The 8 non-attribute Character Upgrades dials' current levels for *this*
+/// character (DECISIONS D-003 — every dial is per-character now, "chaos
+/// haste luck everything from character upgrades should be specific to
+/// character"). A compact wrap of chips rather than 8 more full `StatBar`s
+/// — this is a reminder of what's active on this character, not something
+/// to buy from here (that's still Character Upgrades' own pages 2/3).
+/// `MetaStat.values.skip(4)` (STR/VIT/DEX/INT are the first 4, already
+/// shown as full bars above) keeps this in the same declaration order as
+/// those pages, same "enum order is display order" convention the whole
+/// file already leans on.
+class _StatUpgradesPanel extends StatelessWidget {
+  const _StatUpgradesPanel({required this.character, required this.meta});
+
+  final CharacterDef character;
+  final MetaProgression meta;
+
+  @override
+  Widget build(BuildContext context) {
+    final dials = MetaStat.values.skip(4);
+    return _SummaryPanel(
+      title: 'Stat Upgrades:',
+      child: Wrap(
+        spacing: 14,
+        runSpacing: 6,
+        children: [
+          for (final stat in dials)
+            Text(
+              '${stat.label} ${meta.levelOfFor(character.id, stat)}',
+              style: const TextStyle(
+                color: ArenaColors.textDim,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Owned BONUSES SHOP items (DECISIONS D-003, D-069) — global, same count
+/// regardless of which character's page this is (SHOP was never made
+/// per-character; the developer's explicit ask was to confirm it "remains
+/// the same, permanent bonuses FOR ALL characters").
+///
+/// A compact "N / 15 owned" count plus a "VIEW ALL" link, not a list of
+/// every owned item's label — DECISIONS D-003 follow-up: with up to 15
+/// possible items, listing them all by name pushed the whole Character
+/// Select page tall enough to need scrolling ("the shop bonuses run out of
+/// screen"). This panel's own height is now fixed regardless of how many
+/// are owned; BONUSES SHOP itself (already its own scrollable-by-page
+/// carousel) is still where the actual list lives — [onViewAll] just
+/// opens it, same screen the button above already does.
+class _ShopBonusesPanel extends StatelessWidget {
+  const _ShopBonusesPanel({required this.meta, required this.onViewAll});
+
+  final MetaProgression meta;
+  final VoidCallback onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final ownedCount = kShopItems.where((item) => meta.ownsItem(item.id)).length;
+    return _SummaryPanel(
+      title: 'Shop Bonuses:',
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$ownedCount / ${kShopItems.length} owned',
+              style: const TextStyle(
+                color: ArenaColors.textDim,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: withTapSfx(onViewAll), // D-076: every button taps the shared SFX
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              'VIEW ALL >',
+              style: TextStyle(
+                color: ArenaColors.accent,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
