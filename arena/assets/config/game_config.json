@@ -55,8 +55,11 @@
     "startingMusicVolume": 5
   },
   "worldObjects": {
-    "torchCount": 6,
+    "torchCount": 4,
     "torchMinSpacingPx": 220,
+    "torchHealRadiusPx": 50,
+    "torchHealPerSec": 8,
+    "torchConsumeDurationSec": 5,
     "vaseCount": 4,
     "vaseMinSpacingPx": 260,
     "vaseGemsMin": 4,

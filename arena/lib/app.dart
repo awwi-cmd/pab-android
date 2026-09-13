@@ -115,12 +115,16 @@ final ThemeData _theme = ThemeData(
   useMaterial3: true,
   brightness: Brightness.dark,
   scaffoldBackgroundColor: ArenaColors.background,
-  // DECISIONS D-077: the game's main font, applied here rather than on
-  // each individual `TextStyle` -- every `Text` in the app inherits it for
-  // free (none of the existing `TextStyle`s set their own `fontFamily` or
-  // `inherit: false`, so `Text`'s own merge-with-ambient-default logic
-  // picks this up everywhere, menus and Flame overlays alike).
-  fontFamily: 'PixelFont',
+  // DECISIONS D-077, font swapped by D-009: the game's main font, applied
+  // here rather than on each individual `TextStyle` -- every `Text` in the
+  // app inherits it for free (none of the existing `TextStyle`s set their
+  // own `fontFamily` or `inherit: false`, so `Text`'s own
+  // merge-with-ambient-default logic picks this up everywhere, menus and
+  // Flame overlays alike). `FontWeight.bold` (used throughout, e.g. every
+  // `PixelButton` label) resolves to the registered 700-weight
+  // `HomeVideo-Bold.ttf` face automatically -- Flutter matches by weight
+  // within a family, not by which asset line you tapped.
+  fontFamily: 'HomeVideo',
   colorScheme: ColorScheme.fromSeed(
     seedColor: ArenaColors.accent,
     brightness: Brightness.dark,

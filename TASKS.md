@@ -267,6 +267,40 @@ UPGRADES.*
 
 ---
 
+## Phase 3 — New font, torch functionality, last-character memory, in-round level
+
+*Goal: swap the app font; make torches a real limited-use item instead of
+pure scenery; remember the last character played; show the player's level
+during a round.*
+
+- [x] **3.1 New font (DECISIONS D-009)** — `HomeVideo-Regular`/`-Bold`
+      replace `PixelFont`/`pixel.ttf` app-wide (`app.dart`'s
+      `ThemeData.fontFamily`); old font file deleted.
+- [x] **3.2 Torch heal + consume (DECISIONS D-009)** — `torchCount`
+      lowered 6 → 4; a torch now heals *only* the player (never enemies)
+      while they're within `torchHealRadiusPx`, and consumes itself (an
+      explosion VFX + SFX) once cumulative time-in-range hits
+      `torchConsumeDurationSec`. All 3 numbers are `GameConfig`-backed.
+- [x] **3.3 Last character remembered (DECISIONS D-009)** —
+      `LastCharacterState` persists the character id the instant ENTER
+      ARENA is pressed; Character Select jumps to it once, on open.
+- [x] **3.4 Level shown in-round (DECISIONS D-009)** — a new "Lv N" label
+      overlaid on the HP bar's own left edge.
+
+- [ ] **3.5 On-device: font** — `HomeVideo` actually renders everywhere
+      (menus, HUD, Flame overlays) and doesn't clip/overflow anywhere the
+      old font's metrics happened to fit better.
+- [ ] **3.6 On-device: torch** — the heal rate/radius and the 5-second
+      consume budget feel right, the explosion VFX+SFX read clearly, and
+      an enemy standing in the same radius is confirmed to get nothing.
+- [ ] **3.7 On-device: last character** — start a round as (say) the
+      Bruiser, return to Character Select, confirm it opens on the
+      Bruiser, not the Apprentice.
+- [ ] **3.8 On-device: level label** — "Lv N" is legible against the HP
+      bar underneath it at every level's digit count (1 vs. 20+).
+
+---
+
 ## Backlog (do not start without asking first)
 
 Kept here so ideas have somewhere to go that isn't the current sprint —

@@ -3,6 +3,7 @@ import 'package:flame/widgets.dart' show SpriteAnimationWidget;
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
+import '../../core/last_character.dart';
 import '../../core/meta_progression.dart';
 import '../../core/shop.dart';
 import '../../core/stats.dart';
@@ -52,6 +53,7 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
   void initState() {
     super.initState();
     _loadMeta();
+    _jumpToLastCharacter();
   }
 
   @override
@@ -64,6 +66,23 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
     final meta = await MetaProgressionRepository().load();
     if (!mounted) return;
     setState(() => _meta = meta);
+  }
+
+  /// DECISIONS D-009 ("save last character played for next round") — a
+  /// one-time jump on the very first frame this screen exists, not part of
+  /// [_loadMeta] (which also re-runs every time we come back from SHOP/
+  /// CHARACTER UPGRADES/the arena — re-jumping on every one of those would
+  /// yank the player back to their last-*played* character even while
+  /// they're mid-swipe looking at a different one).
+  Future<void> _jumpToLastCharacter() async {
+    final lastId = await LastCharacterState.load();
+    if (!mounted || lastId == null) return;
+    final index = kCharacters.indexWhere((c) => c.id == lastId);
+    if (index < 0) return; // an unknown/removed id -- fall back to slot 0
+    setState(() => _pageIndex = index);
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(index);
+    }
   }
 
   static const _pageAnimDuration = Duration(milliseconds: 250);
@@ -159,8 +178,14 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
               itemBuilder: (context, i) => _CharacterPage(
                 character: kCharacters[i],
                 meta: meta ?? MetaProgression(),
-                onEnterArena: () => Navigator.of(context)
-                    .pushNamed(ArenaScreen.route, arguments: kCharacters[i]),
+                onEnterArena: () {
+                  // Fire-and-forget, same "nothing on screen is waiting on
+                  // this write landing" reasoning ArenaGame's own round-end
+                  // persistence already uses (DECISIONS D-009).
+                  LastCharacterState.save(kCharacters[i].id);
+                  Navigator.of(context)
+                      .pushNamed(ArenaScreen.route, arguments: kCharacters[i]);
+                },
                 onViewShopBonuses: _openBonusesShop,
               ),
             ),

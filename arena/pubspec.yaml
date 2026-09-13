@@ -88,9 +88,11 @@ flutter:
   # ThemeData (every Text widget inherits it unless it sets its own
   # fontFamily, and none currently do).
   fonts:
-    - family: PixelFont
+    - family: HomeVideo
       fonts:
-        - asset: assets/fonts/pixel.ttf
+        - asset: assets/fonts/HomeVideo-Regular.ttf
+        - asset: assets/fonts/HomeVideo-Bold.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:

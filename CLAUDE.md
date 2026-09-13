@@ -157,7 +157,7 @@ PixelArenaBrawl/               <- repo root, open this in your editor
     │       └── game_config.json        // developer-editable build-time tuning knobs — economy/enemy-AI/character/progression/starting-audio
     └── lib/
         ├── main.dart               // awaits GameConfig.instance.load() before runApp
-        ├── app.dart                // MaterialApp, routes, theme; starts BgmController + SfxPlayer once; ThemeData.fontFamily = PixelFont, MediaQuery textScaler 0.75; WidgetsBindingObserver pauses/resumes BGM on app background/foreground
+        ├── app.dart                // MaterialApp, routes, theme; starts BgmController + SfxPlayer once; ThemeData.fontFamily = HomeVideo (D-009, was PixelFont), MediaQuery textScaler 0.75; WidgetsBindingObserver pauses/resumes BGM on app background/foreground
         ├── core/
         │   ├── constants.dart      // design size, ArenaColors (incl. xp yellow, warning amber, danger red), layer priorities, render scales, kHudBar* shared HP/XP bar layout consts
         │   ├── game_config.dart    // GameConfig singleton — parses assets/config/game_config.json once at boot, typed getters with hardcoded fallbacks
@@ -171,6 +171,7 @@ PixelArenaBrawl/               <- repo root, open this in your editor
         │   ├── sfx_player.dart     // app-wide singleton: every one-shot SFX (footsteps, damage, tap, projectile-shoot, level-up, chest-card select/chosen, explosion, death, pickup), pooled via AudioPool, PlayerMode.lowLatency
         │   ├── meta_progression.dart // MetaStat dials (STR/VIT/DEX/INT/CORRUPTION/HASTE/FORTUNE/RESOLVE/MAGNET/LUCK/REGEN/CRIT), the persistent coins+gems+lifetimeKills+ownedItemIds wallet, 6 more lifetime achievement counters, recordRoundEnd (one atomic round-over write incl. achievement grants)
         │   ├── achievements.dart   // Achievement/kAchievements (20 entries)/buildStatValues/isAchievementMet — zero imports of meta_progression.dart on purpose, avoids a 2-file cycle
+        │   ├── last_character.dart // one persisted string (CharacterDef.id) -- Character Select jumps to it on open (D-009)
         │   └── tutorial_state.dart // one persisted bool (hasSeenIntro) gating the first-boot tutorial
         ├── data/
         │   └── characters.dart     // CharacterDef list (kCharacters, a getter); unlockKillThreshold gates slots 2-4; base STR/VIT/DEX/INT GameConfig-backed
@@ -206,7 +207,8 @@ PixelArenaBrawl/               <- repo root, open this in your editor
             │   ├── potion_spawner.dart      // periodic random-area drop
             │   ├── chest.dart               // world chest: anima+explosion then a real opening sequence; pickup SFX on touch
             │   ├── chest_spawner.dart       // periodic random-area drop, same shape as potion_spawner.dart
-            │   ├── torch.dart               // solid world obstacle, looping flicker; player/enemy collision resolved in their own update()
+            │   ├── torch.dart               // solid world obstacle (player/enemy collision resolved in their own update()); real functionality (D-009) -- heals only the player within a radius, consumes itself with an explosion vfx+sfx after a total time-in-range budget
+            │   ├── level_text.dart          // "Lv N" HUD label overlaid on the HP bar's own left edge (D-009)
             │   ├── torch_spawner.dart       // random placement + min-spacing rejection + straggler cull, GameConfig-backed
             │   ├── vase.dart                // breakable world pickup: card-chosen SFX + sparkle burst + left/right gem scatter on touch
             │   ├── vase_spawner.dart        // random placement + min-spacing rejection, GameConfig-backed

@@ -553,6 +553,86 @@ reporting friend's device.
 
 ---
 
+## D-009 — New app font; torches actually do something; last character remembered; level shown in-round
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Developer added `HomeVideo-Regular`/`HomeVideo-Bold` (otf +
+ttf) and asked: "replace it for the main one in the game." Plus: "Spawn
+less torches, give them functionality so that standing in an area near
+them gives ONLY the player (not enemies) hp regen. Player stays near,
+consumes and then torch disappears with an explosion vfx & sounds." Plus:
+"save last character played for next round." Plus: "level is not shown on
+screen at all during round."
+
+**Decision — font:** `pubspec.yaml`'s font family swapped from
+`PixelFont`/`pixel.ttf` (D-077) to `HomeVideo`, registering both weights
+(`HomeVideo-Regular.ttf` default, `HomeVideo-Bold.ttf` at `weight: 700` so
+every existing `FontWeight.bold` in the app — every `PixelButton` label
+included — picks it up automatically, no per-`TextStyle` changes needed).
+`app.dart`'s `ThemeData.fontFamily` is the one line that actually changed;
+same "applied once, every `Text` inherits it" shape D-077 already
+established. `pixel.ttf` deleted outright (a real replace, not an unused
+leftover) — the `.otf` copies of the new font the developer also dropped
+in `assets/fonts/` are unused (only the `.ttf`s are registered, same
+format `pixel.ttf` used) but left alone since nothing asked for them to be
+removed.
+
+**Decision — torches now do something:** `GameConfig.torchCount`'s
+default lowered 6 → 4 ("spawn less torches") — now that a torch is a real
+limited-use item, not just scenery, fewer make each one feel like a find.
+`TorchComponent` gained real per-frame logic (it had none before — purely
+decorative): while the player (checked via `player.isAlive`, and *only*
+the player — enemies never call any of this) is within a new
+`GameConfig.torchHealRadiusPx` (50, deliberately wider than
+`kTorchCollisionRadiusPx`'s solid-obstacle push-out radius, so healing is
+already active the instant the player rests against it, not a separate
+closer approach), it heals `GameConfig.torchHealPerSec` (8) every second
+via the same `PlayerComponent.heal` potions already use. A torch is
+consumed once cumulative *time in range* (not HP actually healed — it
+still runs out at full HP) reaches `GameConfig.torchConsumeDurationSec`
+(5) — `ArenaGame.consumeTorch` removes it and calls
+`spawnExplosionEffect`, which bundles both the VFX *and* the SFX in one
+call ("an explosion vfx & sounds," plural — unlike the vase's own
+explosion VFX, D-007, which deliberately used the bare `spawnEffect` to
+skip the sound; here both were asked for, so the full helper is the right
+one). All 3 new numbers are `GameConfig`-backed, same `worldObjects`
+section as the rest of the torch/vase tuning knobs.
+
+**Decision — last character remembered:** a new `LastCharacterState`
+(`core/last_character.dart`), same "one persisted value, one key" shape
+`TutorialState` already established for its own single flag — no reason
+for a heavier repository class for one string. `CharacterSelectScreen`
+saves the tapped character's id the instant ENTER ARENA is pressed
+(fire-and-forget, same reasoning `ArenaGame`'s own round-end persistence
+already documents), and reads it back exactly once, in `initState`
+(`_jumpToLastCharacter`, deliberately *not* folded into `_loadMeta` —
+that method re-runs every time the screen regains focus from SHOP/
+CHARACTER UPGRADES/the arena, and re-jumping the carousel on every one of
+those would yank the player back to their last-*played* character even
+while they're mid-swipe looking at a different one).
+
+**Decision — level shown in-round:** a new `LevelTextComponent`
+(`game/components/level_text.dart`) — a bare Flame `TextComponent`
+showing `Lv ${game.level}`, re-set every `update()` (cheap: one short
+string, not a hot per-entity loop, so no need to diff against the last
+value first). Overlaid on the HP bar's own left edge rather than carving
+out a new HUD row — added to the HUD right after `HpBarComponent` in
+`resetRound`, so same-priority (`ArenaPriority.hud`) draw order puts it on
+top of the bar's fill, not underneath it.
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass.
+None of the 4 changes here have any test coverage of their own (the font
+swap is a pure asset/theme change with nothing to unit-test; torch/level
+HUD are Flame-world visuals, CLAUDE.md §4.11; last-character is a tiny
+SharedPreferences wrapper exercised the same way `TutorialState` already
+is — by hand, not a dedicated test file) — all 4 need an on-device pass:
+the new font actually renders everywhere, a torch's heal/consume timing
+and its explosion feel right, Character Select opens on the last
+character played after a round, and "Lv N" reads clearly against the HP
+bar underneath it.
+
+---
+
 ## Open questions
 
 Carried forward from the pre-alpha archive — still genuinely open, not
