@@ -20,6 +20,18 @@ import 'tap_sfx.dart';
 /// plays the shared tap SFX (DECISIONS D-076) — this is the single
 /// most-used button in the app, so wiring it here covers most screens for
 /// free.
+///
+/// DECISIONS D-013 ("make the hitbox of the buttons the exact same size as
+/// the button asset"): `InkWell` now wraps the whole `Stack` (image +
+/// label) instead of just the label `Text`. Before, `Material`/`InkWell`
+/// sized themselves to their child's own intrinsic size, which for a
+/// centered `Text` is just the label's own tight text bounds -- a small
+/// tap box hugging the letters in the middle of a much bigger visible
+/// wood-panel button. The label is now `Center`-ed inside a full-width
+/// `SizedBox` (the sole non-`Positioned` child, so it's what sizes the
+/// `Stack`), and the background image is `Positioned.fill` to that same
+/// size -- one shared source of truth for "how big is this button," so
+/// image, label centering, and hitbox can't drift apart again.
 class PixelButton extends StatelessWidget {
   const PixelButton({
     super.key,
@@ -59,49 +71,60 @@ class PixelButton extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: radius,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: Image.asset(
-                  _woodAsset,
-                  centerSlice: _centerSlice,
-                  fit: BoxFit.fill,
-                  filterQuality: FilterQuality.none,
-                  // Desaturated + dimmed when disabled -- same swatch, not
-                  // a second asset, so there's only ever one texture to
-                  // keep in sync with the palette. `BlendMode.saturation`
-                  // blended against plain grey is the standard "desaturate
-                  // an image" trick (it pulls saturation from the blend
-                  // color, which grey has none of).
-                  color: enabled ? null : Colors.grey,
-                  colorBlendMode: enabled ? null : BlendMode.saturation,
-                  opacity: enabled
-                      ? null
-                      : const AlwaysStoppedAnimation(0.55),
-                ),
-              ),
-              Material(
-                type: MaterialType.transparency,
-                child: InkWell(
-                  onTap: enabled ? withTapSfx(onPressed) : null,
-                  child: Padding(
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              onTap: enabled ? withTapSfx(onPressed) : null,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Image.asset(
+                      _woodAsset,
+                      centerSlice: _centerSlice,
+                      fit: BoxFit.fill,
+                      filterQuality: FilterQuality.none,
+                      // Desaturated + dimmed when disabled -- same swatch,
+                      // not a second asset, so there's only ever one
+                      // texture to keep in sync with the palette.
+                      // `BlendMode.saturation` blended against plain grey
+                      // is the standard "desaturate an image" trick (it
+                      // pulls saturation from the blend color, which grey
+                      // has none of).
+                      color: enabled ? null : Colors.grey,
+                      colorBlendMode: enabled ? null : BlendMode.saturation,
+                      opacity: enabled
+                          ? null
+                          : const AlwaysStoppedAnimation(0.55),
+                    ),
+                  ),
+                  // The one non-Positioned child -- its size (full width,
+                  // text height + vertical padding) is what the Stack
+                  // above sizes itself to, which is in turn what the
+                  // Positioned.fill image and this InkWell's own hitbox
+                  // both end up matching exactly.
+                  Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Text(
-                      label,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: fg,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.5,
-                        shadows: const [
-                          Shadow(color: Colors.black54, blurRadius: 2),
-                        ],
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Center(
+                        child: Text(
+                          label,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: fg,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.5,
+                            shadows: const [
+                              Shadow(color: Colors.black54, blurRadius: 2),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

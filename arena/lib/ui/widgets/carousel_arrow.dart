@@ -40,11 +40,18 @@ class CarouselArrow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final icon = Image.asset(
-      'assets/images/ui/button_play.png',
-      width: _size,
-      height: _size,
-      filterQuality: FilterQuality.none,
+    // DECISIONS D-013 ("make the arrow asset as big as the hitbox"): the
+    // image no longer declares its own width/height -- `SizedBox.expand`
+    // forces it to fill whatever box the tight `_size` `SizedBox` below
+    // hands it, so the art and the tappable area are structurally the
+    // same size (one number, `_size`, instead of two call sites that
+    // merely happened to agree).
+    final icon = SizedBox.expand(
+      child: Image.asset(
+        'assets/images/ui/button_play.png',
+        fit: BoxFit.fill,
+        filterQuality: FilterQuality.none,
+      ),
     );
     return SizedBox(
       width: _size,

@@ -388,6 +388,23 @@ overall text scale back up.*
       screen; Character Select's now-scrollable page doesn't feel like a
       regression on a screen tall enough to never need it.
 
+## Phase 6 — Button/arrow hitbox fixes
+
+*Goal: hitbox exactly matches visible button asset; arrow art fixed to
+its hitbox.*
+
+- [x] **6.1 PixelButton hitbox fix (DECISIONS D-013)** — `InkWell` now
+      wraps the full image+label `Stack`, not just the label; label
+      `Center`-ed in a full-width `SizedBox` that sizes the whole thing,
+      so image/label/hitbox can't drift apart.
+- [x] **6.2 CarouselArrow art/hitbox unified (DECISIONS D-013)** — image
+      wrapped in `SizedBox.expand` instead of its own width/height, so
+      it's forced to fill the same tight `_size` box the hitbox uses.
+- [ ] **6.3 On-device: button/arrow taps** — tap a `PixelButton` off to
+      its edges (not just dead-center on the label) and confirm it still
+      registers; confirm labels read as centered; confirm carousel
+      arrows still look/feel right.
+
 ---
 
 ## Backlog (do not start without asking first)

@@ -845,6 +845,46 @@ never actually needs to scroll.
 
 ---
 
+## D-013 — Button hitboxes matched to their asset; arrow art fixed to fill its own hitbox
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Developer: "Center the text on the buttons and make the
+hitbox of the buttons the exact same size of the button asset. Make the
+arrow key asset as big as the hitbox."
+
+**Decision:** `PixelButton` had a real bug from D-011's rewrite:
+`Material`/`InkWell` wrapped only the label `Padding`/`Text`, and a
+`Material`/`InkWell` with no explicit size shrink-wraps to its child's
+own intrinsic size — for a centered label that's just the tight bounds
+of the letters, not the full wood-panel width the background image
+(`Positioned.fill`, sized by the `Stack`'s *other*, non-`Positioned`
+child) actually rendered at. So the tap target was a small box hugging
+the text in the middle of a much bigger visible button. Fix: `InkWell`
+now wraps the whole `Stack` (image + label), and the label is
+`Center`-ed inside a full-width `SizedBox` — that `SizedBox` is what
+sizes the `Stack` (still the sole non-`Positioned` child), so the
+background image, the label's centering, and the `InkWell`'s hitbox all
+key off the exact same box now, structurally, not by coincidence.
+
+`CarouselArrow` didn't have the same bug — its outer `SizedBox` sets
+*both* width and height (`_size`), which are tight constraints Flutter's
+box protocol forces down through `Opacity`/`Material`/`InkWell`
+regardless of any child's own intrinsic size, so its hitbox was already
+pinned to `_size`. Still reworked it to the same "one source of truth"
+shape as `PixelButton` for consistency and to remove the last bit of
+independent sizing: the `Image` no longer declares its own
+width/height, it's wrapped in `SizedBox.expand` so it's forced to fill
+whatever box the tight outer `SizedBox` hands it — the art can't drift
+out of sync with the tappable area even if `_size` changes later.
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass
+(146 tests). Needs an on-device pass: tapping a `PixelButton` anywhere
+across its full width/height should register (not just dead-center on
+the label), and the label should read as visually centered rather than
+padding-positioned.
+
+---
+
 ## Open questions
 
 Carried forward from the pre-alpha archive — still genuinely open, not
