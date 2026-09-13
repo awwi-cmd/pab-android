@@ -357,6 +357,75 @@ chosen size.
 
 ---
 
+## D-006 — Vase break: drop the sparkle VFX, stagger the gem fly-out; LevelUp popup gets a real entrance/selection animation
+
+**Date:** 2026-09-13 · **Status:** Accepted
+**Context:** Developer: "Let's remove the vfx for when we break the vase.
+But make the gems fly out of it more when we break it, like 1 by 1, 0.5
+sec delay fly a generous amount of distance from the vase, not too far."
+And separately: "Level up screen: let's animate it a bit, show the Level
+up.. text first, then 0.5 second later, slide in each selection from the
+left one by one (left meaning outside of the screen). And the selection
+the player chooses, after the player taps it, the other 2 disappear
+instant, and the one chose flashes, then 1 second later the level up
+screen closes."
+
+**Decision — vase break:**
+- **VFX removed** — `VaseComponent` no longer calls `ArenaGame.
+  spawnCardChosenBurst`; that method, `GameAssets.cardChosenBurstAnimation`
+  (and its one-shot sheet load), and the `kCardChosenBurst*` constants are
+  all deleted outright, not just left uncalled — dead code, not a toggle.
+  The card-chosen SFX stays (never asked to remove it).
+- **Staggered gem fly-out** — a new `VaseGemBurstComponent` (bare
+  `Component`, not itself visible) replaces `ArenaGame.breakVase`'s old
+  "spawn all N gems in the same frame" loop: it holds the still-to-spawn
+  count and a countdown, spawning exactly one `GemComponent` every
+  `kVaseGemBurstIntervalSec` (0.5s) — the first fires immediately, not
+  after an initial 0.5s wait, so the burst reads as starting the instant
+  the vase breaks. `GemComponent` itself gained an optional `launchFrom`
+  param: when set, the gem visibly travels from that point to its landing
+  spot over `kVaseGemLaunchDurationSec` (ease-out, hand-rolled per-frame
+  lerp — CLAUDE.md §4.4's "mutate in place" convention, no Flame Effects
+  package) before its normal float-bob/pickup behavior takes over; every
+  other spawn site (enemy drops, chests) leaves it null and is completely
+  unaffected. The scatter-distance constants (`kVaseGemScatterMinPx`/
+  `MaxPx`) were widened (18-42px → 40-90px) for "a generous amount of
+  distance... not too far."
+
+**Decision — LevelUp popup:** `_LevelUpOverlayState` (`arena_screen.dart`)
+gained two `AnimationController`s and 2 `Timer`s:
+- **Entrance** — the title renders immediately; a `Timer` (500ms) then
+  flips `_cardsVisible`, which is what actually mounts the 3
+  `_LevelUpCard`s at all, and starts `_slideController`. Each card's own
+  slide-in reads off one shared `Interval` on that single controller
+  (start offset = `index * 150ms`, own duration 350ms) — the same
+  "one controller, per-item `Interval` stagger" shape this file's
+  `_CardLandSparkleSpec` (chest reveal) already established, not N
+  separate controllers. Cards translate in from -500px (comfortably
+  off-screen on any device width) with a fading-in opacity tied to the
+  same interval.
+- **Selection** — tapping a card no longer calls `ArenaGame.
+  resolveLevelUpChoice` directly. It sets local `_chosenKind`, which (a)
+  makes every *other* card's build method return `SizedBox.shrink()` —
+  gone outright, no fade, matching "disappear instant" — and (b) starts
+  `_flashController` (550ms), which the chosen card's own builder reads to
+  overlay a pulsing accent-colored `Container` (`sin(t·4π).abs()`, a
+  couple of visible pulses rather than one smooth glow, matching the
+  developer's own plural "flashes"). A second `Timer` (1000ms) is what
+  actually calls `resolveLevelUpChoice` — the real upgrade grant + the
+  overlay's own removal both happen at the end of that delay, not at tap
+  time. A second tap on the flashing card is a no-op (`_chosenKind != null`
+  guard) since it can't be un-chosen mid-flash.
+
+**Consequences:** `flutter analyze`/`test`/`build apk --debug` all pass —
+no test exercises the LevelUp overlay itself (DECISIONS D-019: coverage
+stops at Character Select) or vase breaking (no Flame-world test coverage
+at all, CLAUDE.md §4.11), so none of this animation timing is verified by
+the test suite; it needs a real on-device level-up and a real vase break
+to confirm the timings/motion actually read the way they're written here.
+
+---
+
 ## Open questions
 
 Carried forward from the pre-alpha archive — still genuinely open, not

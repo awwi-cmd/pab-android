@@ -189,6 +189,33 @@ one at a time, same discipline as Phase 0.*
 least the Character Select/Upgrades description (DECISIONS D-003) — update
 it as part of the merge, not after.
 
+### Vase break + LevelUp animation polish (DECISIONS D-006)
+
+- [x] **1.19 Vase break VFX removed** — the sparkle burst
+      (`spawnCardChosenBurst`/`cardChosenBurstAnimation`/`kCardChosenBurst*`)
+      is deleted outright, not just uncalled. The card-chosen SFX still
+      plays.
+- [x] **1.20 Staggered gem fly-out** — `VaseGemBurstComponent` spawns one
+      gem every 0.5s (first immediate) instead of all at once; each gem
+      visibly flies from the vase's position to its landing spot
+      (`GemComponent.launchFrom`) over 0.35s. Scatter distance widened
+      (18-42px → 40-90px).
+- [x] **1.21 LevelUp entrance animation** — title shows immediately, the
+      3 choice cards slide in from off-screen left, staggered 150ms apart,
+      350ms each, starting 500ms after the title.
+- [x] **1.22 LevelUp selection animation** — tapping a card no longer
+      resolves instantly: the other 2 vanish immediately, the chosen one
+      pulses (a couple of flashes, not one glow) for 1 full second, and
+      only then does the actual upgrade grant + overlay close happen.
+
+- [ ] **1.23 On-device: vase break** — the staggered 1-by-1 gem fly-out
+      timing/distance actually reads well, and nothing looks like it's
+      missing a "break" now that the sparkle VFX is gone.
+- [ ] **1.24 On-device: LevelUp** — the slide-in stagger, the flash
+      pulse, and the 1-second close delay all feel right (none of this has
+      any test coverage — DECISIONS D-019/CLAUDE.md §4.11 — this is
+      first-look-ever on a real device).
+
 ---
 
 ## Backlog (do not start without asking first)
