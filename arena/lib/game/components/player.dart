@@ -5,6 +5,7 @@ import 'package:flame/components.dart';
 
 import '../../core/constants.dart';
 import '../../core/game_rules.dart';
+import '../../core/meta_progression.dart';
 import '../../core/progression.dart';
 import '../../core/sfx_player.dart';
 import '../../core/shop.dart';
@@ -106,8 +107,8 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
       hp +
           (stats.hpRegenPerSec +
                   game.upgrades.bonusHpRegenPerSec +
-                  resolveHpRegenPerSec(game.meta.resolveLevel) +
-                  regenHpPerSec(game.meta.regenLevel)) *
+                  resolveHpRegenPerSec(game.metaLevel(MetaStat.resolve)) +
+                  regenHpPerSec(game.metaLevel(MetaStat.regen))) *
               dt,
     );
 
@@ -148,6 +149,15 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
     // rect; the camera follows the player anywhere in the world instead of
     // keeping the player inside a fixed viewport-sized area).
 
+    // Standing torches (DECISIONS D-002) — solid regardless of whether the
+    // player actually moved this frame (a torch spawning right next to a
+    // stationary player should still push them clear of it). Only a
+    // handful are ever live at once (`GameConfig.torchCount`), so this loop
+    // is cheap every frame.
+    for (final torch in game.torches) {
+      resolveCircleObstacle(position, size.x / 2, torch.position, torch.collisionRadius);
+    }
+
     if (current == AnimState.hurt || current == AnimState.fire) {
       if (animationTicker?.done() ?? true) {
         current = moving ? AnimState.run : AnimState.idle;
@@ -183,7 +193,7 @@ class PlayerComponent extends SpriteAnimationGroupComponent<AnimState>
     final resistanceMultiplier =
         (1 -
                 game.upgrades.damageResistance -
-                resolveDamageResistance(game.meta.resolveLevel) -
+                resolveDamageResistance(game.metaLevel(MetaStat.resolve)) -
                 game.meta.damageResistanceFromShop)
             .clamp(0.0, 1.0);
     hp = (hp - amount * resistanceMultiplier).clamp(0, effectiveMaxHp);

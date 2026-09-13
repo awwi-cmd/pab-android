@@ -36,7 +36,11 @@ import 'components/potion.dart';
 import 'components/potion_spawner.dart';
 import 'components/ray_beam.dart';
 import 'components/spawner.dart';
+import 'components/torch.dart';
+import 'components/torch_spawner.dart';
 import 'components/tracking_effect.dart';
+import 'components/vase.dart';
+import 'components/vase_spawner.dart';
 import 'components/xp_bar.dart';
 import 'game_assets.dart';
 import 'input/movement_input.dart';
@@ -61,18 +65,31 @@ class ArenaGame extends FlameGame {
   /// round started is reflected; the shop itself is unreachable mid-round.
   final MetaProgression meta;
 
-  /// [character]'s base `StatBlock` plus whatever's been bought in the
-  /// Upgrades shop — STR/VIT/DEX/INT purchases there are +1 attribute point
-  /// per level on `StatBlock`'s own integer scale (DECISIONS D-047), so
-  /// they flow through every derived-stat formula in `core/stats.dart` for
-  /// free. Read this everywhere combat code used to read `character.stats`
-  /// directly (CLAUDE.md §4.3 — still the one place these get combined).
-  StatBlock get effectiveStats => StatBlock(
-    str: character.stats.str + meta.bonusStr,
-    vit: character.stats.vit + meta.bonusVit,
-    dex: character.stats.dex + meta.bonusDex,
-    intellect: character.stats.intellect + meta.bonusIntellect,
-  );
+  /// This round's own character's Character Upgrades level for [stat]
+  /// (DECISIONS D-003: every dial is per-character now, not just
+  /// STR/VIT/DEX/INT) — a thin `meta.levelOfFor(character.id, stat)`
+  /// shortcut so every call site (here and every component with a `game`
+  /// reference) doesn't repeat `character.id` itself.
+  int metaLevel(MetaStat stat) => meta.levelOfFor(character.id, stat);
+
+  /// [character]'s base `StatBlock` plus whatever's been bought for *this*
+  /// character in Character Upgrades — STR/VIT/DEX/INT purchases there are
+  /// +1 attribute point per level on `StatBlock`'s own integer scale
+  /// (DECISIONS D-047), so they flow through every derived-stat formula in
+  /// `core/stats.dart` for free. Per-character, not global (DECISIONS
+  /// D-003) — `meta.levelsFor(character.id)` is a different character's own
+  /// bonus for a different `character.id`. Read this everywhere combat code
+  /// used to read `character.stats` directly (CLAUDE.md §4.3 — still the
+  /// one place these get combined).
+  StatBlock get effectiveStats {
+    final levels = meta.levelsFor(character.id);
+    return StatBlock(
+      str: character.stats.str + levels.str,
+      vit: character.stats.vit + levels.vit,
+      dex: character.stats.dex + levels.dex,
+      intellect: character.stats.intellect + levels.intellect,
+    );
+  }
 
   /// Captured once at arena entry (device notch / gesture-bar insets).
   /// The app is portrait-locked, so this doesn't need to track rotation.
@@ -86,6 +103,13 @@ class ArenaGame extends FlameGame {
 
   late PlayerComponent player;
   final List<EnemyComponent> enemies = [];
+
+  /// World objects (DECISIONS D-002) — populated/culled by
+  /// [TorchSpawner]/[VaseSpawner], read every frame by `PlayerComponent`/
+  /// `EnemyComponent`'s own collision resolution ([torches] only; vases
+  /// aren't solid) and by both spawners' own minimum-spacing checks.
+  final List<TorchComponent> torches = [];
+  final List<VaseComponent> vases = [];
 
   /// Every loaded `SpriteAnimation`/`Sprite` (DECISIONS D-045/D-048) — was
   /// ~20 separate fields plus the whole loading block inline in `onLoad()`
@@ -269,6 +293,8 @@ class ArenaGame extends FlameGame {
     world.removeAll(world.children.toList());
     camera.viewport.removeAll(camera.viewport.children.toList());
     enemies.clear();
+    torches.clear(); // the components themselves went with removeAll above
+    vases.clear();
     // Not touching `overlays` here: this only ever runs from onLoad(),
     // before GameWidget has finished mounting and registered its overlay
     // builders -- calling overlays.add/remove this early throws (asserts
@@ -343,6 +369,8 @@ class ArenaGame extends FlameGame {
     addToWorld(Spawner());
     addToWorld(PotionSpawner());
     addToWorld(ChestSpawner());
+    addToWorld(TorchSpawner());
+    addToWorld(VaseSpawner());
 
     if (settings.showFps) {
       // Below both top bars (DECISIONS D-091 stacked them: top margin +
@@ -387,7 +415,7 @@ class ArenaGame extends FlameGame {
       // everything in the round.
       _fireCooldown =
           character.attackBehavior.cooldownSeconds(effectiveStats) /
-          hasteAttackSpeedMultiplier(meta.hasteLevel) /
+          hasteAttackSpeedMultiplier(metaLevel(MetaStat.haste)) /
           meta.attackSpeedMultiplierFromShop;
       character.attackBehavior.perform(this);
     }
@@ -426,7 +454,7 @@ class ArenaGame extends FlameGame {
       // top of the level scaling, not instead of it.
       statMultiplier:
           enemyStatMultiplier(level) *
-          corruptionEnemyStatMultiplier(meta.corruptionLevel),
+          corruptionEnemyStatMultiplier(metaLevel(MetaStat.corruption)),
     );
     enemies.add(enemy);
     addToWorld(enemy);
@@ -477,7 +505,7 @@ class ArenaGame extends FlameGame {
       level,
       // DECISIONS D-090: GameConfig.gemDropChanceBonus layers on the same
       // additive axis LUCK/SHOP already use, not a separate multiplier.
-      bonusChance: luckGemDropBonus(meta.luckLevel) +
+      bonusChance: luckGemDropBonus(metaLevel(MetaStat.luck)) +
           meta.gemDropBonusFromShop +
           GameConfig.instance.gemDropChanceBonus,
     )) {
@@ -503,8 +531,8 @@ class ArenaGame extends FlameGame {
   /// call sites.
   int _rollCoins() {
     return (rollCoinValue(_random) *
-            corruptionRewardMultiplier(meta.corruptionLevel) *
-            fortuneRewardMultiplier(meta.fortuneLevel) *
+            corruptionRewardMultiplier(metaLevel(MetaStat.corruption)) *
+            fortuneRewardMultiplier(metaLevel(MetaStat.fortune)) *
             meta.coinMultiplierFromShop *
             // DECISIONS D-090: developer-editable tuning knob, same axis as
             // the multipliers above.
@@ -838,7 +866,7 @@ class ArenaGame extends FlameGame {
   }
 
   double rollCrit(double damage) {
-    return _random.nextDouble() < critChance(meta.critLevel)
+    return _random.nextDouble() < critChance(metaLevel(MetaStat.crit))
         ? damage * kCritDamageMultiplier
         : damage;
   }
@@ -1024,6 +1052,84 @@ class ArenaGame extends FlameGame {
         idleAnimation: gameAssets.chestIdleAnimation,
       ),
     );
+  }
+
+  /// Called by [TorchSpawner] on its own timer.
+  void spawnTorch(Vector2 at) {
+    final torch = TorchComponent(
+      startPosition: at,
+      animation: gameAssets.torchAnimation,
+    );
+    torches.add(torch);
+    addToWorld(torch);
+  }
+
+  /// Called by [TorchSpawner]'s own straggler cull, same "fallen too far
+  /// behind the roaming camera to ever matter again" reasoning as
+  /// [cullEnemy] (torches don't chase, but the world is unbounded, so one
+  /// left behind is otherwise never removed).
+  void cullTorch(TorchComponent torch) {
+    torches.remove(torch);
+    torch.removeFromParent();
+  }
+
+  /// Called by [VaseSpawner] on its own timer.
+  void spawnVase(Vector2 at) {
+    final vase = VaseComponent(
+      startPosition: at,
+      animation: gameAssets.vaseAnimation,
+    );
+    vases.add(vase);
+    addToWorld(vase);
+  }
+
+  /// Called by [VaseComponent] the instant the player walks into it
+  /// (DECISIONS D-002). Removes the vase and scatters a random
+  /// [GameConfig.vaseGemsMin]-[GameConfig.vaseGemsMax] burst of gems
+  /// alternating left/right of where it stood — "gems fly out of the vase
+  /// left and right," the developer's literal spec — rather than a fully
+  /// random scatter that could occasionally land every gem on one side.
+  void breakVase(VaseComponent vase) {
+    vases.remove(vase);
+    vase.removeFromParent();
+
+    final minGems = GameConfig.instance.vaseGemsMin;
+    final maxGems = GameConfig.instance.vaseGemsMax;
+    final gemCount = minGems + _random.nextInt(max(1, maxGems - minGems + 1));
+    for (var i = 0; i < gemCount; i++) {
+      final rarity = rollRarity(_random);
+      final side = i.isEven ? -1.0 : 1.0;
+      final offsetX = side *
+          (kVaseGemScatterMinPx +
+              _random.nextDouble() *
+                  (kVaseGemScatterMaxPx - kVaseGemScatterMinPx));
+      final offsetY = (_random.nextDouble() * 2 - 1) * kVaseGemScatterVerticalPx;
+      addToWorld(
+        GemComponent(
+          startPosition: vase.position + Vector2(offsetX, offsetY),
+          rarity: rarity,
+          animation: gameAssets.gemAnimations[rarity.index],
+        ),
+      );
+    }
+  }
+
+  /// The vase's "card chosen" burst (DECISIONS D-002) — see
+  /// `kCardChosenBurstCount`'s own doc comment (constants.dart) for why
+  /// this reuses [GameAssets.cardChosenBurstAnimation] rather than the
+  /// chest-reveal overlay's own Flutter-widget sparkle burst.
+  void spawnCardChosenBurst(Vector2 at) {
+    for (var i = 0; i < kCardChosenBurstCount; i++) {
+      final angle = _random.nextDouble() * 2 * pi;
+      final distance = kCardChosenBurstMinDistancePx +
+          _random.nextDouble() *
+              (kCardChosenBurstMaxDistancePx - kCardChosenBurstMinDistancePx);
+      spawnEffect(
+        gameAssets.cardChosenBurstAnimation,
+        at + Vector2(cos(angle), sin(angle)) * distance,
+        size: Vector2.all(kCardChosenBurstSparkleSizePx),
+      );
+    }
   }
 
   /// Called by [ChestComponent] once its opening sequence finishes

@@ -15,12 +15,12 @@ import '../widgets/screen_scaffold.dart';
 /// forever after, distinct from the leveled coin dials on the UPGRADES
 /// screen.
 ///
-/// Paged like `UpgradesScreen` (DECISIONS D-070, "no scrolling, add 2 more
+/// Paged like `CharacterUpgradesScreen` (DECISIONS D-070, "no scrolling, add 2 more
 /// pages of items") — a fixed, non-scrolling `PageView` over `kShopPages`,
 /// same `CarouselArrowRow`/`PageDots` carousel chrome, each page laying its
 /// rows out with `Expanded` rather than a scroll view so it can't overflow
 /// regardless of screen height. Same "load/save its own `MetaProgression`
-/// copy" pattern as `UpgradesScreen`.
+/// copy" pattern as `CharacterUpgradesScreen`.
 class ShopScreen extends StatefulWidget {
   const ShopScreen({super.key});
 
@@ -81,7 +81,11 @@ class _ShopScreenState extends State<ShopScreen> {
   Widget build(BuildContext context) {
     final meta = _meta;
     return ScreenScaffold(
-      title: 'SHOP',
+      // DECISIONS D-003: renamed from bare "SHOP" -- the developer's own
+      // follow-up ("change shop to Bonuses Shop") once Character Select
+      // grew its own read-only "Shop Bonuses:" summary panel, so the two
+      // don't read as the same feature under different names.
+      title: 'BONUSES SHOP',
       child: meta == null
           ? const Center(
               child: CircularProgressIndicator(color: ArenaColors.accent),
@@ -149,7 +153,7 @@ class _WalletRow extends StatelessWidget {
 
 /// One page of `_ShopItemRow`s, each getting an equal share of the page's
 /// height via `Expanded` — same "no scroll view anywhere" shape as
-/// `UpgradesScreen`'s `_StatPage` (DECISIONS D-070).
+/// `CharacterUpgradesScreen`'s `_StatPage` (DECISIONS D-070).
 class _ShopPage extends StatelessWidget {
   const _ShopPage({required this.items, required this.meta, required this.onBuy});
 

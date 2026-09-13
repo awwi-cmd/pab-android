@@ -5,6 +5,7 @@ import 'package:flame/components.dart';
 import '../../core/constants.dart';
 import '../../core/economy.dart';
 import '../../core/game_rules.dart';
+import '../../core/meta_progression.dart';
 import '../arena_game.dart';
 
 /// A potion sitting on the ground (DECISIONS D-043) — spawns randomly
@@ -44,8 +45,8 @@ class PotionComponent extends SpriteAnimationComponent
 
     final player = game.player;
     // MAGNET (DECISIONS D-069) widens every pickup's own collect radius.
-    final radius =
-        kItemPickupRadiusPx * magnetPickupRadiusMultiplier(game.meta.magnetLevel);
+    final radius = kItemPickupRadiusPx *
+        magnetPickupRadiusMultiplier(game.metaLevel(MetaStat.magnet));
     if (player.isAlive && position.distanceTo(player.position) < radius) {
       game.collectPotion(rarity);
       removeFromParent();

@@ -90,6 +90,13 @@ class EnemyComponent extends SpriteAnimationGroupComponent<EnemyAnim>
     _scratch.scale(EnemyStats.moveSpeedPxPerS * dt);
     position.add(_scratch);
 
+    // Standing torches (DECISIONS D-002) — same solid-obstacle push-out the
+    // player gets (`PlayerComponent.update`), so an enemy chasing the
+    // player can't just walk through one.
+    for (final torch in game.torches) {
+      resolveCircleObstacle(position, size.x / 2, torch.position, torch.collisionRadius);
+    }
+
     final touching =
         position.distanceTo(player.position) < (size.x / 2 + player.size.x / 2);
     if (touching && _contactCooldown <= 0) {

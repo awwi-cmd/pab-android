@@ -5,6 +5,7 @@ import 'package:flame/components.dart';
 import '../../core/constants.dart';
 import '../../core/economy.dart';
 import '../../core/game_rules.dart';
+import '../../core/meta_progression.dart';
 import '../arena_game.dart';
 
 /// A dropped gem (DECISIONS D-043) — spawned at an enemy's death position
@@ -47,8 +48,8 @@ class GemComponent extends SpriteAnimationComponent
 
     final player = game.player;
     // MAGNET (DECISIONS D-069) widens every pickup's own collect radius.
-    final radius =
-        kItemPickupRadiusPx * magnetPickupRadiusMultiplier(game.meta.magnetLevel);
+    final radius = kItemPickupRadiusPx *
+        magnetPickupRadiusMultiplier(game.metaLevel(MetaStat.magnet));
     if (player.isAlive && position.distanceTo(player.position) < radius) {
       game.collectGem(rarity);
       removeFromParent();

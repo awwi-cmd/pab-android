@@ -40,6 +40,9 @@ class GameAssets {
     required this.potionAnimations,
     required this.chestIdleAnimation,
     required this.chestOpeningAnimation,
+    required this.torchAnimation,
+    required this.vaseAnimation,
+    required this.cardChosenBurstAnimation,
   });
 
   final CharacterAnimations characterAnimations;
@@ -74,6 +77,19 @@ class GameAssets {
   /// player walks up to it.
   final SpriteAnimation chestIdleAnimation;
   final SpriteAnimation chestOpeningAnimation;
+
+  /// World objects (DECISIONS D-002) — [torchAnimation] loops forever (a
+  /// standing torch's flame flicker never stops); [vaseAnimation] also
+  /// loops (the sheet is 16 near-identical frames, just a subtle shimmer
+  /// sweep, not a break sequence — see `VaseComponent`'s own doc comment).
+  /// [cardChosenBurstAnimation] is a one-shot (`loop: false`) copy of the
+  /// same sheet [sparkleAnimation] uses, loaded separately because
+  /// `spawnEffect`'s `removeOnFinish` needs an animation that actually
+  /// finishes — [sparkleAnimation] itself loops forever (D-036) so it would
+  /// never remove itself.
+  final SpriteAnimation torchAnimation;
+  final SpriteAnimation vaseAnimation;
+  final SpriteAnimation cardChosenBurstAnimation;
 
   /// Loads everything up front — the exact body of `ArenaGame.onLoad()`
   /// before the split, unchanged apart from the 4 new sheets at the end.
@@ -317,6 +333,30 @@ class GameAssets {
       stepTime: 0.06,
       loop: false,
     );
+    // World objects (DECISIONS D-002) -- both native 16x16 cell, single row.
+    final torchAnimation = await loadSheetAnimation(
+      'scenes/torch-standing.png',
+      cellWidth: 16,
+      cellHeight: 16,
+      stepTime: 0.1,
+    );
+    final vaseAnimation = await loadSheetAnimation(
+      'scenes/gem-vase.png',
+      cellWidth: 16,
+      cellHeight: 16,
+      stepTime: 0.1,
+    );
+    // A one-shot copy of sparkleAnimation's own sheet -- see this field's
+    // doc comment above for why it can't just reuse sparkleAnimation.
+    final cardChosenBurstAnimation = await loadSheetAnimation(
+      'vfx/vfx/effect_sparkles-constelation.png',
+      cellWidth: 309,
+      cellHeight: 313,
+      stepTime: 0.02,
+      frameCount: 60,
+      amountPerRow: 9,
+      loop: false,
+    );
 
     return GameAssets._(
       characterAnimations: characterAnimations,
@@ -342,6 +382,9 @@ class GameAssets {
       potionAnimations: potionAnimations,
       chestIdleAnimation: chestIdleAnimation,
       chestOpeningAnimation: chestOpeningAnimation,
+      torchAnimation: torchAnimation,
+      vaseAnimation: vaseAnimation,
+      cardChosenBurstAnimation: cardChosenBurstAnimation,
     );
   }
 }

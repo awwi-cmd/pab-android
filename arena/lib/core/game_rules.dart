@@ -112,8 +112,9 @@ double bossStatMultiplier(int spawnIndex) {
 
 /// Corruption (DECISIONS D-047, the Upgrades shop's 5th track) — developer's
 /// spec verbatim: "increases your enemy spawn rate/enemy HP/enemy damage but
-/// increases rewards per level bought." Linear per level (0-10, `MetaProgression
-/// .corruptionLevel`), same shape as [enemyStatMultiplier] above but layered
+/// increases rewards per level bought." Linear per level (0-10, per
+/// character since DECISIONS D-003 — `ArenaGame.metaLevel(MetaStat.
+/// corruption)`), same shape as [enemyStatMultiplier] above but layered
 /// on top of it rather than replacing it. First-guess placeholders, not
 /// tuned on-device.
 const double kCorruptionSpawnRatePerLevel = 0.08;
@@ -261,6 +262,49 @@ List<int> alongLineWithinRange(
     if (perpendicular <= halfWidth) result.add(i);
   }
   return result;
+}
+
+/// Pushes a moving circle straight out of a static circular obstacle it's
+/// currently overlapping (DECISIONS D-002 — the standing torch: "must have
+/// player & enemy collision"). Mutates [position] in place rather than
+/// returning a new `Vector2` (CLAUDE.md §4.4's "mutate in place, no
+/// per-frame allocation") — cheap enough to run every entity × every live
+/// torch, every frame, since only a handful of torches are ever alive at
+/// once (`GameConfig.torchCount`). No-op if the circles don't overlap.
+void resolveCircleObstacle(
+  Vector2 position,
+  double entityRadius,
+  Vector2 obstacleCenter,
+  double obstacleRadius,
+) {
+  final dx = position.x - obstacleCenter.x;
+  final dy = position.y - obstacleCenter.y;
+  final minDist = entityRadius + obstacleRadius;
+  final distSq = dx * dx + dy * dy;
+  if (distSq >= minDist * minDist) return;
+  final dist = sqrt(distSq);
+  if (dist == 0) {
+    // Degenerate (exactly on top of the obstacle's own center) -- push
+    // along a fixed axis rather than divide by zero.
+    position.setValues(obstacleCenter.x + minDist, obstacleCenter.y);
+    return;
+  }
+  final scale = minDist / dist;
+  position.setValues(
+    obstacleCenter.x + dx * scale,
+    obstacleCenter.y + dy * scale,
+  );
+}
+
+/// True if [candidate] is at least [minSpacing] away from every point in
+/// [existing] (DECISIONS D-002 — `TorchSpawner`/`VaseSpawner` reject a
+/// candidate spawn point too close to one of their own already-live
+/// siblings, "not too close to each other").
+bool farEnoughFrom(Vector2 candidate, List<Vector2> existing, double minSpacing) {
+  for (final point in existing) {
+    if (candidate.distanceTo(point) < minSpacing) return false;
+  }
+  return true;
 }
 
 /// A random point just outside [visible], by [marginFactor] of its own

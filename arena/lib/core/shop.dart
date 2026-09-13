@@ -14,7 +14,7 @@
 ///
 /// `kShopPages` (DECISIONS D-070, "no scrolling, add 2 more pages") is the
 /// SHOP screen's own row-order/page-grouping source of truth — same
-/// "declaration order is display order" pattern `UpgradesScreen._statPages`
+/// "declaration order is display order" pattern `CharacterUpgradesScreen._statPages`
 /// already uses. `kShopItems` is the flattened view every existing
 /// buy-lookup/test already reads, so nothing downstream had to change shape.
 enum ShopItemId {
@@ -81,7 +81,7 @@ const int kBossHunterGemReward = 50; // flat, on top of a boss's normal (zero) d
 /// Declaration order is display order within a page; the outer list's
 /// order is page order. Kept as pages here rather than one flat list
 /// (DECISIONS D-070, "no scrolling") — the SHOP screen pages through these
-/// exactly like `UpgradesScreen._statPages`, so it never needs its own
+/// exactly like `CharacterUpgradesScreen._statPages`, so it never needs its own
 /// scroll view regardless of screen height.
 const List<List<ShopItem>> kShopPages = [
   [

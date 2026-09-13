@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,36 +7,45 @@ import 'achievements.dart';
 import 'shop.dart';
 
 /// Persistent, cross-round meta-progression (DECISIONS D-047) — the
-/// character-select screen's new "UPGRADES" tab, developer's spec verbatim:
-/// STR/VIT/DEX/INT/CORRUPTION, 10 levels each, bought with coins earned
-/// finishing rounds. This is a *different* wallet from `ArenaGame.
-/// coinsEarned` (that one is round-scoped loot, reset every round per
-/// CLAUDE.md §4.5) — [MetaProgressionRepository.addCoins] is the one place
-/// a round's earnings cross over into this persistent one, called once from
-/// `ArenaGame._endRound`.
+/// character-select screen's "CHARACTER UPGRADES" tab (DECISIONS D-003:
+/// renamed from "UPGRADES"), developer's spec verbatim: STR/VIT/DEX/INT/
+/// CORRUPTION, 10 levels each, bought with coins earned finishing rounds.
+/// This is a *different* wallet from `ArenaGame.coinsEarned` (that one is
+/// round-scoped loot, reset every round per CLAUDE.md §4.5) —
+/// [MetaProgressionRepository.addCoins] is the one place a round's earnings
+/// cross over into this persistent one, called once from `ArenaGame._endRound`.
 ///
-/// Corruption is the odd one out — it doesn't buy a playable stat, it turns
-/// a difficulty/reward dial (`core/game_rules.dart`'s
+/// **DECISIONS D-003 (revised):** every single one of these 12 dials is
+/// *per-character* — "all of character upgrades must be SPECIFIC to
+/// character... chaos haste luck everything from character upgrades should
+/// be specific to character," the developer's literal follow-up correction
+/// to this decision's first pass (which only split STR/VIT/DEX/INT). There
+/// is no more global/shared dial at all — [CharacterUpgradeLevels] holds all
+/// 12, one instance per `CharacterDef.id`, and [MetaProgression] itself has
+/// no bare `corruptionLevel`-style fields left to accidentally read instead.
+///
+/// Corruption is the odd one out among the 12 — it doesn't buy a playable
+/// stat, it turns a difficulty/reward dial (`core/game_rules.dart`'s
 /// `corruptionSpawnIntervalMultiplier`/`corruptionEnemyStatMultiplier`/
-/// `corruptionRewardMultiplier` read the level straight off this).
+/// `corruptionRewardMultiplier` read the level straight off it).
 ///
 /// `haste`/`fortune`/`resolve` (DECISIONS D-067) are 3 more of that same
 /// "dial," not raw attribute adds like STR/VIT/DEX/INT — each reads
 /// straight off `core/game_rules.dart`'s own per-level formula
 /// (`hasteAttackSpeedMultiplier`/`fortuneRewardMultiplier`/
 /// `resolveDamageResistance`+`resolveHpRegenPerSec`), same shape as
-/// Corruption's own multipliers. The Upgrades screen's page 2
-/// (`UpgradesScreen`) is exactly `[corruption, haste, fortune, resolve]` —
-/// this enum's declaration order *is* that page's row order, so a future
-/// 4th dial on that page is an enum member here, not a separate list
-/// somewhere else.
-/// `magnet`/`luck`/`regen`/`crit` (DECISIONS D-069) are the Upgrades
-/// screen's 3rd page — same "pure dial, not a raw attribute add" shape as
-/// haste/fortune/resolve, each reading straight off `core/game_rules.dart`'s
-/// own per-level formula (`magnetPickupRadiusMultiplier`/
-/// `luckGemDropBonus`/`regenHpPerSec`/`critChance`). This enum's declaration
-/// order is that page's row order, same as page 2's own doc comment above
-/// already established.
+/// Corruption's own multipliers. The Character Upgrades screen's page 2
+/// (`CharacterUpgradesScreen`) is exactly `[corruption, haste, fortune,
+/// resolve]` — this enum's declaration order *is* that page's row order, so
+/// a future 4th dial on that page is an enum member here, not a separate
+/// list somewhere else.
+/// `magnet`/`luck`/`regen`/`crit` (DECISIONS D-069) are the Character
+/// Upgrades screen's 3rd page — same "pure dial, not a raw attribute add"
+/// shape as haste/fortune/resolve, each reading straight off
+/// `core/game_rules.dart`'s own per-level formula
+/// (`magnetPickupRadiusMultiplier`/`luckGemDropBonus`/`regenHpPerSec`/
+/// `critChance`). This enum's declaration order is that page's row order,
+/// same as page 2's own doc comment above already established.
 enum MetaStat {
   str,
   vit,
@@ -91,23 +101,25 @@ extension MetaStatLabels on MetaStat {
       case MetaStat.vit:
       case MetaStat.dex:
       case MetaStat.intellect:
-        return '+1 $label per level, every run.';
+        // DECISIONS D-003: per-character, not "every run" unqualified --
+        // this is this character's own bonus, bought and spent per-character.
+        return '+1 $label per level, with this character.';
       case MetaStat.corruption:
-        return 'Tougher, faster enemies. Bigger rewards.';
+        return 'Tougher, faster enemies. Bigger rewards. This character only.';
       case MetaStat.haste:
-        return '+5% attack speed per level, every run.';
+        return '+5% attack speed per level, with this character.';
       case MetaStat.fortune:
-        return '+10% coin value per level, every run.';
+        return '+10% coin value per level, with this character.';
       case MetaStat.resolve:
-        return 'Less damage taken, faster HP regen, every run.';
+        return 'Less damage taken, faster HP regen, with this character.';
       case MetaStat.magnet:
-        return '+15% pickup radius per level, every run.';
+        return '+15% pickup radius per level, with this character.';
       case MetaStat.luck:
-        return '+1% gem drop chance per level, every run.';
+        return '+1% gem drop chance per level, with this character.';
       case MetaStat.regen:
-        return '+HP regen per level, every run.';
+        return '+HP regen per level, with this character.';
       case MetaStat.crit:
-        return '+3% crit chance per level, every run.';
+        return '+3% crit chance per level, with this character.';
     }
   }
 }
@@ -128,6 +140,104 @@ int metaUpgradeCost(int currentLevel) {
   return (kMetaBaseCost * pow(kMetaCostGrowth, currentLevel)).round();
 }
 
+/// One character's own Character Upgrades levels, all 12 `MetaStat` dials
+/// (DECISIONS D-003) — `MetaProgression.characterUpgradeLevels` holds one of
+/// these per `CharacterDef.id`; a character with none yet (never bought
+/// anything, or never played) is represented by a fresh
+/// `CharacterUpgradeLevels()`, every field 0, rather than an entry existing
+/// in the map at all. STR/VIT/DEX/INT's field names mirror `core/stats.dart`'s
+/// `StatBlock` (not `MetaStat`'s own names) since those 4 are added directly
+/// onto a `StatBlock` at `ArenaGame.effectiveStats`; the other 8 mirror
+/// `MetaStat`'s own member names since nothing combines them with a
+/// `StatBlock` the same way.
+class CharacterUpgradeLevels {
+  CharacterUpgradeLevels({
+    this.str = 0,
+    this.vit = 0,
+    this.dex = 0,
+    this.intellect = 0,
+    this.corruption = 0,
+    this.haste = 0,
+    this.fortune = 0,
+    this.resolve = 0,
+    this.magnet = 0,
+    this.luck = 0,
+    this.regen = 0,
+    this.crit = 0,
+  });
+
+  int str;
+  int vit;
+  int dex;
+  int intellect;
+  int corruption;
+  int haste;
+  int fortune;
+  int resolve;
+  int magnet;
+  int luck;
+  int regen;
+  int crit;
+
+  int levelOf(MetaStat stat) {
+    switch (stat) {
+      case MetaStat.str:
+        return str;
+      case MetaStat.vit:
+        return vit;
+      case MetaStat.dex:
+        return dex;
+      case MetaStat.intellect:
+        return intellect;
+      case MetaStat.corruption:
+        return corruption;
+      case MetaStat.haste:
+        return haste;
+      case MetaStat.fortune:
+        return fortune;
+      case MetaStat.resolve:
+        return resolve;
+      case MetaStat.magnet:
+        return magnet;
+      case MetaStat.luck:
+        return luck;
+      case MetaStat.regen:
+        return regen;
+      case MetaStat.crit:
+        return crit;
+    }
+  }
+
+  void setLevel(MetaStat stat, int value) {
+    switch (stat) {
+      case MetaStat.str:
+        str = value;
+      case MetaStat.vit:
+        vit = value;
+      case MetaStat.dex:
+        dex = value;
+      case MetaStat.intellect:
+        intellect = value;
+      case MetaStat.corruption:
+        corruption = value;
+      case MetaStat.haste:
+        haste = value;
+      case MetaStat.fortune:
+        fortune = value;
+      case MetaStat.resolve:
+        resolve = value;
+      case MetaStat.magnet:
+        magnet = value;
+      case MetaStat.luck:
+        luck = value;
+      case MetaStat.regen:
+        regen = value;
+      case MetaStat.crit:
+        crit = value;
+    }
+  }
+}
+
 /// A snapshot of the shop's state — loaded fresh at character-select and at
 /// arena entry, saved back on every purchase (same "screens own their own
 /// copy, persist on every change" pattern as `Settings`, CLAUDE.md §4.9: no
@@ -137,18 +247,7 @@ class MetaProgression {
     this.coins = 0,
     this.gems = 0,
     this.lifetimeKills = 0,
-    this.strLevel = 0,
-    this.vitLevel = 0,
-    this.dexLevel = 0,
-    this.intLevel = 0,
-    this.corruptionLevel = 0,
-    this.hasteLevel = 0,
-    this.fortuneLevel = 0,
-    this.resolveLevel = 0,
-    this.magnetLevel = 0,
-    this.luckLevel = 0,
-    this.regenLevel = 0,
-    this.critLevel = 0,
+    Map<String, CharacterUpgradeLevels>? characterUpgradeLevels,
     Set<String>? ownedItemIds,
     this.lifetimeBossKills = 0,
     this.lifetimeGemsCollected = 0,
@@ -159,6 +258,7 @@ class MetaProgression {
     this.longestSurvivalTimeSec = 0,
     Set<String>? claimedAchievementIds,
   }) : ownedItemIds = ownedItemIds ?? {},
+       characterUpgradeLevels = characterUpgradeLevels ?? {},
        claimedAchievementIds = claimedAchievementIds ?? {};
 
   int coins;
@@ -166,10 +266,9 @@ class MetaProgression {
   /// A second, separate persistent currency (DECISIONS D-055) — gems
   /// dropped by enemies and found in chests, credited at round-over exactly
   /// like [coins] (`ArenaGame._endRound`), from the same round-scoped
-  /// `ArenaGame.gemsCollected` count Round Over already displays. Not
-  /// spendable on anything yet (no gem-priced item exists) — the wallet
-  /// exists so the number is real and persists, same as `ShopScreen`
-  /// shipping empty on purpose (D-047).
+  /// `ArenaGame.gemsCollected` count Round Over already displays. Spent on
+  /// SHOP items — DECISIONS D-003: unlike every Character Upgrades dial,
+  /// SHOP stays global, one purchase applies to every character.
   int gems;
 
   /// Lifetime kills across every round ever played (DECISIONS D-055) — the
@@ -177,22 +276,17 @@ class MetaProgression {
   /// at round-over from `ArenaGame.kills`, alongside coins/gems.
   int lifetimeKills;
 
-  int strLevel;
-  int vitLevel;
-  int dexLevel;
-  int intLevel;
-  int corruptionLevel;
-  int hasteLevel;
-  int fortuneLevel;
-  int resolveLevel;
-  int magnetLevel;
-  int luckLevel;
-  int regenLevel;
-  int critLevel;
+  /// All 12 Character Upgrades levels, per `CharacterDef.id` (DECISIONS
+  /// D-003) — see [CharacterUpgradeLevels]'s own doc comment. Use
+  /// [levelsFor]/[levelOfFor]/[buyFor] rather than reading this map
+  /// directly; those handle the "never bought anything for this character
+  /// yet" case.
+  final Map<String, CharacterUpgradeLevels> characterUpgradeLevels;
 
   /// SHOP's owned items (DECISIONS D-069) — `ShopItemId.name` strings rather
   /// than the enum itself, so `SharedPreferences.getStringList` can store it
   /// directly (same reasoning as every other primitive-only field here).
+  /// Global, same as every character's own SHOP menu (DECISIONS D-003).
   final Set<String> ownedItemIds;
 
   // ACHIEVEMENTS (DECISIONS D-091) -- lifetime counters distinct from the
@@ -223,104 +317,47 @@ class MetaProgression {
   /// shape [ownedItemIds] already has for SHOP.
   final Set<String> claimedAchievementIds;
 
-  int levelOf(MetaStat stat) {
-    switch (stat) {
-      case MetaStat.str:
-        return strLevel;
-      case MetaStat.vit:
-        return vitLevel;
-      case MetaStat.dex:
-        return dexLevel;
-      case MetaStat.intellect:
-        return intLevel;
-      case MetaStat.corruption:
-        return corruptionLevel;
-      case MetaStat.haste:
-        return hasteLevel;
-      case MetaStat.fortune:
-        return fortuneLevel;
-      case MetaStat.resolve:
-        return resolveLevel;
-      case MetaStat.magnet:
-        return magnetLevel;
-      case MetaStat.luck:
-        return luckLevel;
-      case MetaStat.regen:
-        return regenLevel;
-      case MetaStat.crit:
-        return critLevel;
-    }
-  }
+  /// [characterId]'s own Character Upgrades levels (DECISIONS D-003) —
+  /// never null, a character with no purchases yet reads as a fresh
+  /// `CharacterUpgradeLevels()` (every field 0). Read-only: unlike
+  /// [characterUpgradeLevels] itself, callers shouldn't mutate the object
+  /// this returns for a character with no map entry — it isn't stored
+  /// anywhere, so a mutation would silently vanish. [buyFor] is the only
+  /// way to actually raise a level (it creates the real stored entry first).
+  CharacterUpgradeLevels levelsFor(String characterId) =>
+      characterUpgradeLevels[characterId] ?? CharacterUpgradeLevels();
 
-  void _setLevel(MetaStat stat, int value) {
-    switch (stat) {
-      case MetaStat.str:
-        strLevel = value;
-        return;
-      case MetaStat.vit:
-        vitLevel = value;
-        return;
-      case MetaStat.dex:
-        dexLevel = value;
-        return;
-      case MetaStat.intellect:
-        intLevel = value;
-        return;
-      case MetaStat.corruption:
-        corruptionLevel = value;
-        return;
-      case MetaStat.haste:
-        hasteLevel = value;
-        return;
-      case MetaStat.fortune:
-        fortuneLevel = value;
-        return;
-      case MetaStat.resolve:
-        resolveLevel = value;
-        return;
-      case MetaStat.magnet:
-        magnetLevel = value;
-        return;
-      case MetaStat.luck:
-        luckLevel = value;
-        return;
-      case MetaStat.regen:
-        regenLevel = value;
-        return;
-      case MetaStat.crit:
-        critLevel = value;
-        return;
-    }
-  }
+  int levelOfFor(String characterId, MetaStat stat) =>
+      levelsFor(characterId).levelOf(stat);
 
-  /// Buys the next level of [stat] if there's a level left and enough coins
-  /// on hand. Returns whether the purchase went through — callers use this
-  /// to decide whether to bother persisting/re-rendering.
-  bool buy(MetaStat stat) {
-    final current = levelOf(stat);
+  /// Buys the next level of [stat] for [characterId] if there's a level
+  /// left and enough coins on hand. Returns whether the purchase went
+  /// through — callers use this to decide whether to bother persisting/
+  /// re-rendering. Creates [characterId]'s `CharacterUpgradeLevels` entry on
+  /// first purchase (`putIfAbsent`) — an entry only exists in
+  /// [characterUpgradeLevels] once something has actually been bought for
+  /// that character.
+  bool buyFor(String characterId, MetaStat stat) {
+    final levels = characterUpgradeLevels.putIfAbsent(
+      characterId,
+      CharacterUpgradeLevels.new,
+    );
+    final current = levels.levelOf(stat);
     if (current >= kMetaMaxLevel) return false;
     final cost = metaUpgradeCost(current);
     if (coins < cost) return false;
     coins -= cost;
-    _setLevel(stat, current + 1);
+    levels.setLevel(stat, current + 1);
     return true;
   }
 
-  // +1 attribute point per level — lands directly on `StatBlock`'s own
-  // integer str/vit/dex/intellect scale (core/stats.dart), so a level
-  // bought here is worth exactly what a level of the base attribute is
-  // worth in every derived combat formula, for free.
-  int get bonusStr => strLevel;
-  int get bonusVit => vitLevel;
-  int get bonusDex => dexLevel;
-  int get bonusIntellect => intLevel;
-
   // SHOP (DECISIONS D-069) -- permanent one-time purchases, priced in gems,
-  // distinct from the leveled coin dials above.
+  // distinct from the leveled coin dials above. Global (DECISIONS D-003) --
+  // unlike Character Upgrades, SHOP ownership isn't keyed by character.
   bool ownsItem(ShopItemId id) => ownedItemIds.contains(id.name);
 
   /// Buys [item] if not already owned and enough gems are on hand. Same
-  /// afford/cap-check-then-deduct shape as [buy] above.
+  /// afford/cap-check-then-deduct shape as [buyFor] above.
   bool buyItem(ShopItem item) {
     if (ownsItem(item.id)) return false;
     if (gems < item.costGems) return false;
@@ -371,18 +408,13 @@ class MetaProgressionRepository {
   static const _kCoins = 'meta.coins';
   static const _kGems = 'meta.gems';
   static const _kLifetimeKills = 'meta.lifetimeKills';
-  static const _kStr = 'meta.str';
-  static const _kVit = 'meta.vit';
-  static const _kDex = 'meta.dex';
-  static const _kInt = 'meta.int';
-  static const _kCorruption = 'meta.corruption';
-  static const _kHaste = 'meta.haste';
-  static const _kFortune = 'meta.fortune';
-  static const _kResolve = 'meta.resolve';
-  static const _kMagnet = 'meta.magnet';
-  static const _kLuck = 'meta.luck';
-  static const _kRegen = 'meta.regen';
-  static const _kCrit = 'meta.crit';
+  // DECISIONS D-003: superseded by _kCharacterUpgradeLevels below -- kept as
+  // a comment, not dangling unused consts, so a future reader doesn't
+  // wonder whether any of these is still written somewhere.
+  // (old keys: 'meta.str' / 'meta.vit' / 'meta.dex' / 'meta.int' /
+  // 'meta.corruption' / 'meta.haste' / 'meta.fortune' / 'meta.resolve' /
+  // 'meta.magnet' / 'meta.luck' / 'meta.regen' / 'meta.crit')
+  static const _kCharacterUpgradeLevels = 'meta.characterUpgradeLevels';
   static const _kOwnedItems = 'meta.ownedItems';
   static const _kLifetimeBossKills = 'meta.lifetimeBossKills';
   static const _kLifetimeGemsCollected = 'meta.lifetimeGemsCollected';
@@ -393,24 +425,78 @@ class MetaProgressionRepository {
   static const _kLongestSurvivalTimeSec = 'meta.longestSurvivalTimeSec';
   static const _kClaimedAchievements = 'meta.claimedAchievements';
 
+  /// Field name each [MetaStat] encodes/decodes as inside the per-character
+  /// JSON object below — kept as one table both directions read, so adding a
+  /// 13th dial later can't have its encode/decode keys silently drift apart.
+  static const _statJsonKeys = {
+    MetaStat.str: 'str',
+    MetaStat.vit: 'vit',
+    MetaStat.dex: 'dex',
+    MetaStat.intellect: 'int',
+    MetaStat.corruption: 'corruption',
+    MetaStat.haste: 'haste',
+    MetaStat.fortune: 'fortune',
+    MetaStat.resolve: 'resolve',
+    MetaStat.magnet: 'magnet',
+    MetaStat.luck: 'luck',
+    MetaStat.regen: 'regen',
+    MetaStat.crit: 'crit',
+  };
+
+  /// Decodes [_kCharacterUpgradeLevels]'s JSON blob (DECISIONS D-003) into
+  /// the real map — a per-character stat map doesn't fit
+  /// `SharedPreferences`' flat primitive-only shape the rest of this class
+  /// uses, so this is the one field here that's JSON rather than a bare
+  /// `getInt`/`getStringList`, same "small, contained JSON blob" precedent
+  /// `GameConfig` already set for a different reason. Never throws past its
+  /// own `try`/`catch` -- missing/malformed data degrades to "nobody's
+  /// bought anything for any character yet," same as every other field's
+  /// `?? 0`-style fallback.
+  Map<String, CharacterUpgradeLevels> _decodeCharacterUpgradeLevels(
+    String? raw,
+  ) {
+    if (raw == null) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return {};
+      final result = <String, CharacterUpgradeLevels>{};
+      for (final entry in decoded.entries) {
+        final value = entry.value;
+        if (value is! Map) continue;
+        final levels = CharacterUpgradeLevels();
+        for (final stat in MetaStat.values) {
+          final raw = value[_statJsonKeys[stat]];
+          if (raw is num) levels.setLevel(stat, raw.toInt());
+        }
+        result[entry.key as String] = levels;
+      }
+      return result;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  String _encodeCharacterUpgradeLevels(
+    Map<String, CharacterUpgradeLevels> levels,
+  ) {
+    return jsonEncode({
+      for (final entry in levels.entries)
+        entry.key: {
+          for (final stat in MetaStat.values)
+            _statJsonKeys[stat]!: entry.value.levelOf(stat),
+        },
+    });
+  }
+
   Future<MetaProgression> load() async {
     final prefs = await SharedPreferences.getInstance();
     return MetaProgression(
       coins: prefs.getInt(_kCoins) ?? 0,
       gems: prefs.getInt(_kGems) ?? 0,
       lifetimeKills: prefs.getInt(_kLifetimeKills) ?? 0,
-      strLevel: prefs.getInt(_kStr) ?? 0,
-      vitLevel: prefs.getInt(_kVit) ?? 0,
-      dexLevel: prefs.getInt(_kDex) ?? 0,
-      intLevel: prefs.getInt(_kInt) ?? 0,
-      corruptionLevel: prefs.getInt(_kCorruption) ?? 0,
-      hasteLevel: prefs.getInt(_kHaste) ?? 0,
-      fortuneLevel: prefs.getInt(_kFortune) ?? 0,
-      resolveLevel: prefs.getInt(_kResolve) ?? 0,
-      magnetLevel: prefs.getInt(_kMagnet) ?? 0,
-      luckLevel: prefs.getInt(_kLuck) ?? 0,
-      regenLevel: prefs.getInt(_kRegen) ?? 0,
-      critLevel: prefs.getInt(_kCrit) ?? 0,
+      characterUpgradeLevels: _decodeCharacterUpgradeLevels(
+        prefs.getString(_kCharacterUpgradeLevels),
+      ),
       ownedItemIds: (prefs.getStringList(_kOwnedItems) ?? const []).toSet(),
       lifetimeBossKills: prefs.getInt(_kLifetimeBossKills) ?? 0,
       lifetimeGemsCollected: prefs.getInt(_kLifetimeGemsCollected) ?? 0,
@@ -429,18 +515,10 @@ class MetaProgressionRepository {
     await prefs.setInt(_kCoins, meta.coins);
     await prefs.setInt(_kGems, meta.gems);
     await prefs.setInt(_kLifetimeKills, meta.lifetimeKills);
-    await prefs.setInt(_kStr, meta.strLevel);
-    await prefs.setInt(_kVit, meta.vitLevel);
-    await prefs.setInt(_kDex, meta.dexLevel);
-    await prefs.setInt(_kInt, meta.intLevel);
-    await prefs.setInt(_kCorruption, meta.corruptionLevel);
-    await prefs.setInt(_kHaste, meta.hasteLevel);
-    await prefs.setInt(_kFortune, meta.fortuneLevel);
-    await prefs.setInt(_kResolve, meta.resolveLevel);
-    await prefs.setInt(_kMagnet, meta.magnetLevel);
-    await prefs.setInt(_kLuck, meta.luckLevel);
-    await prefs.setInt(_kRegen, meta.regenLevel);
-    await prefs.setInt(_kCrit, meta.critLevel);
+    await prefs.setString(
+      _kCharacterUpgradeLevels,
+      _encodeCharacterUpgradeLevels(meta.characterUpgradeLevels),
+    );
     await prefs.setStringList(_kOwnedItems, meta.ownedItemIds.toList());
     await prefs.setInt(_kLifetimeBossKills, meta.lifetimeBossKills);
     await prefs.setInt(_kLifetimeGemsCollected, meta.lifetimeGemsCollected);
@@ -596,9 +674,9 @@ class MetaProgressionRepository {
   }
 
   /// Zeroes coins/gems only (DECISIONS D-059) — `lifetimeKills` (the
-  /// character-unlock metric) and the STR/VIT/DEX/INT/CORRUPTION levels
-  /// already bought are progress, not spendable currency, so a "reset
-  /// wallet" debug tool leaves both alone.
+  /// character-unlock metric) and every Character Upgrades level already
+  /// bought are progress, not spendable currency, so a "reset wallet" debug
+  /// tool leaves both alone.
   Future<void> debugResetWallet() async {
     final current = await load();
     current.coins = 0;

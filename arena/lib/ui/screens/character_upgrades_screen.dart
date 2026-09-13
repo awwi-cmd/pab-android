@@ -2,56 +2,79 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
 import '../../core/meta_progression.dart';
+import '../../data/characters.dart';
 import '../widgets/carousel_arrow.dart';
 import '../widgets/coin_icon.dart';
 import '../widgets/pixel_button.dart';
 import '../widgets/screen_scaffold.dart';
 import '../widgets/stat_bar.dart';
 
-/// The character-select screen's "UPGRADES" tab (DECISIONS D-047, developer's
-/// spec): persistent, cross-round purchases funded by coins earned finishing
-/// rounds (`ArenaGame.coinsEarned` → `MetaProgressionRepository.addCoins`,
-/// credited once at round-over).
+/// The character-select screen's "CHARACTER UPGRADES" tab (DECISIONS D-047,
+/// renamed + made fully per-character by D-003 — developer's spec verbatim:
+/// "all of character upgrades must be SPECIFIC to character... chaos haste
+/// luck everything from character upgrades should be specific to
+/// character"): persistent, cross-round purchases funded by coins earned
+/// finishing rounds (`ArenaGame.coinsEarned` → `MetaProgressionRepository.
+/// addCoins`, credited once at round-over).
 ///
-/// Redesigned (DECISIONS D-067) into the same tap/swipe page carousel as
-/// Character Select (`CarouselArrowRow`/`PageDots`, `ui/widgets/
-/// carousel_arrow.dart`) instead of one long scrolling list — a fixed,
-/// non-scrolling `PageView` of 3 pages: STR/VIT/DEX/INT (raw attribute
-/// adds, `ArenaGame.effectiveStats`), CORRUPTION plus 3 more per-level
-/// dials in the same spirit (HASTE/FORTUNE/RESOLVE, `core/game_rules.dart`),
-/// and a 3rd page of 4 more (DECISIONS D-069: MAGNET/LUCK/REGEN/CRIT,
-/// closing out the "COMING SOON" placeholder D-067 shipped on purpose).
-/// Each page lays its rows out with `Expanded`, not a scroll view — the row
-/// order per page comes straight from `MetaStat.values`' own declaration
-/// order (see that enum's doc comment), not a separate list here.
+/// Same tap/swipe page carousel as Character Select (`CarouselArrowRow`/
+/// `PageDots`, `ui/widgets/carousel_arrow.dart`) — a fixed, non-scrolling
+/// `PageView` of 3 pages, all 3 scoped to whichever [CharacterDef] launched
+/// this screen (passed as this route's `arguments`, same `ModalRoute.
+/// of(context).settings.arguments` pattern `ArenaScreen` already uses):
+/// page 1 is STR/VIT/DEX/INT (`ArenaGame.effectiveStats`), page 2 is
+/// CORRUPTION/HASTE/FORTUNE/RESOLVE, page 3 is MAGNET/LUCK/REGEN/CRIT —
+/// buying on any page only ever raises *this* character's own
+/// `MetaProgression.characterUpgradeLevels` entry, read via `levelOfFor`/
+/// `buyFor`. The row order on every page still comes straight from
+/// `MetaStat.values`' own declaration order (see that enum's doc comment).
 ///
 /// Loads/saves its own `MetaProgression` copy (no state-management library,
 /// CLAUDE.md §4.9) — same pattern as `SettingsScreen`.
-class UpgradesScreen extends StatefulWidget {
-  const UpgradesScreen({super.key});
+class CharacterUpgradesScreen extends StatefulWidget {
+  const CharacterUpgradesScreen({super.key});
 
-  static const route = '/upgrades';
+  static const route = '/character-upgrades';
 
   @override
-  State<UpgradesScreen> createState() => _UpgradesScreenState();
+  State<CharacterUpgradesScreen> createState() =>
+      _CharacterUpgradesScreenState();
 }
 
-class _UpgradesScreenState extends State<UpgradesScreen> {
+class _CharacterUpgradesScreenState extends State<CharacterUpgradesScreen> {
   final _repo = MetaProgressionRepository();
   final _pageController = PageController();
   MetaProgression? _meta;
   int _pageIndex = 0;
 
+  /// Set once in [didChangeDependencies] — same "read the route argument
+  /// exactly once" shape `ArenaScreen` already uses for its own
+  /// `CharacterDef` argument.
+  late final CharacterDef character;
+  bool _characterResolved = false;
+
   /// Row-order source of truth (see class doc) — page 1 is the 4 raw
-  /// attributes, page 2 is Corruption plus the 3 dials that share its shape,
-  /// page 3 (DECISIONS D-069) is 4 more in the same spirit. A future page
-  /// is one more entry here, not a change to how paging itself works.
+  /// attributes (per-character, DECISIONS D-003), page 2 is Corruption plus
+  /// the 3 dials that share its shape, page 3 (DECISIONS D-069) is 4 more in
+  /// the same spirit. A future page is one more entry here, not a change to
+  /// how paging itself works.
   static const _statPages = [
     [MetaStat.str, MetaStat.vit, MetaStat.dex, MetaStat.intellect],
     [MetaStat.corruption, MetaStat.haste, MetaStat.fortune, MetaStat.resolve],
     [MetaStat.magnet, MetaStat.luck, MetaStat.regen, MetaStat.crit],
   ];
   static final _pageCount = _statPages.length;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_characterResolved) {
+      _characterResolved = true;
+      character =
+          ModalRoute.of(context)?.settings.arguments as CharacterDef? ??
+          kCharacters.first;
+    }
+  }
 
   @override
   void initState() {
@@ -71,7 +94,7 @@ class _UpgradesScreenState extends State<UpgradesScreen> {
   void _buy(MetaStat stat) {
     final meta = _meta;
     if (meta == null) return;
-    if (!meta.buy(stat)) return; // not enough coins, or already maxed
+    if (!meta.buyFor(character.id, stat)) return; // not enough coins, or maxed
     setState(() {}); // meta is mutated in place, just re-render
     _repo.save(meta);
   }
@@ -98,7 +121,7 @@ class _UpgradesScreenState extends State<UpgradesScreen> {
   Widget build(BuildContext context) {
     final meta = _meta;
     return ScreenScaffold(
-      title: 'UPGRADES',
+      title: 'CHARACTER UPGRADES',
       child: meta == null
           ? const Center(
               child: CircularProgressIndicator(color: ArenaColors.accent),
@@ -109,6 +132,15 @@ class _UpgradesScreenState extends State<UpgradesScreen> {
                   padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                   child: Column(
                     children: [
+                      Text(
+                        character.name,
+                        style: const TextStyle(
+                          color: ArenaColors.accent,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       _WalletRow(coins: meta.coins),
                       const SizedBox(height: 12),
                       PageDots(count: _pageCount, index: _pageIndex),
@@ -123,6 +155,7 @@ class _UpgradesScreenState extends State<UpgradesScreen> {
                     itemBuilder: (context, i) => _StatPage(
                       stats: _statPages[i],
                       meta: meta,
+                      character: character,
                       onBuy: _buy,
                     ),
                   ),
@@ -174,11 +207,13 @@ class _StatPage extends StatelessWidget {
   const _StatPage({
     required this.stats,
     required this.meta,
+    required this.character,
     required this.onBuy,
   });
 
   final List<MetaStat> stats;
   final MetaProgression meta;
+  final CharacterDef character;
   final ValueChanged<MetaStat> onBuy;
 
   @override
@@ -194,6 +229,7 @@ class _StatPage extends StatelessWidget {
                 child: _UpgradeRow(
                   stat: stat,
                   meta: meta,
+                  character: character,
                   onBuy: () => onBuy(stat),
                 ),
               ),
@@ -208,16 +244,18 @@ class _UpgradeRow extends StatelessWidget {
   const _UpgradeRow({
     required this.stat,
     required this.meta,
+    required this.character,
     required this.onBuy,
   });
 
   final MetaStat stat;
   final MetaProgression meta;
+  final CharacterDef character;
   final VoidCallback onBuy;
 
   @override
   Widget build(BuildContext context) {
-    final level = meta.levelOf(stat);
+    final level = meta.levelOfFor(character.id, stat);
     final maxed = level >= kMetaMaxLevel;
     final cost = maxed ? null : metaUpgradeCost(level);
     final affordable = cost != null && meta.coins >= cost;
